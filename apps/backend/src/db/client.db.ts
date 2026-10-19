@@ -1,34 +1,42 @@
-/** Main and department-vault connection routing. */
+import { PrismaLibSql } from '@prisma/adapter-libsql'
+import { PrismaClient as MainClient } from '@db/generated/main/client.ts'
+import { PrismaClient as TenantClient } from '@db/generated/tenant/client.ts'
 
-import { PrismaLibSql } from '@prisma/adapter-libsql';
-import { PrismaClient as MainClient } from './generated/main/client.ts';
-import { PrismaClient as TenantClient } from './generated/tenant/client.ts';
+export function create_database_client() {
+  const main_db = new MainClient({
+    adapter: new PrismaLibSql({
+      url: process.env.TURSODB_URL!,
+      authToken: process.env.TURSODB_TOKEN!,
+    }),
+  })
+  const max_cached_tenants = Number(process.env.DB_MAX_CACHED_TENANTS) || 100
+  const vault_cache = new Map<string, TenantClient>()
 
-const authToken = process.env.TURSODB_TOKEN || undefined;
-
-// Create Main Db
-export const mainDb = new MainClient({
-    adapter: new PrismaLibSql({ url: process.env.TURSODB_URL!, authToken }),
-});
-
-// Create Tenant Db
-const maxVaults = Number(process.env.DB_MAX_CACHED_TENANTS ?? 100);
-const vaults = new Map<string, TenantClient>();
-
-export function vaultDb(url: string) {
-    let db = vaults.get(url);
+  function vault_db(url: string) {
+    let db = vault_cache.get(url)
     if (db) {
-        vaults.delete(url);
+      vault_cache.delete(url)
     } else {
-        db = new TenantClient({
-            adapter: new PrismaLibSql({ url, authToken }),
-        });
+      db = new TenantClient({
+        adapter: new PrismaLibSql({ url, authToken: process.env.TURSODB_GROUP_TOKEN! }),
+      })
     }
-    vaults.set(url, db);
-    if (vaults.size > maxVaults) {
-        const [oldUrl, oldDb] = vaults.entries().next().value!;
-        vaults.delete(oldUrl);
-        void oldDb.$disconnect();
+    vault_cache.set(url, db)
+    if (vault_cache.size > max_cached_tenants) {
+      const [old_url, old_db] = vault_cache.entries().next().value!
+      vault_cache.delete(old_url)
+      void old_db.$disconnect().catch(() => {
+        console.error('Could not close an evicted tenant database client')
+      })
     }
-    return db;
+    return db
+  }
+
+  async function close() {
+    const client = [main_db, ...vault_cache.values()]
+    vault_cache.clear()
+    await Promise.all(client.map((db) => db.$disconnect()))
+  }
+
+  return { main_db, vault_db, close }
 }
