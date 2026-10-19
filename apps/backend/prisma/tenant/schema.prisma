@@ -4,31 +4,29 @@ generator client {
   previewFeatures = ["partialIndexes"]
 }
 
-
 datasource db {
   provider = "sqlite"
 }
 
 model File {
-  fileId    String    @id @map("file_id")
-  fileName  String?   @map("file_name")
-  userId    Int       @map("user_id")
-  createdAt DateTime  @default(now()) @map("created_at")
-  deletedAt DateTime? @map("deleted_at")
+  file_id    String    @id
+  file_name  String?
+  user_id    Int
+  created_at DateTime  @default(now())
+  deleted_at DateTime?
 
-  @@index([deletedAt], map: "file_deleted_at_idx")
+  @@index([deleted_at], map: "file_deleted_at_idx")
   @@map("file")
 }
 
 model Access {
-  accessId  Int       @id @default(autoincrement()) @map("access_id")
-  userId    Int       @map("user_id")
-  actions   Json      @default("[]")
-  createdAt DateTime  @default(now()) @map("created_at")
-  deletedAt DateTime? @map("deleted_at")
+  access_id  Int       @id @default(autoincrement())
+  user_id    Int
+  actions    Json      @default("[]")
+  created_at DateTime  @default(now())
+  deleted_at DateTime?
 
-  // One active access row per user; soft-deleted rows don't count
-  @@unique([userId], map: "access_user_id_idx", where: { deletedAt: null })
-  @@index([deletedAt], map: "access_deleted_at_idx")
+  @@unique([user_id], map: "access_user_id_idx", where: { deleted_at: null })
+  @@index([deleted_at], map: "access_deleted_at_idx")
   @@map("access")
 }

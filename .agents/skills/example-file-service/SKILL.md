@@ -21,13 +21,15 @@ export const R2 = new S3Client({
 2. **Upload Files (file/file.service.ts)**: Strictly follow this pattern!
 
 ```typescript
+import type { create_database_client } from '@db/client.db'
 import { R2 } from '@storage/client.storage.ts'
 
 // other functions...
 
 async create(
   body: Static<typeof dto_file.create.body>,
-  payload: lib_dto_payload
+  payload: lib_dto_payload,
+  database: ReturnType<typeof create_database_client>,
 ): Promise<Static<typeof dto_file.create.response>> {
   const { file } = body
   const { user_id } = payload
@@ -56,15 +58,9 @@ async create(
 
     await R2.send(command)
 
-    const db = await db_client()
-    const [data] = await db
-    .insert(table_file)
-    .values({
-      file_id,
-      file_name,
-      user_id,
+    const data = await database.vault_db(<tenant_url>).file.create({
+      data: { file_id, file_name, user_id },
     })
-    .returning()
 
     return { data }
   } catch (error) {

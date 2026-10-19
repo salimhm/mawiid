@@ -4,151 +4,126 @@ description: Required code pattern for all database client or tables schema gene
 ---
 
 > [!IMPORTANT]
-> **Database Schema Enum Rule**: Do NOT import or specify application enums (from `@lib/enum.lib`) in the database schema files. Use generic string or integer types for database columns, and let the DTO layer handle the enum validation. Coupling database schemas to application enums causes migration issues in SQLite when enums change.
+> **Database Schema Enum Rule**: Do NOT use Prisma `enum` blocks or application enums (from `@lib/enum.lib`) in the schema files. Use `String` or `Int` columns and let the DTO layer handle the enum validation. Changing an enum in SQLite forces a table rebuild in the next migration.
 
-1. **Client file (client.db.ts)**: Strictly follow this pattern!
+> [!IMPORTANT]
+> **Two schemas**: `prisma/main/schema.prisma` holds the tables shared by everyone (one main database). `prisma/tenant/schema.prisma` holds the tables every tenant database gets. Query them only from services, through `database.main_db` and `database.vault_db(<tenant_url>)`.
+
+1. **Client file (src/db/client.db.ts)**: Strictly follow this pattern!
 
 ```typescript
-import type { Client } from '@libsql/client'
-import type { LibSQLDatabase } from 'drizzle-orm/libsql'
+import { PrismaLibSql } from '@prisma/adapter-libsql'
+import { PrismaClient as MainClient } from '@db/generated/main/client.ts'
+import { PrismaClient as TenantClient } from '@db/generated/tenant/client.ts'
 
-import { RedisClient } from 'bun'
+export function create_database_client() {
+  const main_db = new MainClient({
+    adapter: new PrismaLibSql({
+      url: process.env.TURSODB_URL!,
+      authToken: process.env.TURSODB_TOKEN!,
+    }),
+  })
+  const max_cached_tenants = Number(process.env.DB_MAX_CACHED_TENANTS) || 100
+  const vault_cache = new Map<string, TenantClient>()
 
-import { createClient } from '@libsql/client'
-
-import { drizzle } from 'drizzle-orm/libsql'
-
-interface cached_connection {
-  db: LibSQLDatabase<Record<string, unknown>>
-  client: Client
-}
-
-const main_cache = new Map<string, cached_connection>()
-const max_cached_tenants = Number(process.env.DB_MAX_CACHED_TENANTS) || 720
-const tenant_cache = new Map<number, cached_connection>()
-
-export function get_tenant_url(tenant_id: number): string {
-  const db_name = `db-${process.env.APP_NAME}-${process.env.ENV}-tenant-${tenant_id}`
-  return `https://${db_name}-${process.env.TURSO_ORG_NAME}.turso.io`
-}
-
-export async function db_client(options: { url?: string; token?: string; tenant_id?: number } = {}) {
-  const { url, token, tenant_id } = options
-
-  if (tenant_id != null) {
-    if (tenant_cache.has(tenant_id)) {
-      const cached = tenant_cache.get(tenant_id)!
-      tenant_cache.delete(tenant_id)
-      tenant_cache.set(tenant_id, cached)
-      return cached.db
+  function vault_db(url: string) {
+    let db = vault_cache.get(url)
+    if (db) {
+      vault_cache.delete(url)
+    } else {
+      db = new TenantClient({
+        adapter: new PrismaLibSql({ url, authToken: process.env.TURSODB_GROUP_TOKEN! }),
+      })
     }
-
-    if (tenant_cache.size >= max_cached_tenants) {
-      const oldest_key = tenant_cache.keys().next().value
-      if (oldest_key !== undefined) {
-        const oldest = tenant_cache.get(oldest_key)
-        if (oldest) {
-          oldest.client.close()
-        }
-        tenant_cache.delete(oldest_key)
-      }
+    vault_cache.set(url, db)
+    if (vault_cache.size > max_cached_tenants) {
+      const [old_url, old_db] = vault_cache.entries().next().value!
+      vault_cache.delete(old_url)
+      void old_db.$disconnect().catch(() => {
+        console.error('Could not close an evicted tenant database client')
+      })
     }
-
-    const resolved_url = get_tenant_url(tenant_id)
-    const resolved_token = token || process.env.TURSO_GROUP_TOKEN!
-    const client = createClient({ url: resolved_url, authToken: resolved_token })
-    const db = drizzle(client) as LibSQLDatabase<Record<string, unknown>>
-    tenant_cache.set(tenant_id, { db, client })
     return db
   }
 
-  const resolved_url = url || process.env.TURSO_DB_MAIN_URL!
-  const resolved_token = token || process.env.TURSO_DB_MAIN_TOKEN!
-  const main_key = `${resolved_url}:${resolved_token}`
+  async function close() {
+    const client = [main_db, ...vault_cache.values()]
+    vault_cache.clear()
+    await Promise.all(client.map((db) => db.$disconnect()))
+  }
 
-  const cached = main_cache.get(main_key)
-  if (cached) return cached.db
-
-  const client = createClient({ url: resolved_url, authToken: resolved_token })
-  const db = drizzle(client) as LibSQLDatabase<Record<string, unknown>>
-  main_cache.set(main_key, { db, client })
-  return db
+  return { main_db, vault_db, close }
 }
-
-export const db_redis_auth = new RedisClient(process.env.REDIS_DB_AUTH_URL!)
-export const db_redis_tenant_access = new RedisClient(process.env.REDIS_DB_TENANT_ACCESS_URL!)
-export const db_redis_migration_lock = new RedisClient(process.env.REDIS_DB_MIGRATION_LOCK_URL!)
-export const db_redis_rate_limiting = new RedisClient(process.env.REDIS_DB_RATE_LIMITING_URL!)
 ```
 
-2. **Drizzle Config (drizzle.config.ts)**: Strictly follow this pattern!
+2. **Prisma config (prisma.<main | tenant>.config.ts)**: Strictly follow this pattern!
 
 ```typescript
-/// <reference types="bun-types" />
-import { defineConfig } from 'drizzle-kit'
+import { defineConfig } from 'prisma/config'
 
 export default defineConfig({
-  schema: './src/db/main.db.schema.ts',
-  out: './drizzle',
-  dialect: 'turso',
-  dbCredentials: {
-    url: process.env.TURSO_DB_MAIN_URL!,
-    authToken: process.env.TURSO_DB_MAIN_TOKEN!,
-  },
+  schema: 'prisma/<main | tenant>/schema.prisma',
+  migrations: { path: 'prisma/<main | tenant>/migrations' },
+  datasource: { url: 'file:./prisma/<main | tenant>/dev.db' },
 })
 ```
 
-3. **Main Database Schema (main.db.schema.ts)**: Strictly follow this pattern!
+The `datasource.url` is a local scratch file on purpose: Prisma's CLI cannot connect to Turso. `bun run db:deploy:main` applies the generated SQL to Turso through `apply_migration` in `@db/utils.db`.
 
-```typescript
-import { sqliteTable, integer, text } from 'drizzle-orm/sqlite-core'
-import { enum_otp_action } from '@lib/enum.lib'
+3. **Schema (prisma/<main | tenant>/schema.prisma)**: Strictly follow this pattern!
 
-export const table_user = sqliteTable(
-  "user",
-  {
-    user_id: integer("user_id").primaryKey({ autoIncrement: true }),
-    user_phone: text("user_phone", { length: 18 }).notNull(),
-    user_first_name: text("user_first_name", { length: 32 }).notNull(),
-    user_last_name: text("user_last_name", { length: 32 }).notNull(),
-    user_image: text("user_image", { length: 32 }),
-    created_at: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-    deleted_at: text("deleted_at"),
-  },
-  (table) => [
-    index("user_phone_idx").on(table.user_phone),
-    index("user_first_name_idx").on(table.user_first_name),
-    index("user_last_name_idx").on(table.user_last_name),
-    index("user_deleted_at_idx").on(table.deleted_at),
-  ]
-)
+```prisma
+generator client {
+  provider        = "prisma-client"
+  output          = "../../src/db/generated/<main | tenant>"
+  previewFeatures = ["partialIndexes"]
+}
 
-export const table_file = sqliteTable(
-  "file",
-  {
-    file_id: text("file_id", { length: 64 }).primaryKey(),
-    file_name: text("file_name", { length: 127 }),
-    user_id: integer("user_id").notNull(),
-    created_at: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-    deleted_at: text("deleted_at"),
-  },
-  (table) => [
-    index("file_name_idx").on(table.file_name),
-    index("file_deleted_at_idx").on(table.deleted_at),
-  ]
-)
+datasource db {
+  provider = "sqlite"
+}
 
-export const table_<table_name> = sqliteTable(
-  '<table_name>',
-  {
-    <table_name>_<column_name>: <type>('<table_name>_<column_name>').<props>,
-    //other columns...
-    created_at: text('created_at').notNull().default(new Date().toISOString()),
-    deleted_at: text('deleted_at'),
-  },
-  (table) => [
-    index('<table_name>_<column_name>_idx').on(table.<table_name>_<column_name>),
-    //other indexes...
-  ]
-)
+model User {
+  user_id         Int       @id @default(autoincrement())
+  user_phone      String
+  user_first_name String
+  user_last_name  String
+  user_image      String?
+  created_at      DateTime  @default(now())
+  deleted_at      DateTime?
+
+  @@unique([user_phone], map: "user_phone_idx", where: { deleted_at: null })
+  @@index([user_first_name], map: "user_first_name_idx")
+  @@index([user_last_name], map: "user_last_name_idx")
+  @@index([deleted_at], map: "user_deleted_at_idx")
+  @@map("user")
+}
+
+model <TableName> {
+  <table_name>_id            Int              @id @default(autoincrement())
+  <table_name>_<column_name> <Type>
+  <other_table_name>_id      Int
+  created_at                 DateTime         @default(now())
+  deleted_at                 DateTime?
+  <other_table_name>         <OtherTableName> @relation(fields: [<other_table_name>_id], references: [<other_table_name>_id])
+
+  @@index([<table_name>_<column_name>], map: "<table_name>_<column_name>_idx")
+  @@index([deleted_at], map: "<table_name>_deleted_at_idx")
+  @@map("<table_name>")
+}
+```
+
+- Model names are PascalCase; `@@map("<table_name>")` gives the singular, snake_case table name.
+- Field names are snake_case and are the column names; never put `@map` on a field.
+- Primary key: `<table_name>_id Int @id @default(autoincrement())`. Own columns are prefixed `<table_name>_`; foreign keys keep the referenced key's name (`user_id`).
+- Every table has `created_at` and `deleted_at`. Deletes are soft: set `deleted_at`, and index it.
+- A value that must be unique among live rows uses a partial unique index: `@@unique([...], where: { deleted_at: null })`.
+- No lengths (SQLite ignores them). JSON columns use `Json @default("[]")`. Never use `@default(dbgenerated(...))`: it makes every `migrate dev` rebuild the table.
+
+4. **Migrations**: run from `apps/backend` in a Windows terminal.
+
+```bash
+bun run db:migrate:<main | tenant> --name <change>
+bun run db:generate
+bun run db:deploy:main
 ```

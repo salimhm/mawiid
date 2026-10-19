@@ -1,16 +1,68 @@
 generator client {
-  provider = "prisma-client"
-  output = "../../src/db/generated/main"
+  provider        = "prisma-client"
+  output          = "../../src/db/generated/main"
+  previewFeatures = ["partialIndexes"]
 }
-
 
 datasource db {
   provider = "sqlite"
 }
 
+model Organization {
+  organization_id   Int          @id @default(autoincrement())
+  organization_name String
+  created_at        DateTime     @default(now())
+  deleted_at        DateTime?
+  departments       Department[]
+
+  @@index([organization_name], map: "organization_name_idx")
+  @@index([deleted_at], map: "organization_deleted_at_idx")
+  @@map("organization")
+}
+
+model Department {
+  department_id   Int          @id @default(autoincrement())
+  organization_id Int
+  department_name String
+  created_at      DateTime     @default(now())
+  deleted_at      DateTime?
+  organization    Organization @relation(fields: [organization_id], references: [organization_id])
+  members         Member[]
+
+  @@index([organization_id], map: "department_organization_id_idx")
+  @@index([department_name], map: "department_name_idx")
+  @@index([deleted_at], map: "department_deleted_at_idx")
+  @@map("department")
+}
+
 model User {
-  id          String @id @default(cuid())
-  email       String @unique
-  name        String
-  databaseUrl String
+  user_id         Int       @id @default(autoincrement())
+  user_phone      String
+  user_first_name String
+  user_last_name  String
+  user_image      String?
+  created_at      DateTime  @default(now())
+  deleted_at      DateTime?
+  members         Member[]
+
+  @@unique([user_phone], map: "user_phone_idx", where: { deleted_at: null })
+  @@index([user_first_name], map: "user_first_name_idx")
+  @@index([user_last_name], map: "user_last_name_idx")
+  @@index([deleted_at], map: "user_deleted_at_idx")
+  @@map("user")
+}
+
+model Member {
+  member_id     Int        @id @default(autoincrement())
+  user_id       Int
+  department_id Int
+  created_at    DateTime   @default(now())
+  deleted_at    DateTime?
+  user          User       @relation(fields: [user_id], references: [user_id])
+  department    Department @relation(fields: [department_id], references: [department_id])
+
+  @@unique([user_id, department_id], map: "member_user_id_department_id_idx", where: { deleted_at: null })
+  @@index([department_id], map: "member_department_id_idx")
+  @@index([deleted_at], map: "member_deleted_at_idx")
+  @@map("member")
 }
