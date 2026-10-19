@@ -1,15 +1,14 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@db/*": ["./src/db/*"],
-      "@lib/*": ["./src/lib/*"],
-      "@module/*": ["./src/module/*"],
-      "@storage/*": ["./src/storage/*"],
-      "@contracts/*": ["../../packages/contracts/src/*"]
-    }
-  },
-  "include": ["src/**/*.ts", "rule/**/*.ts"]
+    "extends": "../../tsconfig.base.json",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "@db/*": ["./src/db/*"],
+            "@lib/*": ["./src/lib/*"],
+            "@module/*": ["./src/module/*"],
+            "@storage/*": ["./src/storage/*"],
+            "@contracts/*": ["../../packages/contracts/src/*"],
+        }
+    },
+    "include": ["src/**/*.ts", "rule/**/*.ts"]
 }
-
