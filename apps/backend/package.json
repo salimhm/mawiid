@@ -1,0 +1,12 @@
+{
+  "name": "@mawiid/backend",
+  "private": true,
+  "type": "module",
+  "module": "src/app.ts",
+  "scripts": {
+    "dev": "bun run --env-file=../../.env --watch src/app.ts",
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun test src"
+  }
+}
+

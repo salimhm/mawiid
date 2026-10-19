@@ -1,0 +1,2 @@
+"""Mawiid sovereign AI service."""
+

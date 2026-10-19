@@ -1,0 +1,43 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+.secrets/
+certificates/
+
+# JavaScript and TypeScript
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Bun
+.bun/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Rust and Tauri
+target/
+apps/desktop/src-tauri/target/
+
+# Local runtime data
+data/
+models/
+*.db
+*.db-shm
+*.db-wal
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+

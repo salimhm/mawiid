@@ -1,0 +1,3 @@
+/** Startup environment validation. */
+export {}
+

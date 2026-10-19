@@ -1,0 +1,15 @@
+{
+  "name": "mawiid",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "bun --cwd apps/backend run dev",
+    "typecheck:backend": "bun --cwd apps/backend run typecheck",
+    "test:backend": "bun --cwd apps/backend run test"
+  }
+}
+
