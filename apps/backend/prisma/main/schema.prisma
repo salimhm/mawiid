@@ -41,6 +41,7 @@ model User {
   user_first_name String
   user_last_name  String
   user_image      String?
+  user_language   String?
   created_at      DateTime  @default(now())
   deleted_at      DateTime?
   members         Member[]
@@ -65,4 +66,32 @@ model Member {
   @@index([department_id], map: "member_department_id_idx")
   @@index([deleted_at], map: "member_deleted_at_idx")
   @@map("member")
+}
+
+model Vault {
+  vault_id           Int         @id @default(autoincrement())
+  vault_owner_type   String
+  vault_owner_id     Int
+  vault_database_url String
+  created_at         DateTime    @default(now())
+  deleted_at         DateTime?
+  room_routes        RoomRoute[]
+
+  @@unique([vault_owner_type, vault_owner_id], map: "vault_owner_type_owner_id_idx", where: { deleted_at: null })
+  @@index([deleted_at], map: "vault_deleted_at_idx")
+  @@map("vault")
+}
+
+model RoomRoute {
+  room_route_id Int       @id @default(autoincrement())
+  room_uid      String
+  vault_id      Int
+  created_at    DateTime  @default(now())
+  deleted_at    DateTime?
+  vault         Vault     @relation(fields: [vault_id], references: [vault_id])
+
+  @@unique([room_uid], map: "room_route_room_uid_idx")
+  @@index([vault_id], map: "room_route_vault_id_idx")
+  @@index([deleted_at], map: "room_route_deleted_at_idx")
+  @@map("room_route")
 }

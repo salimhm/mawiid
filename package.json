@@ -10,5 +10,8 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "livekit-client": "^2.23.0"
+  }
 }
