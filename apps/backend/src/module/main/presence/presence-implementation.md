@@ -1,5 +1,4 @@
-# Presence: What Was Implemented
-
+git lo
 _2026-10-21 · Spec: [readme.md](readme.md)_
 
 The presence module is done: tickets, the WebSocket gateway, online status, appear offline, busy during a live, multi-device, multi-instance fan-out, and an offline sweeper. It follows the `.agents` rules and passes 12 unit tests plus an end-to-end check against the real Upstash Redis and Turso.
