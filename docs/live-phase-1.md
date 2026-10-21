@@ -174,6 +174,8 @@ Then register it in `app.ts` with `.use(controller_room)`, next to `controller_p
 
 ## Hooks for the room team
 
+Full guide: [presence-for-room-team.md](../apps/backend/src/module/main/presence/presence-for-room-team.md).
+
 ```typescript
 await service_presence.notify([`user:${callee_id}`], 'room.ring', { room_uid, caller: { user_id }, busy }, redis);
 await service_presence.enter_live(user_id, room_uid, database, redis);
