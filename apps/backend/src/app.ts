@@ -5,6 +5,7 @@ import { lib_middleware_error } from '@lib/middleware.lib';
 import { lib_openapi } from '@lib/openapi.lib';
 import { controller_presence } from '@module/main/presence/presence.controller';
 import { service_presence } from '@module/main/presence/presence.service';
+import { controller_room } from '@module/tenant/room/room.controller';
 
 if (import.meta.main) {
   try {
@@ -22,6 +23,7 @@ if (import.meta.main) {
         { detail: { tags: ['health'], summary: 'Check that the backend is running' } },
       )
       .use(controller_presence)
+      .use(controller_room)
       .onStop(async () => {
         stop_presence();
         lib_redis.close();

@@ -12,7 +12,6 @@ const required = [
   'LIVEKIT_URL',
   'LIVEKIT_API_KEY',
   'LIVEKIT_API_SECRET',
-  'OPENAPI_ENABLED',
 ] as const;
 
 const missing = required.filter((key) => !process.env[key]);

@@ -1,0 +1,18 @@
+import { Elysia } from 'elysia'
+import { lib_context } from '@lib/context.lib'
+import { lib_jwt } from '@lib/jwt.lib'
+import { dto_room } from '@module/tenant/room/room.dto'
+import { service_room } from '@module/tenant/room/room.service'
+
+export const controller_room = new Elysia({ prefix: '/room' })
+  .use(lib_context)
+  .use(lib_jwt)
+  .post(
+    '/',
+    async (context) => {
+      const { payload, body, database } = context
+
+      return await service_room.create(body, payload, database)
+    },
+    dto_room.create,
+  )

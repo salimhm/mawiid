@@ -10,7 +10,8 @@
         "db:migrate:main": "bun x prisma migrate dev --config prisma.main.config.ts",
         "db:migrate:tenant": "bun x prisma migrate dev --config prisma.tenant.config.ts",
         "db:generate": "bun x prisma generate --config prisma.main.config.ts && bun x prisma generate --config prisma.tenant.config.ts",
-        "db:deploy:main": "bun run --env-file=../../.env src/db/migrate.db.ts"
+        "db:deploy:main": "bun run --env-file=../../.env src/db/migrate.db.ts",
+        "db:seed": "bun run --env-file=../../.env scripts/seed.ts"
     },
     "dependencies": {
         "@elysiajs/openapi": "1.4.16",
