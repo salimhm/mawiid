@@ -10,15 +10,16 @@
         "db:migrate:main": "bun x prisma migrate dev --config prisma.main.config.ts",
         "db:migrate:tenant": "bun x prisma migrate dev --config prisma.tenant.config.ts",
         "db:generate": "bun x prisma generate --config prisma.main.config.ts && bun x prisma generate --config prisma.tenant.config.ts",
-        "db:deploy:main": "bun run --env-file=../../.env src/db/migrate.db.ts"
+        "db:deploy:main": "bun run --env-file=../../.env src/db/migrate.db.ts",
+        "postman:seed": "bun run --env-file=postman/.env.postman postman/seed.ts",
+        "postman:dev": "bun run --env-file=postman/.env.postman --watch src/app.ts"
     },
     "dependencies": {
-        "@elysiajs/openapi": "1.4.16",
+        "@elysiajs/jwt": "^1.4.2",
         "@libsql/client": "^0.18.0",
         "@prisma/adapter-libsql": "7",
         "@prisma/client": "7",
         "elysia": "^1.4.30",
-        "livekit-client": "^2.23.0",
         "livekit-server-sdk": "^2.19.1"
     },
     "devDependencies": {

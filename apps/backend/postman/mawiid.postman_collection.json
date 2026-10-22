@@ -1,0 +1,1722 @@
+{
+	"info": {
+		"_postman_id": "eb5e98db-e4ef-4366-96d7-fd293cd9e041",
+		"name": "Mawiid participants",
+		"description": "Run postman/seed.ts first, import the environment, then run the folders in order.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "0. Health",
+			"item": [
+				{
+					"name": "Health",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "f6ca31f4-3869-438a-a4b9-a516f824ecd1",
+					"response": []
+				}
+			],
+			"id": "b1ef7f99-addd-4064-bd4e-e14c147c0b49"
+		},
+		{
+			"name": "1. Room lock",
+			"item": [
+				{
+					"name": "Host locks the room",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"room_locked\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "b9b46739-e366-425a-adec-fed37ba14349",
+					"response": []
+				},
+				{
+					"name": "Member join is refused (423 room-locked)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room",
+								"join"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_member}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 423', () => pm.response.to.have.status(423));"
+								]
+							}
+						}
+					],
+					"id": "af8fa430-490a-4f51-af88-dd84d176cbe0",
+					"response": []
+				},
+				{
+					"name": "Host can still join",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room",
+								"join"
+							]
+						},
+						"description": "Saves participant_token_host. Paste it with ws://localhost:7880 into https://meet.livekit.io (Custom tab) to really connect.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('participant_token_host', pm.response.json().data.participant_token);"
+								]
+							}
+						}
+					],
+					"id": "459e09f5-076d-4f97-9477-cd636a8fcfec",
+					"response": []
+				},
+				{
+					"name": "Host unlocks the room",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"room_locked\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "02b24e23-7258-44f3-a85b-695eb4d8700b",
+					"response": []
+				},
+				{
+					"name": "Member joins",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room",
+								"join"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_member}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('participant_token_member', pm.response.json().data.participant_token);"
+								]
+							}
+						}
+					],
+					"id": "3dc94d54-7fca-4275-bd54-076844051250",
+					"response": []
+				},
+				{
+					"name": "Viewer joins",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room",
+								"join"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_viewer}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('participant_token_viewer', pm.response.json().data.participant_token);"
+								]
+							}
+						}
+					],
+					"id": "bafc2c91-0b3d-4214-b9da-60eb2c039a55",
+					"response": []
+				}
+			],
+			"id": "94903e43-e6a6-40cc-ab05-9569e935e68d"
+		},
+		{
+			"name": "2. Lobby",
+			"item": [
+				{
+					"name": "Moderator enables the lobby",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_moderator}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"room_lobby_enabled\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "ed30c695-e9f1-4b92-9e47-7ffaa7452928",
+					"response": []
+				},
+				{
+					"name": "Host gets a socket ticket",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{base_url}}/event/ticket",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"event",
+								"ticket"
+							]
+						},
+						"description": "Then open a Postman WebSocket request to {{ws_url}}/event/ws?ticket={{ticket_host}} within 30 s. It receives room.knock.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('ticket_host', pm.response.json().data.ticket);"
+								]
+							}
+						}
+					],
+					"id": "5cfb39d7-2ac3-49b0-8f15-c2ebf29d3134",
+					"response": []
+				},
+				{
+					"name": "Guest gets a socket ticket",
+					"request": {
+						"method": "POST",
+						"url": {
+							"raw": "{{base_url}}/event/ticket",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"event",
+								"ticket"
+							]
+						},
+						"description": "Then open a Postman WebSocket request to {{ws_url}}/event/ws?ticket={{ticket_guest}} within 30 s. It receives room.admitted.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_guest}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('ticket_guest', pm.response.json().data.ticket);"
+								]
+							}
+						}
+					],
+					"id": "955a0803-22e6-4279-9fd2-cd5a3feca571",
+					"response": []
+				},
+				{
+					"name": "Guest knocks (403 room-waiting)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room",
+								"join"
+							]
+						},
+						"description": "The host socket receives room.knock.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_guest}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"id": "f8123fed-b06f-4e7d-b1cc-3f4211b02e34",
+					"response": []
+				},
+				{
+					"name": "Member cannot admit (403)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room-member",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room-member"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_member}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_guest}},\n  \"room_member_status\": \"active\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"id": "955f6e0f-92ec-4071-8f04-2f65370fe3be",
+					"response": []
+				},
+				{
+					"name": "Host admits the guest",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room-member",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room-member"
+							]
+						},
+						"description": "The guest socket receives room.admitted.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_guest}},\n  \"room_member_status\": \"active\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "f776a4fa-54fd-4a50-a66f-b7c493535e99",
+					"response": []
+				},
+				{
+					"name": "Guest enters",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room",
+								"join"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_guest}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));",
+									"pm.environment.set('participant_token_guest', pm.response.json().data.participant_token);"
+								]
+							}
+						}
+					],
+					"id": "a81e9a4b-2608-4d4d-b85e-7d064f12a751",
+					"response": []
+				}
+			],
+			"id": "7464e9c0-ee76-4681-b742-588e8394ddfe"
+		},
+		{
+			"name": "3. Participant moderation",
+			"item": [
+				{
+					"name": "Member cannot promote (403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/participant/promote",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"participant",
+								"promote"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_member}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_viewer}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"id": "070cb7eb-9a97-4840-b3b8-657af36a2ecd",
+					"response": []
+				},
+				{
+					"name": "Moderator promotes the viewer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/participant/promote",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"participant",
+								"promote"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_moderator}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_viewer}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "41bfde0b-657e-4d2a-8cd4-7b14b2341822",
+					"response": []
+				},
+				{
+					"name": "Moderator demotes back to viewer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/participant/demote",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"participant",
+								"demote"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_moderator}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_viewer}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "5b119c0f-26d6-43ca-9600-099d901321fe",
+					"response": []
+				},
+				{
+					"name": "Moderator cannot demote the host (403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/participant/demote",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"participant",
+								"demote"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_moderator}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_host}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"id": "cf4c871e-03e2-4870-956f-dbc5447fb147",
+					"response": []
+				},
+				{
+					"name": "Host mutes the member's microphone",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/participant/mute",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"participant",
+								"mute"
+							]
+						},
+						"description": "200 only when the member is connected and publishing a microphone; otherwise 404 participant-not-found or track-not-found.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_member}},\n  \"track_source\": \"microphone\",\n  \"muted\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"id": "dd0bc5cb-d056-4aff-9a84-fc0db9e771a2",
+					"response": []
+				},
+				{
+					"name": "Host asks the member to unmute",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/participant/mute",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"participant",
+								"mute"
+							]
+						},
+						"description": "Needs the member connected. Sends a notice on mawiid.moderation.v1.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_member}},\n  \"track_source\": \"microphone\",\n  \"muted\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"id": "bb1b8d8f-b2e5-473f-a8f4-ef09d3544a82",
+					"response": []
+				},
+				{
+					"name": "Viewer raises a hand (self)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/participant",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"participant"
+							]
+						},
+						"description": "Needs the viewer connected; otherwise 404.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_viewer}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"participant_hand_raised\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"id": "906b8495-5185-44f2-9bb2-b5540b86ab30",
+					"response": []
+				},
+				{
+					"name": "Host removes the viewer for 1 minute",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/participant",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"participant"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_viewer}},\n  \"block_minutes\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "b2189029-e8df-49a5-955c-4148c7a2111e",
+					"response": []
+				},
+				{
+					"name": "Viewer cannot rejoin while blocked (403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room",
+								"join"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_viewer}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"id": "063d9c5a-81f2-4004-971c-36fb9920f55d",
+					"response": []
+				}
+			],
+			"id": "b08a5b6f-617e-4207-926b-27beaf907163"
+		},
+		{
+			"name": "4. Room members and ban",
+			"item": [
+				{
+					"name": "Moderator cannot appoint moderators (403)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room-member",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room-member"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_moderator}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_member}},\n  \"room_member_role\": \"moderator\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"id": "a086e831-ef42-4406-9f70-afac98d03a1e",
+					"response": []
+				},
+				{
+					"name": "Host appoints the member as moderator",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room-member",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room-member"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_member}},\n  \"room_member_role\": \"moderator\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "770a2f89-f751-4459-bacc-f0e6790e8656",
+					"response": []
+				},
+				{
+					"name": "Host bans the member",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room-member",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room-member"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_member}},\n  \"ban\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "f2be14a7-179d-4c3f-9b09-b59231c1a90a",
+					"response": []
+				},
+				{
+					"name": "Banned member cannot rejoin (403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room",
+								"join"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_member}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"id": "f4ae39bc-9e0c-4d40-9f7b-a71d3888e766",
+					"response": []
+				}
+			],
+			"id": "53324b58-dd2e-4870-a309-53c3ce279f69"
+		},
+		{
+			"name": "5. Audit log",
+			"item": [
+				{
+					"name": "Host reads the audit log",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/audit?room_uid={{room_uid}}&take=50",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"audit"
+							],
+							"query": [
+								{
+									"key": "room_uid",
+									"value": "{{room_uid}}"
+								},
+								{
+									"key": "take",
+									"value": "50"
+								}
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "b79de8b3-f270-4599-9db8-a416b521b139",
+					"response": []
+				},
+				{
+					"name": "Filter by action",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/audit?room_uid={{room_uid}}&audit_action=room_member.ban",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"audit"
+							],
+							"query": [
+								{
+									"key": "room_uid",
+									"value": "{{room_uid}}"
+								},
+								{
+									"key": "audit_action",
+									"value": "room_member.ban"
+								}
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"id": "ae2be416-0fc7-468e-aa01-5ae7d4262b23",
+					"response": []
+				},
+				{
+					"name": "Guest cannot read the audit log (403)",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/audit?room_uid={{room_uid}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"audit"
+							],
+							"query": [
+								{
+									"key": "room_uid",
+									"value": "{{room_uid}}"
+								}
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_guest}}",
+									"type": "string"
+								}
+							]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"id": "48f2722c-7a12-4585-baeb-c9364ab61f00",
+					"response": []
+				}
+			],
+			"id": "d0b99011-77c7-48a2-b525-e48ecd274da4"
+		},
+		{
+			"name": "6. Security checks",
+			"item": [
+				{
+					"name": "No token (401)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room"
+							]
+						},
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"room_locked\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 401', () => pm.response.to.have.status(401));"
+								]
+							}
+						}
+					],
+					"id": "bcf585e3-975e-4af5-8aac-643c4f6f39c6",
+					"response": []
+				},
+				{
+					"name": "Outsider is refused (403)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/room/join",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"room",
+								"join"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_outsider}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 403', () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"id": "4bf6745f-5b13-4356-bb4c-9d8ce8f3cf8c",
+					"response": []
+				},
+				{
+					"name": "Invalid track source (422)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/participant/mute",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"participant",
+								"mute"
+							]
+						},
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token_host}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_uid\": \"{{room_uid}}\",\n  \"user_id\": {{user_moderator}},\n  \"track_source\": \"laser\",\n  \"muted\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('status 422', () => pm.response.to.have.status(422));"
+								]
+							}
+						}
+					],
+					"id": "41b89f28-c995-48a5-b221-b145ca574f55",
+					"response": []
+				}
+			],
+			"id": "25043a62-df82-4ec1-82a2-61e0d37cd903"
+		}
+	]
+}

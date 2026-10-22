@@ -30,3 +30,68 @@ model Access {
   @@index([deleted_at], map: "access_deleted_at_idx")
   @@map("access")
 }
+
+model Room {
+  room_id                  Int          @id @default(autoincrement())
+  room_uid                 String
+  room_title               String
+  room_type                String
+  room_status              String
+  room_visibility          String
+  room_max_participants    Int
+  room_locked              Boolean      @default(false)
+  room_lobby_enabled       Boolean      @default(false)
+  room_translation_enabled Boolean      @default(false)
+  room_recording_allowed   Boolean      @default(false)
+  room_encrypted           Boolean      @default(false)
+  room_scheduled_at        DateTime?
+  room_started_at          DateTime?
+  room_closed_at           DateTime?
+  room_close_reason        String?
+  user_id                  Int
+  created_at               DateTime     @default(now())
+  deleted_at               DateTime?
+  room_members             RoomMember[]
+
+  @@unique([room_uid], map: "room_uid_idx")
+  @@index([room_status], map: "room_status_idx")
+  @@index([user_id], map: "room_user_id_idx")
+  @@index([deleted_at], map: "room_deleted_at_idx")
+  @@map("room")
+}
+
+model RoomMember {
+  room_member_id        Int       @id @default(autoincrement())
+  room_id               Int
+  user_id               Int
+  room_member_role      String
+  room_member_status    String
+  room_member_banned_at DateTime?
+  created_at            DateTime  @default(now())
+  deleted_at            DateTime?
+  room                  Room      @relation(fields: [room_id], references: [room_id])
+
+  @@unique([room_id, user_id], map: "room_member_room_id_user_id_idx", where: { deleted_at: null })
+  @@index([user_id], map: "room_member_user_id_idx")
+  @@index([room_member_banned_at], map: "room_member_banned_at_idx")
+  @@index([deleted_at], map: "room_member_deleted_at_idx")
+  @@map("room_member")
+}
+
+model Audit {
+  audit_id       Int       @id @default(autoincrement())
+  room_id        Int?
+  user_id        Int?
+  audit_action   String
+  audit_target   String
+  audit_metadata Json
+  created_at     DateTime  @default(now())
+  deleted_at     DateTime?
+
+  @@index([room_id], map: "audit_room_id_idx")
+  @@index([audit_action], map: "audit_action_idx")
+  @@index([created_at], map: "audit_created_at_idx")
+  @@index([deleted_at], map: "audit_deleted_at_idx")
+  @@map("audit")
+}
+
