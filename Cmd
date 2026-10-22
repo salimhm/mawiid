@@ -1,0 +1,22 @@
+bun install
+
+cd apps/backend
+
+bun run db:generate
+
+docker run -d --name mawiid-redis -p 6379:6379 redis:7
+
+docker run -d --name mawiid-livekit -p 7880:7880 -p 7881:7881 \
+  -v ~/Downloads/mawiid/infra/liveKit.yaml:/livekit.yaml \
+  livekit/livekit-server --config /livekit.yaml
+
+bun run postman:seed
+
+bun run postman:dev
+
+import both of these files:
+   - apps/backend/postman/mawiid.postman_collection.json
+   - apps/backend/postman/mawiid.postman_environment.json
+   
+
+
