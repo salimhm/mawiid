@@ -12,6 +12,8 @@ export const lib_error = {
   room_waiting: { status: 403, code: 'room-waiting' },
   room_full: { status: 409, code: 'room-full' },
   room_closed: { status: 410, code: 'room-closed' },
+  room_not_open: { status: 409, code: 'room-not-open' },
+  room_not_deletable: { status: 409, code: 'room-not-deletable' },
   room_locked: { status: 423, code: 'room-locked' },
   livekit_unavailable: { status: 503, code: 'livekit-unavailable' },
 } as const;
