@@ -10,6 +10,8 @@ export const lib_error = {
   participant_not_found: { status: 404, code: 'participant-not-found' },
   track_not_found: { status: 404, code: 'track-not-found' },
   room_full: { status: 409, code: 'room-full' },
+  room_not_open: { status: 409, code: 'room-not-open' },
+  room_not_deletable: { status: 409, code: 'room-not-deletable' },
   room_closed: { status: 410, code: 'room-closed' },
   unprocessable_entity: { status: 422, code: 'unprocessable-entity' },
   room_locked: { status: 423, code: 'room-locked' },

@@ -14,6 +14,7 @@ Default to concise responses:
 4. Keep examples minimal unless the user asks for more detail.
 5. Expand depth only when explicitly requested or when brevity would hide critical risk.
 6. Strictly never commit or push changes to git. The user is responsible for git operations.
+7. Never use the `codex/` prefix for branch names. Use a descriptive task name such as `rooms-module`.
 
 ## Response Style
 

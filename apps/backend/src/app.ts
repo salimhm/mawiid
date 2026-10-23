@@ -8,8 +8,8 @@ import { controller_event } from '@module/main/participants/event.controller';
 import { service_event } from '@module/main/participants/event.service';
 import { controller_participant } from '@module/main/participants/participant.controller';
 import { controller_room_member } from '@module/main/participants/room-member.controller';
-import { controller_room } from '@module/main/participants/room.controller';
 import { controller_webhook } from '@module/main/participants/webhook.controller';
+import { controller_room } from '@module/tenant/room/room.controller';
 
 if (import.meta.main) {
   try {
