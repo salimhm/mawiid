@@ -1,0 +1,26 @@
+[project]
+name = "mawiid-ai"
+version = "0.1.0"
+description = "Mawiid sovereign AI service: real-time speech-to-text."
+requires-python = ">=3.11"
+dependencies = [
+    "faster-whisper>=1.1.0",
+    "numpy>=1.26",
+    "opencc>=1.1.9",
+]
+
+[project.optional-dependencies]
+mic = ["sounddevice>=0.4.6"]
+bench = ["jiwer>=3.0", "soundfile>=0.12"]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
