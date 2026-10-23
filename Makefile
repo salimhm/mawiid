@@ -16,7 +16,7 @@ REDIS_IMAGE       := redis:7
 LIVEKIT_CONTAINER := mawiid-livekit
 LIVEKIT_IMAGE     := livekit/livekit-server
 
-.PHONY: help install infra redis livekit infra-down infra-logs seed backend frontend dev stop \
+.PHONY: help install infra redis livekit infra-down infra-logs seed backend frontend dev stop users \
         tokens typecheck build test-unit check smoke test clean
 
 help: ## Show this help
@@ -82,6 +82,12 @@ tokens: ## Print login links for the seeded users and the room code
 		console.log('room code:', room ? room.room_uid : '(none, run make seed)'); \
 		for (const v of require('./postman/mawiid.postman_environment.json').values) \
 			if (v.key.startsWith('token_')) console.log(v.key.slice(6).padEnd(10), '$(FRONTEND_URL)/?token=' + v.value);"
+
+users: ## List the users in the local database
+	@cd $(BACKEND) && bun -e " \
+		const { createClient } = require('@libsql/client'); \
+		const db = createClient({ url: 'file:postman/data/main.db' }); \
+		console.table((await db.execute('select user_id, user_phone, user_first_name, user_last_name, user_language, created_at from user where deleted_at is null order by user_id')).rows);"
 
 # ---------------------------------------------------------------- test
 

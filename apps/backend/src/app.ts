@@ -3,6 +3,7 @@ import { Elysia } from 'elysia';
 import { create_database_client } from '@db/client.db';
 import { create_redis_client } from '@storage/redis.storage';
 import { lib_middleware_error } from '@lib/middleware.lib';
+import { controller_auth } from '@module/main/auth/auth.controller';
 import { controller_audit } from '@module/main/participants/audit.controller';
 import { controller_event } from '@module/main/participants/event.controller';
 import { service_event } from '@module/main/participants/event.service';
@@ -20,6 +21,7 @@ if (import.meta.main) {
       .decorate('database', database)
       .decorate('redis', redis)
       .use(lib_middleware_error)
+      .use(controller_auth)
       .use(controller_participant)
       .use(controller_room)
       .use(controller_room_member)
