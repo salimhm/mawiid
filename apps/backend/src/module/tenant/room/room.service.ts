@@ -2,6 +2,7 @@ import type { Static } from 'elysia'
 import type { create_database_client } from '@db/client.db'
 import type { lib_dto_payload } from '@lib/dto.lib'
 import { lib_error } from '@lib/error.lib'
+import { service_vault } from '@module/main/vault/vault.service'
 import { dto_room } from '@module/tenant/room/room.dto'
 
 export const service_room = {
@@ -15,12 +16,10 @@ export const service_room = {
     })
     if (!user) throw lib_error.forbidden
 
-    const vault = await database.main_db.vault.findFirst({
-      where: body.vault_id
-        ? { vault_id: body.vault_id, deleted_at: null }
-        : { vault_owner_type: 'user', vault_owner_id: payload.user_id, deleted_at: null },
-    })
-    if (!vault) throw body.vault_id ? lib_error.forbidden : lib_error.vault_not_found
+    const vault = body.vault_id
+      ? await database.main_db.vault.findFirst({ where: { vault_id: body.vault_id, deleted_at: null } })
+      : await service_vault.create(payload.user_id, database)
+    if (!vault) throw lib_error.forbidden
 
     const tenant = database.vault_db(vault.vault_database_url)
     const access = await tenant.access.findFirst({

@@ -10,7 +10,6 @@ export const lib_error = {
   not_found: { status: 404, code: 'not-found' },
   user_not_found: { status: 404, code: 'user-not-found' },
   room_not_found: { status: 404, code: 'room-not-found' },
-  vault_not_found: { status: 404, code: 'vault-not-found' },
   room_member_not_found: { status: 404, code: 'room-member-not-found' },
   participant_not_found: { status: 404, code: 'participant-not-found' },
   track_not_found: { status: 404, code: 'track-not-found' },
@@ -25,6 +24,7 @@ export const lib_error = {
   internal_server_error: { status: 500, code: 'internal-server-error' },
   service_unavailable: { status: 503, code: 'service-unavailable' },
   livekit_unavailable: { status: 503, code: 'livekit-unavailable' },
+  vault_unavailable: { status: 503, code: 'vault-unavailable' },
 }
 
 export type lib_error_value = (typeof lib_error)[keyof typeof lib_error]

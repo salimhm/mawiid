@@ -15,7 +15,7 @@ flowchart TD
     E["src/db/client.db.ts<br/>main_db: queries the main database<br/>vault_db(url): a cached client per user DB"]
     subgraph Turso["Turso Cloud"]
         F["mawiid-dev-main<br/>Main database: live, migrations applied"]
-        G["One database per user<br/>Planned: needs Platform API provisioning"]
+        G["One database per user<br/>Created on first room (service_vault.create)"]
     end
     A --> B
     A --> C
@@ -56,7 +56,7 @@ Data is split into one shared main database and one separate database per user (
 | Schema file | `prisma/main/schema.prisma` | `prisma/tenant/schema.prisma` |
 | Client in code | `main_db` | `vault_db(url)`, one cached client per database |
 | Feature code | `src/module/main/*`: auth, user, organization, department, health | `src/module/tenant/*`: room, message, translation, access, audit |
-| Status | Live; both migrations applied and tested | Group-token connections implemented; automatic provisioning still pending |
+| Status | Live; both migrations applied and tested | Group-token connections implemented; created per person on their first room by `service_vault.create` |
 
 Why separate databases: one user's data cannot leak into another's through a forgotten `WHERE` clause, and a user's data can be exported or deleted as a single database. `vault_db` keeps at most `DB_MAX_CACHED_TENANTS` (default 100) connections open and closes the least recently used.
 
@@ -83,7 +83,7 @@ All paths are in `apps/backend` unless noted. The app bootstrap, required-variab
 
 ## Startup configuration
 
-The running backend requires `TURSODB_URL`, `TURSODB_TOKEN`, `TURSODB_DB`, `TURSODB_ORG`, `TURSODB_GROUP_NAME`, `TURSODB_GROUP_TOKEN`, and `REDIS_URL`. The main database uses `TURSODB_TOKEN`; per-user database connections use `TURSODB_GROUP_TOKEN`. The group token is a SQL credential, not a Platform API token for creating databases.
+The running backend requires `TURSODB_URL`, `TURSODB_TOKEN`, `TURSODB_DB`, `TURSODB_ORG`, `TURSODB_GROUP_NAME`, `TURSODB_GROUP_TOKEN`, and `REDIS_URL`. The main database uses `TURSODB_TOKEN`; per-user database connections use `TURSODB_GROUP_TOKEN`. The group token is a SQL credential, not a Platform API token for creating databases: `service_vault.create` creates per-user databases with `TURSODB_API_TOKEN` (a Turso Platform API token). When `TURSODB_URL` is a local `file:` URL, vaults are SQLite files next to the main database (`vault-user-<user_id>.db`) and no API token is needed.
 
 For Upstash TCP, use the `rediss://` connection string from the console, including its password and port. The HTTP REST URL/token pair is not used. Plain `redis://` URLs are also accepted for local Redis; Upstash requires TLS.
 
@@ -116,7 +116,7 @@ Read these before your first command; most of them have already broken the setup
 
 ## Open questions
 
-- [ ] Does "user" mean a person or a customer organization? Shared rooms and messages need a database every participant can reach. Code comments and folder names still say "department vault".
+- [x] Does "user" mean a person or a customer organization? A person: each user gets one personal vault (`vault_owner_type = user`), created on their first room, owning `room.create`. Shared rooms and messages need a database every participant can reach. Code comments and folder names still say "department vault".
 - [ ] Automatic user database creation still needs a Platform API token restricted to the Mawiid group. The SQL group token is already wired into tenant connections; it cannot create databases.
 - [ ] `User.databaseUrl` is required, so signup must create the user's database before inserting the user row. Keep that order, or make the field optional.
 - [ ] The tenant schema is still a copy of the main `User` model; it needs its real tables.

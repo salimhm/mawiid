@@ -6,6 +6,7 @@ import type { create_database_client } from '@db/client.db'
 import { lib_error } from '@lib/error.lib'
 import { lib_middleware_error } from '@lib/middleware.lib'
 import type { dto_room } from '@module/tenant/room/room.dto'
+import { service_vault } from '@module/main/vault/vault.service'
 import { service_room } from '@module/tenant/room/room.service'
 
 const previous_env = process.env.ENV
@@ -165,12 +166,24 @@ describe('POST /room', () => {
     expect(fixture.room_route.create).toHaveBeenCalledWith({ data: { room_uid: expect.any(String), vault_id: 1 } })
   })
 
-  test('reports a missing personal vault', async () => {
+  test('creates the personal vault on first use', async () => {
     const fixture = create_fixture()
-    fixture.vault.findFirst.mockResolvedValueOnce(null)
+    const provision = spyOn(service_vault, 'create').mockResolvedValueOnce({ vault_id: 7, vault_database_url: 'file:new-vault.db' } as Awaited<ReturnType<typeof service_vault.create>>)
+    await service_room.create({ room_title: 'Meeting' }, { user_id: 1 }, fixture.database)
 
-    await expect(service_room.create({ room_title: 'Meeting' }, { user_id: 1 }, fixture.database)).rejects.toEqual(lib_error.vault_not_found)
+    expect(provision).toHaveBeenCalledWith(1, fixture.database)
+    expect(fixture.vault_db).toHaveBeenCalledWith('file:new-vault.db')
+    expect(fixture.room_route.create).toHaveBeenCalledWith({ data: { room_uid: expect.any(String), vault_id: 7 } })
+    provision.mockRestore()
+  })
+
+  test('does not route a room when the personal vault cannot be created', async () => {
+    const fixture = create_fixture()
+    const provision = spyOn(service_vault, 'create').mockRejectedValueOnce(lib_error.vault_unavailable)
+
+    await expect(service_room.create({ room_title: 'Meeting' }, { user_id: 1 }, fixture.database)).rejects.toEqual(lib_error.vault_unavailable)
     expect(fixture.room_route.create).not.toHaveBeenCalled()
+    provision.mockRestore()
   })
 
   test('checks creation permission in the requested vault', async () => {

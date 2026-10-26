@@ -27,10 +27,10 @@ export const dto_room = {
     detail: {
       tags: ['Room'],
       summary: 'Create a group room',
-      description: 'Creates an open, private room for up to 12 users in an existing vault, or in the personal vault of the caller when vault_id is omitted. Requires room.create access. The authenticated creator becomes the host; user_ids become invited members. Requires a Bearer access token. This endpoint does not connect to LiveKit.',
+      description: 'Creates an open, private room for up to 12 users in an existing vault, or in the personal vault of the caller when vault_id is omitted (created on first use). Requires room.create access. The authenticated creator becomes the host; user_ids become invited members. Requires a Bearer access token. This endpoint does not connect to LiveKit.',
     },
     body: t.Object({
-      vault_id: t.Optional(t.Integer({ minimum: 1, description: 'Existing vault where the caller has room.create access. Defaults to the caller\'s personal vault.' })),
+      vault_id: t.Optional(t.Integer({ minimum: 1, description: 'Existing vault where the caller has room.create access. Defaults to the caller\'s personal vault, created on first use.' })),
       room_title: t.String({ minLength: 1, maxLength: 200, pattern: '\\S', description: 'Room title, trimmed before saving.' }),
       user_ids: t.Optional(t.Array(t.Integer({ minimum: 1 }), { maxItems: 11, uniqueItems: true, description: 'Initial invitees. The creator is included automatically.' })),
     }, {
