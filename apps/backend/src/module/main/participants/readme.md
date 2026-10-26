@@ -114,6 +114,8 @@ Record the following information where applicable:
 - Check membership and ban status before issuing a new join token.
 - Disconnect unauthorized participants who attempt to bypass room restrictions.
 
+LiveKit must send webhooks to `POST /webhook/livekit`: on `participant_joined` the backend re-checks membership, bans and removal blocks, and disconnects anyone who connected with a still-valid token (audit action `participant.enforce_remove`). Local dev gets this from `infra/livekit.dev.yaml` (mounted by `make livekit`); `infra/liveKit.yaml` is the production template, with the API key, secret and backend URL to fill in.
+
 ---
 
 ## 6. Acceptance Criteria
