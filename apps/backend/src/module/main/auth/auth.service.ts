@@ -8,9 +8,17 @@ import { dto_auth } from '@module/main/auth/auth.dto'
 const otp_ttl_seconds = 5 * 60
 const otp_cooldown_seconds = 60
 const otp_max_attempts = 5
-const refresh_ttl_seconds = 30 * 24 * 60 * 60
+const login_max_attempts = 10
+const login_attempt_window_seconds = 15 * 60
+const refresh_reuse_grace_seconds = 30
+const password_option = { algorithm: 'argon2id', memoryCost: 19456, timeCost: 2 } as const
+const dummy_password_hash = Bun.password.hash(crypto.randomUUID(), password_option)
 
+export const service_auth_refresh_ttl_seconds = 30 * 24 * 60 * 60
+
+type auth_database = ReturnType<typeof create_database_client>
 type auth_user = Static<typeof dto_auth.login.response>['data']['user']
+type auth_session = { body: Static<typeof dto_auth.login.response>; refresh_token: string }
 
 function otp_key(user_phone: string) {
   return `auth_otp:${user_phone}`
@@ -24,12 +32,28 @@ function otp_cooldown_key(user_phone: string) {
   return `auth_otp_cooldown:${user_phone}`
 }
 
+function login_attempt_key(user_identifier: string) {
+  return `auth_login_attempt:${hash(user_identifier)}`
+}
+
 function refresh_key(refresh_token: string) {
-  return `auth_refresh:${refresh_token}`
+  return `auth_refresh:${hash(refresh_token)}`
+}
+
+function refresh_used_key(refresh_token: string) {
+  return `auth_refresh_used:${hash(refresh_token)}`
+}
+
+function refresh_family_key(family: string) {
+  return `auth_refresh_family:${family}`
 }
 
 function hash(value: string) {
   return new Bun.CryptoHasher('sha256').update(value).digest('hex')
+}
+
+function normalize(value: string) {
+  return value.trim().toLowerCase()
 }
 
 function generate_otp_code() {
@@ -37,14 +61,20 @@ function generate_otp_code() {
   return String(value! % 1_000_000).padStart(6, '0')
 }
 
-function generate_refresh_token() {
+function generate_token() {
   return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')
+}
+
+function is_unique_violation(error: unknown) {
+  return (error as { code?: string } | null)?.code === 'P2002'
 }
 
 function to_auth_user(user: auth_user): auth_user {
   return {
     user_id: user.user_id,
     user_phone: user.user_phone,
+    user_username: user.user_username,
+    user_email: user.user_email,
     user_first_name: user.user_first_name,
     user_last_name: user.user_last_name,
     user_image: user.user_image,
@@ -53,7 +83,92 @@ function to_auth_user(user: auth_user): auth_user {
   }
 }
 
+async function ensure_available(user_username: string, user_email: string, database: auth_database) {
+  const existing = await database.main_db.user.findFirst({
+    where: { deleted_at: null, OR: [{ user_username }, { user_email }] },
+    select: { user_username: true },
+  })
+  if (!existing) return
+  throw existing.user_username === user_username ? lib_error.username_already_exist : lib_error.email_already_exist
+}
+
+async function revoke_reused(refresh_token: string, redis: RedisClient) {
+  const used = await redis.get(refresh_used_key(refresh_token))
+  if (!used) return
+  const [family, rotated_at] = used.split(':')
+  if (Date.now() - Number(rotated_at) > refresh_reuse_grace_seconds * 1000) await redis.del(refresh_family_key(family!))
+}
+
 export const service_auth = {
+  async session(user: auth_user, signer: lib_jwt_signer, redis: RedisClient, family = generate_token()): Promise<auth_session> {
+    const access_token = await signer.sign({ user_id: user.user_id })
+    const refresh_token = generate_token()
+    await redis.set(refresh_key(refresh_token), `${user.user_id}:${family}`, 'EX', service_auth_refresh_ttl_seconds)
+    await redis.set(refresh_family_key(family), String(user.user_id), 'EX', service_auth_refresh_ttl_seconds)
+    return {
+      body: {
+        data: {
+          access_token,
+          expires_in: lib_jwt_access_ttl_seconds,
+          user: to_auth_user(user),
+        },
+      },
+      refresh_token,
+    }
+  },
+
+  async register(
+    body: Static<typeof dto_auth.register.body>,
+    signer: lib_jwt_signer,
+    database: auth_database,
+    redis: RedisClient,
+  ): Promise<auth_session> {
+    const user_username = normalize(body.user_username)
+    const user_email = normalize(body.user_email)
+    await ensure_available(user_username, user_email, database)
+    const user_password_hash = await Bun.password.hash(body.user_password, password_option)
+    const user = await database.main_db.user
+      .create({
+        data: {
+          user_username,
+          user_email,
+          user_password_hash,
+          user_first_name: body.user_first_name.trim(),
+          user_last_name: body.user_last_name.trim(),
+          user_language: body.user_language ?? 'en',
+        },
+      })
+      .catch(async (error) => {
+        if (is_unique_violation(error)) await ensure_available(user_username, user_email, database)
+        throw error
+      })
+    return await service_auth.session(user, signer, redis)
+  },
+
+  async login(
+    body: Static<typeof dto_auth.login.body>,
+    signer: lib_jwt_signer,
+    database: auth_database,
+    redis: RedisClient,
+  ): Promise<auth_session> {
+    const user_identifier = normalize(body.user_identifier)
+    const attempt_key = login_attempt_key(user_identifier)
+    if (Number(await redis.get(attempt_key)) >= login_max_attempts) throw lib_error.too_many_requests
+    const user = await database.main_db.user.findFirst({
+      where: user_identifier.includes('@')
+        ? { user_email: user_identifier, deleted_at: null }
+        : { user_username: user_identifier, deleted_at: null },
+    })
+    const valid = await Bun.password.verify(body.user_password, user?.user_password_hash ?? (await dummy_password_hash))
+    if (!user?.user_password_hash || !valid) {
+      const attempts = await redis.incr(attempt_key)
+      if (attempts === 1) await redis.expire(attempt_key, login_attempt_window_seconds)
+      throw lib_error.invalid_credentials
+    }
+    await redis.del(attempt_key)
+    return await service_auth.session(user, signer, redis)
+  },
+
   async otp(
     body: Static<typeof dto_auth.otp.body>,
     redis: RedisClient,
@@ -83,50 +198,32 @@ export const service_auth = {
     await redis.del(otp_attempt_key(user_phone))
   },
 
-  async session(
-    user: auth_user,
+  async otp_login(
+    body: Static<typeof dto_auth.otp_login.body>,
     signer: lib_jwt_signer,
+    database: auth_database,
     redis: RedisClient,
-  ): Promise<Static<typeof dto_auth.login.response>> {
-    const access_token = await signer.sign({ user_id: user.user_id })
-    const refresh_token = generate_refresh_token()
-    await redis.set(refresh_key(refresh_token), String(user.user_id), 'EX', refresh_ttl_seconds)
-    return {
-      data: {
-        access_token,
-        refresh_token,
-        expires_in: lib_jwt_access_ttl_seconds,
-        user: to_auth_user(user),
-      },
-    }
-  },
-
-  async login(
-    body: Static<typeof dto_auth.login.body>,
-    signer: lib_jwt_signer,
-    database: ReturnType<typeof create_database_client>,
-    redis: RedisClient,
-  ): Promise<Static<typeof dto_auth.login.response>> {
+  ): Promise<auth_session> {
     const user = await database.main_db.user.findFirst({ where: { user_phone: body.user_phone, deleted_at: null } })
     await service_auth.verify(body.user_phone, body.otp_code, redis, Boolean(user))
     if (!user) throw lib_error.user_not_found
     return await service_auth.session(user, signer, redis)
   },
 
-  async register(
-    body: Static<typeof dto_auth.register.body>,
+  async otp_register(
+    body: Static<typeof dto_auth.otp_register.body>,
     signer: lib_jwt_signer,
-    database: ReturnType<typeof create_database_client>,
+    database: auth_database,
     redis: RedisClient,
-  ): Promise<Static<typeof dto_auth.register.response>> {
+  ): Promise<auth_session> {
     await service_auth.verify(body.user_phone, body.otp_code, redis)
     const existing = await database.main_db.user.findFirst({ where: { user_phone: body.user_phone, deleted_at: null } })
     if (existing) throw lib_error.phone_already_exist
     const user = await database.main_db.user.create({
       data: {
         user_phone: body.user_phone,
-        user_first_name: body.user_first_name,
-        user_last_name: body.user_last_name,
+        user_first_name: body.user_first_name.trim(),
+        user_last_name: body.user_last_name.trim(),
         user_language: body.user_language ?? 'en',
       },
     })
@@ -134,23 +231,29 @@ export const service_auth = {
   },
 
   async refresh(
-    body: Static<typeof dto_auth.refresh.body>,
+    refresh_token: string | undefined,
     signer: lib_jwt_signer,
-    database: ReturnType<typeof create_database_client>,
+    database: auth_database,
     redis: RedisClient,
-  ): Promise<Static<typeof dto_auth.refresh.response>> {
-    const user_id = Number(await redis.getdel(refresh_key(body.refresh_token)))
-    if (!Number.isInteger(user_id) || user_id < 1) throw lib_error.invalid_token
-    const user = await database.main_db.user.findFirst({ where: { user_id, deleted_at: null } })
+  ): Promise<auth_session> {
+    if (!refresh_token) throw lib_error.invalid_token
+    const stored = await redis.getdel(refresh_key(refresh_token))
+    if (!stored) {
+      await revoke_reused(refresh_token, redis)
+      throw lib_error.invalid_token
+    }
+    const [user_id_value, family] = stored.split(':')
+    await redis.set(refresh_used_key(refresh_token), `${family}:${Date.now()}`, 'EX', service_auth_refresh_ttl_seconds)
+    if (!family || !(await redis.exists(refresh_family_key(family)))) throw lib_error.invalid_token
+    const user = await database.main_db.user.findFirst({ where: { user_id: Number(user_id_value), deleted_at: null } })
     if (!user) throw lib_error.invalid_token
-    return await service_auth.session(user, signer, redis)
+    return await service_auth.session(user, signer, redis, family)
   },
 
-  async logout(
-    body: Static<typeof dto_auth.logout.body>,
-    redis: RedisClient,
-  ): Promise<Static<typeof dto_auth.logout.response>> {
-    await redis.del(refresh_key(body.refresh_token))
+  async logout(refresh_token: string | undefined, redis: RedisClient): Promise<Static<typeof dto_auth.logout.response>> {
+    const stored = refresh_token ? await redis.getdel(refresh_key(refresh_token)) : null
+    const family = stored?.split(':')[1]
+    if (family) await redis.del(refresh_family_key(family))
     return { data: { logged_out: true } }
   },
 }

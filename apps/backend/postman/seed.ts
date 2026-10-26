@@ -7,6 +7,7 @@ import { create_database_client } from '@db/client.db'
 const directory = join(import.meta.dir, 'data')
 const vault_url = `file:${join(directory, 'vault.db')}`
 const backend = join(import.meta.dir, '..')
+const seed_password = 'mawiid-password'
 const seed_user = [
   { key: 'host', first_name: 'Hana', role: 'host', status: 'active' },
   { key: 'moderator', first_name: 'Malik', role: 'moderator', status: 'active' },
@@ -37,9 +38,18 @@ const variable: Record<string, string> = {
   room_uid,
 }
 const user_id: Record<string, number> = {}
+const user_password_hash = await Bun.password.hash(seed_password, { algorithm: 'argon2id', memoryCost: 19456, timeCost: 2 })
 for (const [index, user] of seed_user.entries()) {
   const row = await database.main_db.user.create({
-    data: { user_phone: `+2135500000${index}`, user_first_name: user.first_name, user_last_name: 'Test', user_language: 'en' },
+    data: {
+      user_phone: `+2135500000${index}`,
+      user_username: user.key,
+      user_email: `${user.key}@mawiid.test`,
+      user_password_hash,
+      user_first_name: user.first_name,
+      user_last_name: 'Test',
+      user_language: 'en',
+    },
   })
   user_id[user.key] = row.user_id
   variable[`user_${user.key}`] = String(row.user_id)
@@ -83,5 +93,6 @@ writeFileSync(
   ),
 )
 console.log(`Seeded room ${room_uid}`)
-console.table(seed_user.map((user) => ({ user: user.key, user_id: user_id[user.key], role: user.role ?? 'not a member', status: user.status ?? '' })))
+console.table(seed_user.map((user) => ({ user: user.key, user_id: user_id[user.key], email: `${user.key}@mawiid.test`, role: user.role ?? 'not a member', status: user.status ?? '' })))
+console.log(`Every seeded user signs in with its username or email and the password "${seed_password}".`)
 console.log('Import postman/mawiid.postman_environment.json and postman/mawiid.postman_collection.json into Postman.')

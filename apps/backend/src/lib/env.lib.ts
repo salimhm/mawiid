@@ -23,3 +23,8 @@ if (missing.length > 0) {
   );
   process.exit(1);
 }
+
+if (process.env.ENV !== 'dev' && process.env.JWT_SECRET_KEY!.length < 32) {
+  console.error('[env] JWT_SECRET_KEY must be at least 32 characters outside dev.');
+  process.exit(1);
+}

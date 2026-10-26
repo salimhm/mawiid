@@ -143,5 +143,37 @@ await check('event socket rejects an invalid ticket with 4401', async () => {
   if (result.code !== 4401) throw new Error(`closed with ${result.code} ${result.reason}`)
 })
 
+const refresh_cookie = '__Host-mawiid_refresh'
+
+async function auth_post(path: string, body?: unknown, refresh_token?: string) {
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['content-type'] = 'application/json'
+  if (refresh_token) headers.cookie = `${refresh_cookie}=${refresh_token}`
+  const res = await fetch(`${api_url}${path}`, { method: 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body) })
+  const set_cookie = res.headers.getSetCookie().find((value) => value.startsWith(`${refresh_cookie}=`)) ?? ''
+  return { status: res.status, body: (await res.json().catch(() => null)) as any, set_cookie, refresh_token: set_cookie.split(';')[0]!.slice(refresh_cookie.length + 1) }
+}
+
+await check('password login by email sets a secure HttpOnly refresh cookie', async () => {
+  const res = await auth_post('/auth/login', { user_identifier: 'host@mawiid.test', user_password: 'mawiid-password' })
+  if (res.status !== 200 || !res.body.data.access_token) throw new Error(`got ${res.status} ${JSON.stringify(res.body)}`)
+  if ('refresh_token' in res.body.data) throw new Error('refresh token leaked in the body')
+  if (!/HttpOnly/i.test(res.set_cookie) || !/Secure/i.test(res.set_cookie) || !/SameSite=Strict/i.test(res.set_cookie)) throw new Error(`cookie is ${res.set_cookie}`)
+})
+
+await check('password login with a wrong password is rejected', async () => {
+  const res = await auth_post('/auth/login', { user_identifier: 'member', user_password: 'not-the-password' })
+  if (res.status !== 401 || res.body?.code !== 'invalid-credentials') throw new Error(`got ${res.status} ${JSON.stringify(res.body)}`)
+})
+
+await check('refresh rotates the cookie, logout revokes it', async () => {
+  const login = await auth_post('/auth/login', { user_identifier: 'viewer', user_password: 'mawiid-password' })
+  const refreshed = await auth_post('/auth/refresh', undefined, login.refresh_token)
+  if (refreshed.status !== 200 || !refreshed.refresh_token || refreshed.refresh_token === login.refresh_token) throw new Error(`refresh got ${refreshed.status}`)
+  await auth_post('/auth/logout', undefined, refreshed.refresh_token)
+  const after = await auth_post('/auth/refresh', undefined, refreshed.refresh_token)
+  if (after.status !== 401) throw new Error(`refresh after logout got ${after.status}`)
+})
+
 console.log(failed ? `\n${failed} check(s) failed` : '\nAll checks passed')
 process.exit(failed ? 1 : 0)

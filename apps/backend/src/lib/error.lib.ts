@@ -1,6 +1,7 @@
 export const lib_error = {
   bad_request: { status: 400, code: 'bad-request' },
   invalid_token: { status: 401, code: 'invalid-token' },
+  invalid_credentials: { status: 401, code: 'invalid-credentials' },
   invalid_otp_code: { status: 401, code: 'invalid-otp-code' },
   code_expired: { status: 401, code: 'code-expired' },
   unauthorized: { status: 401, code: 'unauthorized' },
@@ -13,6 +14,8 @@ export const lib_error = {
   participant_not_found: { status: 404, code: 'participant-not-found' },
   track_not_found: { status: 404, code: 'track-not-found' },
   phone_already_exist: { status: 409, code: 'user-phone-exist' },
+  email_already_exist: { status: 409, code: 'user-email-exist' },
+  username_already_exist: { status: 409, code: 'user-username-exist' },
   room_full: { status: 409, code: 'room-full' },
   room_closed: { status: 410, code: 'room-closed' },
   unprocessable_entity: { status: 422, code: 'unprocessable-entity' },
