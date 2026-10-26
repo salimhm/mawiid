@@ -1,0 +1,103 @@
+# Mawiid: Progress Report
+
+\_Date: 23 October 2026 · Prepared by Omar
+
+## 1. Summary
+
+- **We are late, and we take responsibility for it.** The first working version is not ready on the agreed date.
+- **Most of the building blocks now exist, but they are not yet connected to each other.** Today you cannot yet open the app and hold a translated meeting from start to finish.
+- **The main cause** was a decision to rebuild Mawiid on new technology, which took longer than planned. We underestimated the time needed to learn it and to connect the parts built by different team members.
+- **What changes now:** one person coordinates how the parts fit together, the team shows a working demo every week, and progress is reported every Friday.
+- **New target:** a complete internal demo (two people in a translated video meeting, with chat) in **3 weeks**, and a version ready for real users in **6 weeks**, subject to the risks in section 8.
+
+## 2. What Mawiid will do
+
+Mawiid is a video meeting app, like Google Meet or Zoom, with one key difference: **each person can speak their own language and understand everyone else**, through live subtitles translated into their language. Meetings are private: each customer's data is kept in its own separate, secure storage.
+
+## 3. Team and responsibilities
+
+| Person        | Responsibilities                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Salim         | Overall design of the system; meetings (create, join, manage); user login and accounts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Saad          | Meeting participants: who is in a meeting, muting, removing people, the waiting room, and the activity log                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Omar          | **Data storage:** designed the structure of all stored information (users, teams, organizations, meetings) and set up the cloud database, with a separate, private database for each customer (multi-tenancy) through Prisma. Created the test users the team uses to try every feature safely. **Online status:** showing who is available, away or busy in a meeting. **Technical plan and guides:** wrote the plan for meetings, live chat and translation, and the guides that explain to the team and to the app developer how to connect their parts. **Combining the team's work:** merges everyone's parts into one shared version |
+| Hamza, Abdlah | Artificial intelligence: speech recognition and translation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Ayoub         | App screens and user experience                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+
+## 4. Where we are today
+
+| Part of the product                                                                                                                                                       | Owner         | Status                                                | What it means for a user today                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overall design of the system, including private storage per customer                                                                                                      | Salim         | Done                                                  | The foundation is in place and agreed by the team                                                                                                                                                                                                                                                                                     |
+| Meetings (create, join, close, settings)                                                                                                                                  | Salim         | Built, being connected                                | Works on the server; not yet usable from the app                                                                                                                                                                                                                                                                                      |
+| User login and accounts                                                                                                                                                   | Salim         | In progress                                           | Users cannot sign in yet                                                                                                                                                                                                                                                                                                              |
+| Meeting participants (who is in the meeting, mute, remove, waiting room)                                                                                                  | Saad          | Built, being connected                                | Works on the server; not yet linked to the video engine and the app                                                                                                                                                                                                                                                                   |
+| Data storage: the structure of all stored information, and the connection to the cloud database with multi-tenancy (a separate database for each customer) through Prisma | Omar          | Done                                                  | Mawiid has a working cloud database: user and team information is stored safely, each customer gets their own separate storage, and every future change to the data structure can be applied in one step. Test users were also created, so the team can try every feature with realistic accounts without touching real customer data |
+| Online status (available, away, busy in a meeting)                                                                                                                        | Omar          | Built and tested; being put back into the shared code | It was accidentally removed when the team combined its work; it is being restored                                                                                                                                                                                                                                                     |
+| Speech recognition (turning speech into text)                                                                                                                             | Hamza, Abdlah | Built and tested on recordings                        | Works on its own; not yet connected to live meetings                                                                                                                                                                                                                                                                                  |
+| Translation of the text into each listener's language                                                                                                                     | Hamza, Abdlah | Translation complete                                  | The translation step must still be connected to speech recognition and to meetings                                                                                                                                                                                                                                                    |
+| App screens and user experience                                                                                                                                           | Ayoub         | Design complete                                       | The screens are not yet connected to the server                                                                                                                                                                                                                                                                                       |
+| Video and audio in meetings (the video engine)                                                                                                                            | Team          | Not connected                                         | People cannot yet see or hear each other in a Mawiid meeting                                                                                                                                                                                                                                                                          |
+| Text chat during meetings, with translation                                                                                                                               | Team          | Not started                                           | —                                                                                                                                                                                                                                                                                                                                     |
+
+**In short:** the individual parts are largely built. The work left is mainly **connecting them**, then testing and preparing for real users.
+
+## 5. What is left
+
+### To reach a complete internal demo
+
+1. Connect meetings to the video engine, so people can see and hear each other.
+2. Finish user login.
+3. Put the online status back into the shared code, and remove duplicated meeting code between team members' parts.
+4. Connect the app screens to the server.
+5. Connect speech recognition and translation to live meetings, so subtitles appear in each person's language.
+6. Add text chat inside meetings.
+
+### To be ready for real users
+
+7. Translate chat messages automatically.
+8. Testing: meetings with up to 12 people, poor internet connections, and error cases.
+9. Security and privacy checks, especially the separation of each customer's data.
+10. Set up the servers for real use, with monitoring and backups.
+11. Release the desktop and mobile apps.
+
+## 6. Why we are late
+
+We do not want to give excuses, but you should know the real causes, because each one has a fix.
+
+| Cause                      | What happened                                                                                                                                                                                | What we change                                                                                                   |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Rebuild from scratch       | The old code was unstable and could not be reused with the new technology, so we started again. This was the right decision for quality, but we did not adjust the deadline when we made it. | Any decision that affects the schedule is now shared with you the same week.                                     |
+| Learning new technology    | Time was needed to understand the video engine (LiveKit) and use it correctly.                                                                                                               | This learning phase is now behind us.                                                                            |
+| Parts built separately     | Each person built their part alone. Combining them was harder than expected: one part was accidentally deleted, and some work was duplicated.                                                | One person is responsible for how the parts fit together, and the parts are combined every week, not at the end. |
+| App waiting for the server | The app screens could not be connected while the server was unfinished.                                                                                                                      | Server and app are now connected step by step, one feature at a time.                                            |
+| No visible checkpoints     | Progress was reported as "done" per part, while the product as a whole was not working.                                                                                                      | A working demo every week, and "done" only means "a user can actually do it in the app".                         |
+
+## 7. Recovery plan
+
+Dates are the team's estimate and will be confirmed at the first weekly review.
+
+| Week | Dates        | Goal                                                                                                               | What you will see                                                                         |
+| ---- | ------------ | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 1    | 26–30 Oct    | Reconnect the parts: online status restored, duplicated meeting code merged, video engine connected, login working | Two people in a video call (test screen)                                                  |
+| 2    | 2–6 Nov      | App screens connected to the server; chat inside meetings                                                          | A meeting from the real app, with chat                                                    |
+| 3    | 9–13 Nov     | Live translated subtitles in meetings                                                                              | **Complete internal demo:** two people speaking different languages understand each other |
+| 4    | 16–20 Nov    | Chat translation; fixing problems found in the demo                                                                | Translated chat                                                                           |
+| 5    | 23–27 Nov    | Testing with up to 12 people, security and privacy checks                                                          | Test results report                                                                       |
+| 6    | 30 Nov–4 Dec | Servers prepared for real use, apps packaged                                                                       | **Version ready for first real users**                                                    |
+
+## 8. Risks
+
+| Risk                                                                              | Impact                                       | How we handle it                                                                                                  |
+| --------------------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Translation is too slow or not accurate enough for some languages and accents     | Subtitles arrive late or are wrong           | Measure speed and accuracy from week 3; pick the best model per language; start with the most important languages |
+| Combining the team's parts reveals more problems                                  | Delay                                        | Combine every week from now on, with one person responsible                                                       |
+| Desktop app on Linux computers may not support video calls                        | Linux users cannot join from the desktop app | Test it in week 1; if needed, Linux users join from a web browser                                                 |
+| Server and translation costs (powerful computers are needed for live translation) | Monthly cost                                 | Cost estimate delivered in week 5, before the release                                                             |
+
+## 9. What we need from you
+
+1. **Approval of the new target dates**: internal demo on 13 November, ready for first users on 4 December.
+2. **The first languages to support**, so we focus testing and accuracy on what matters most.
+3. **Whether recording meetings is required for the first version.** If yes, it adds about one week.
+4. **A short weekly review slot** (30 minutes on Fridays) to see the demo and track progress.

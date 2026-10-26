@@ -32,16 +32,16 @@ Prisma's CLI only ever touches local files. Turso is changed only by `db:deploy:
 
 The database layer is Prisma 7 on top of Turso (hosted libSQL, a SQLite fork), run with Bun on Windows.
 
-| Tool | Version | Role |
-| --- | --- | --- |
-| Bun (Windows) | 1.4.2 | Runtime, package manager, script runner |
-| Elysia | 1.4.30 | HTTP framework; no routes registered yet |
-| TypeScript | 5.9.3 | Pinned compiler for repeatable typechecking |
-| `prisma` (CLI) | 7.10.1 | Creates migrations, generates the typed client |
-| `@prisma/client` | 7.10.1 | Typed queries in our code |
-| `@prisma/adapter-libsql` | 7.10.1 | Connects Prisma to Turso; required in Prisma 7 |
-| `@libsql/client` | 0.18.0 | Raw Turso client, used by our migration runner |
-| Turso Cloud | database `mawiid-dev-main` | Hosted database |
+| Tool                     | Version                    | Role                                           |
+| ------------------------ | -------------------------- | ---------------------------------------------- |
+| Bun (Windows)            | 1.4.2                      | Runtime, package manager, script runner        |
+| Elysia                   | 1.4.30                     | HTTP framework; no routes registered yet       |
+| TypeScript               | 5.9.3                      | Pinned compiler for repeatable typechecking    |
+| `prisma` (CLI)           | 7.10.1                     | Creates migrations, generates the typed client |
+| `@prisma/client`         | 7.10.1                     | Typed queries in our code                      |
+| `@prisma/adapter-libsql` | 7.10.1                     | Connects Prisma to Turso; required in Prisma 7 |
+| `@libsql/client`         | 0.18.0                     | Raw Turso client, used by our migration runner |
+| Turso Cloud              | database `mawiid-dev-main` | Hosted database                                |
 
 Keep the three Prisma packages on the same version. npm's `latest` tag for `prisma` points at an 8.0 release candidate, so `package.json` pins them to 7.
 
@@ -49,14 +49,14 @@ Keep the three Prisma packages on the same version. npm's `latest` tag for `pris
 
 Data is split into one shared main database and one separate database per user (the tenant database). Only the main database exists so far.
 
-|  | Main database | Tenant database |
-| --- | --- | --- |
-| How many | One: `mawiid-dev-main` on Turso | One per user; none created yet |
-| Holds | Users, plus the URL of each user's own database (`User.databaseUrl`) | That user's private data; the schema is a placeholder `User` model for now |
-| Schema file | `prisma/main/schema.prisma` | `prisma/tenant/schema.prisma` |
-| Client in code | `main_db` | `vault_db(url)`, one cached client per database |
-| Feature code | `src/module/main/*`: auth, user, organization, department, health | `src/module/tenant/*`: room, message, translation, access, audit |
-| Status | Live; both migrations applied and tested | Group-token connections implemented; automatic provisioning still pending |
+|                | Main database                                                        | Tenant database                                                            |
+| -------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| How many       | One: `mawiid-dev-main` on Turso                                      | One per user; none created yet                                             |
+| Holds          | Users, plus the URL of each user's own database (`User.databaseUrl`) | That user's private data; the schema is a placeholder `User` model for now |
+| Schema file    | `prisma/main/schema.prisma`                                          | `prisma/tenant/schema.prisma`                                              |
+| Client in code | `main_db`                                                            | `vault_db(url)`, one cached client per database                            |
+| Feature code   | `src/module/main/*`: auth, user, organization, department, health    | `src/module/tenant/*`: room, message, translation, access, audit           |
+| Status         | Live; both migrations applied and tested                             | Group-token connections implemented; automatic provisioning still pending  |
 
 Why separate databases: one user's data cannot leak into another's through a forgotten `WHERE` clause, and a user's data can be exported or deleted as a single database. `vault_db` keeps at most `DB_MAX_CACHED_TENANTS` (default 100) connections open and closes the least recently used.
 
@@ -64,22 +64,22 @@ Why separate databases: one user's data cannot leak into another's through a for
 
 All paths are in `apps/backend` unless noted. The app bootstrap, required-variable check, and TCP Redis client are implemented. Feature modules and the other library/storage files remain placeholders.
 
-| Path | What it does | In git |
-| --- | --- | --- |
-| `prisma/main/schema.prisma` | Main database tables | Yes |
-| `prisma/tenant/schema.prisma` | Tables every user database gets | Yes |
-| `prisma/*/migrations/` | Generated SQL migrations, one folder per change | Yes |
-| `prisma/*/dev.db` | Local scratch SQLite files the Prisma CLI compares against | No |
-| `prisma.main.config.ts`, `prisma.tenant.config.ts` | Prisma 7 config: schema path, migrations path, scratch database | Yes |
-| `src/db/generated/` | Generated Prisma clients, rebuilt by `db:generate` | No |
-| `src/db/client.db.ts` | `create_database_client()` creates `main_db`, cached `vault_db(url)` clients, and a shutdown helper | Yes |
-| `src/lib/env.lib.ts` | Checks the required variable list and exits with missing variable names | Yes |
-| `src/storage/redis.storage.ts` | Creates Bun's native TCP Redis client, with TLS for `rediss://` URLs | Yes |
-| `src/app.ts` | Checks required variables, starts Elysia, exposes clients to future handlers, and handles shutdown; no routes registered | Yes |
-| `src/db/utils.db.ts` | `applyMigration(url, dir, token)`: applies pending migrations to any Turso database, tracked in a `_migrations` table | Yes |
-| `src/db/migrate.db.ts` | Runs `applyMigration` on the main Turso database | Yes |
-| `.env` (repo root) | Turso main/group settings and the TCP `REDIS_URL` | No |
-| `.env.example` (repo root) | Required settings, placeholders, and optional defaults | Yes |
+| Path                                               | What it does                                                                                                             | In git |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------ |
+| `prisma/main/schema.prisma`                        | Main database tables                                                                                                     | Yes    |
+| `prisma/tenant/schema.prisma`                      | Tables every user database gets                                                                                          | Yes    |
+| `prisma/*/migrations/`                             | Generated SQL migrations, one folder per change                                                                          | Yes    |
+| `prisma/*/dev.db`                                  | Local scratch SQLite files the Prisma CLI compares against                                                               | No     |
+| `prisma.main.config.ts`, `prisma.tenant.config.ts` | Prisma 7 config: schema path, migrations path, scratch database                                                          | Yes    |
+| `src/db/generated/`                                | Generated Prisma clients, rebuilt by `db:generate`                                                                       | No     |
+| `src/db/client.db.ts`                              | `create_database_client()` creates `main_db`, cached `vault_db(url)` clients, and a shutdown helper                      | Yes    |
+| `src/lib/env.lib.ts`                               | Checks the required variable list and exits with missing variable names                                                  | Yes    |
+| `src/storage/redis.storage.ts`                     | Creates Bun's native TCP Redis client, with TLS for `rediss://` URLs                                                     | Yes    |
+| `src/app.ts`                                       | Checks required variables, starts Elysia, exposes clients to future handlers, and handles shutdown; no routes registered | Yes    |
+| `src/db/utils.db.ts`                               | `applyMigration(url, dir, token)`: applies pending migrations to any Turso database, tracked in a `_migrations` table    | Yes    |
+| `src/db/migrate.db.ts`                             | Runs `applyMigration` on the main Turso database                                                                         | Yes    |
+| `.env` (repo root)                                 | Turso main/group settings and the TCP `REDIS_URL`                                                                        | No     |
+| `.env.example` (repo root)                         | Required settings, placeholders, and optional defaults                                                                   | Yes    |
 
 ## Startup configuration
 

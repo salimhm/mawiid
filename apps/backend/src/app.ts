@@ -10,6 +10,7 @@ import { controller_participant } from '@module/main/participants/participant.co
 import { controller_room_member } from '@module/main/participants/room-member.controller';
 import { controller_webhook } from '@module/main/participants/webhook.controller';
 import { controller_room } from '@module/tenant/room/room.controller';
+import { controller_message } from '@module/main/message/message.controller';
 
 if (import.meta.main) {
   try {
@@ -26,6 +27,7 @@ if (import.meta.main) {
       .use(controller_audit)
       .use(controller_event)
       .use(controller_webhook)
+      .use(controller_message)
       .onStop(async () => {
         subscriber.close();
         redis.close();

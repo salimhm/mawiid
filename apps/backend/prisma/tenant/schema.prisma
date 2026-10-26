@@ -52,6 +52,7 @@ model Room {
   created_at               DateTime     @default(now())
   deleted_at               DateTime?
   room_members             RoomMember[]
+  messages                 Message[]
 
   @@unique([room_uid], map: "room_uid_idx")
   @@index([room_status], map: "room_status_idx")
@@ -76,6 +77,27 @@ model RoomMember {
   @@index([room_member_banned_at], map: "room_member_banned_at_idx")
   @@index([deleted_at], map: "room_member_deleted_at_idx")
   @@map("room_member")
+}
+
+model Message {
+  message_id          Int       @id @default(autoincrement())
+  room_id             Int
+  user_id             Int
+  message_client_id   String
+  message_text        String
+  message_file_ids    Json      @default("[]")
+  message_reply_to_id Int?
+  message_edited_at   DateTime?
+  created_at          DateTime  @default(now())
+  deleted_at          DateTime?
+  room                Room      @relation(fields: [room_id], references: [room_id])
+
+  @@unique([room_id, user_id, message_client_id], map: "message_room_id_user_id_message_client_id_idx")
+  @@index([room_id, deleted_at, message_id], map: "message_room_id_deleted_at_message_id_idx")
+  @@index([user_id], map: "message_user_id_idx")
+  @@index([message_reply_to_id], map: "message_reply_to_id_idx")
+  @@index([deleted_at], map: "message_deleted_at_idx")
+  @@map("message")
 }
 
 model Audit {

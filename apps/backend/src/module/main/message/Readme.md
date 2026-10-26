@@ -1,5 +1,22 @@
 # Messaging System
 
+## Current first slice
+
+`POST /message` now sends a persisted `mawiid.message.v1` event to exactly one active room member. Its body is:
+
+```json
+{
+  "room_uid": "<room UUID>",
+  "recipient_user_id": 2,
+  "message_client_id": "<client UUID>",
+  "message_text": "Hello"
+}
+```
+
+The caller and recipient must be active, unbanned room members and the room must be live. The server stores the message before sending it through LiveKit with `destinationIdentities: ["user_<recipient_user_id>"]`; the sender receives the saved message in the HTTP response. Future room-wide delivery only needs to replace that single destination with the room's active participant identities.
+
+`GET /message?room_uid=<room UUID>` lists that room's non-deleted history, newest first. It accepts `take` (default 50, maximum 100), plus either `before_message_id` for older messages or `after_message_id` for newer messages. The caller must be an authorized room member.
+
 ## 1. Message APIs
 
 ### Create Message

@@ -58,3 +58,14 @@ export type type_room_event_moderation =
   | { type: 'participant.muted'; room_uid: string; track_source: string }
   | { type: 'participant.unmute_requested'; room_uid: string; track_source: string }
   | { type: 'participant.role_changed'; room_uid: string; room_member_role: string }
+
+export type type_room_event_message = {
+  type: 'message.created'
+  room_uid: string
+  message_id: number
+  user_id: number
+  recipient_user_id: number
+  message_client_id: string
+  message_text: string
+  created_at: string
+}

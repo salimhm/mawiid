@@ -38,33 +38,33 @@ Errors return only a code:
 { "code": "room-locked" }
 ```
 
-| Status | Code                    | When                                                                             |
-| ------ | ----------------------- | -------------------------------------------------------------------------------- |
-| 400    | `bad-request`           | Invalid action for the current state (e.g. promote a non-viewer, empty update)   |
-| 401    | `unauthorized`          | Missing or malformed `Authorization` header                                      |
-| 401    | `invalid-token`         | JWT invalid or expired; invalid webhook signature                                |
-| 403    | `forbidden`             | Not a member, banned, blocked, declined, or not allowed to moderate this target  |
-| 403    | `room-waiting`          | Lobby is on and you are waiting for approval                                     |
-| 404    | `room-not-found`        | Unknown `room_uid`                                                               |
-| 404    | `room-member-not-found` | Target user is not a member of the room                                          |
-| 404    | `participant-not-found` | Target is not currently connected to the LiveKit room                            |
+| Status | Code                    | When                                                                            |
+| ------ | ----------------------- | ------------------------------------------------------------------------------- |
+| 400    | `bad-request`           | Invalid action for the current state (e.g. promote a non-viewer, empty update)  |
+| 401    | `unauthorized`          | Missing or malformed `Authorization` header                                     |
+| 401    | `invalid-token`         | JWT invalid or expired; invalid webhook signature                               |
+| 403    | `forbidden`             | Not a member, banned, blocked, declined, or not allowed to moderate this target |
+| 403    | `room-waiting`          | Lobby is on and you are waiting for approval                                    |
+| 404    | `room-not-found`        | Unknown `room_uid`                                                              |
+| 404    | `room-member-not-found` | Target user is not a member of the room                                         |
+| 404    | `participant-not-found` | Target is not currently connected to the LiveKit room                           |
 | 404    | `track-not-found`       | Target has no published track of that source                                    |
-| 410    | `room-closed`           | Room status is `closed`                                                          |
-| 422    | `unprocessable-entity`  | Body or query failed schema validation                                           |
-| 423    | `room-locked`           | Room is locked and you are not the host                                          |
-| 500    | `internal-server-error` | Unexpected failure                                                               |
-| 503    | `livekit-unavailable`   | LiveKit could not be reached                                                     |
+| 410    | `room-closed`           | Room status is `closed`                                                         |
+| 422    | `unprocessable-entity`  | Body or query failed schema validation                                          |
+| 423    | `room-locked`           | Room is locked and you are not the host                                         |
+| 500    | `internal-server-error` | Unexpected failure                                                              |
+| 503    | `livekit-unavailable`   | LiveKit could not be reached                                                    |
 
 ### Roles and permissions
 
 Roles from highest to lowest: `host` > `moderator` > `member` > `viewer`.
 
-| Role        | Can publish                                        | Can moderate                     |
-| ----------- | -------------------------------------------------- | -------------------------------- |
-| `host`      | camera, microphone, screen share, screen share audio | anyone except themselves         |
-| `moderator` | camera, microphone, screen share, screen share audio | only `member` and `viewer`       |
-| `member`    | camera, microphone, screen share                   | no                               |
-| `viewer`    | nothing (subscribe and data messages only)         | no                               |
+| Role        | Can publish                                          | Can moderate               |
+| ----------- | ---------------------------------------------------- | -------------------------- |
+| `host`      | camera, microphone, screen share, screen share audio | anyone except themselves   |
+| `moderator` | camera, microphone, screen share, screen share audio | only `member` and `viewer` |
+| `member`    | camera, microphone, screen share                     | no                         |
+| `viewer`    | nothing (subscribe and data messages only)           | no                         |
 
 Moderation rules that apply to every moderation endpoint:
 
@@ -120,18 +120,21 @@ Checks run in this order:
 Connect to LiveKit with the result:
 
 ```ts
-import { Room } from 'livekit-client'
+import { Room } from 'livekit-client';
 
 const res = await fetch(`${base_url}/room/join`, {
   method: 'POST',
-  headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+  headers: {
+    Authorization: `Bearer ${jwt}`,
+    'Content-Type': 'application/json',
+  },
   body: JSON.stringify({ room_uid }),
-})
-const body = await res.json()
-if (!res.ok) throw new Error(body.code) // 'room-waiting', 'room-locked', ...
+});
+const body = await res.json();
+if (!res.ok) throw new Error(body.code); // 'room-waiting', 'room-locked', ...
 
-const room = new Room()
-await room.connect(body.data.server_url, body.data.participant_token)
+const room = new Room();
+await room.connect(body.data.server_url, body.data.participant_token);
 ```
 
 LiveKit identities have the form `user_<user_id>`. The role is exposed as the participant attribute `mawiid.role`.
@@ -145,15 +148,22 @@ LiveKit identities have the form `user_<user_id>`. The role is exposed as the pa
 ```json
 {
   "room_uid": "7d0f6c1e-...",
-  "room_locked": true,          // optional
-  "room_lobby_enabled": true    // optional
+  "room_locked": true, // optional
+  "room_lobby_enabled": true // optional
 }
 ```
 
 Returns `{ "data": <room> }`. If nothing changes, it returns the room without writing an audit row. Changes are written to the audit log as `room.update` and copied into the LiveKit room metadata, so connected clients can react through `RoomEvent.RoomMetadataChanged`:
 
 ```json
-{ "room_type": "group", "room_locked": true, "room_lobby_enabled": true, "room_translation_enabled": false, "room_recording": false, "room_encrypted": false }
+{
+  "room_type": "group",
+  "room_locked": true,
+  "room_lobby_enabled": true,
+  "room_translation_enabled": false,
+  "room_recording": false,
+  "room_encrypted": false
+}
 ```
 
 - **Locked**: nobody except the host can get a join token. People already connected stay connected.
@@ -195,8 +205,8 @@ A declined guest gets `403 forbidden` on later joins until a staff member sets t
 {
   "room_uid": "7d0f6c1e-...",
   "user_id": 42,
-  "room_member_status": "active",   // optional: "active" | "declined"
-  "room_member_role": "member"      // optional: "host" | "moderator" | "member" | "viewer"
+  "room_member_status": "active", // optional: "active" | "declined"
+  "room_member_role": "member" // optional: "host" | "moderator" | "member" | "viewer"
 }
 ```
 
@@ -204,10 +214,10 @@ At least one of `room_member_status` and `room_member_role` is required (`400` o
 
 Allowed status changes:
 
-| New status | Allowed from                        | Audit action  | Event sent            |
-| ---------- | ----------------------------------- | ------------- | --------------------- |
-| `active`   | `invited`, `waiting`, `declined`    | `lobby.admit` | `room.admitted` to target |
-| `declined` | `invited`, `waiting`                | `lobby.deny`  | none                  |
+| New status | Allowed from                     | Audit action  | Event sent                |
+| ---------- | -------------------------------- | ------------- | ------------------------- |
+| `active`   | `invited`, `waiting`, `declined` | `lobby.admit` | `room.admitted` to target |
+| `declined` | `invited`, `waiting`             | `lobby.deny`  | none                      |
 
 A role change is written as `room_member.role`. If the target is connected, their LiveKit publish permissions are updated live and they receive a `participant.role_changed` data message.
 
@@ -249,7 +259,7 @@ These act on users who are **connected** to the LiveKit room.
 {
   "room_uid": "7d0f6c1e-...",
   "user_id": 42,
-  "track_source": "microphone",  // "camera" | "microphone" | "screen_share" | "screen_share_audio"
+  "track_source": "microphone", // "camera" | "microphone" | "screen_share" | "screen_share_audio"
   "muted": true
 }
 ```
@@ -292,8 +302,8 @@ Returns `404 participant-not-found` if the target isn't connected and no `block_
 ```json
 {
   "room_uid": "7d0f6c1e-...",
-  "participant_hand_raised": true,   // optional
-  "participant_language": "fr"        // optional, e.g. "ar", "en-US"
+  "participant_hand_raised": true, // optional
+  "participant_language": "fr" // optional, e.g. "ar", "en-US"
 }
 ```
 
@@ -307,7 +317,10 @@ All participant endpoints return:
     "room_uid": "7d0f6c1e-...",
     "user_id": 42,
     "room_member_role": "member",
-    "participant_attributes": { "mawiid.role": "member", "mawiid.hand_raised": "true" }
+    "participant_attributes": {
+      "mawiid.role": "member",
+      "mawiid.hand_raised": "true"
+    }
   }
 }
 ```
@@ -348,10 +361,10 @@ ws://localhost:3000/event/ws?ticket=<ticket>
 }
 ```
 
-| Type            | Sent to                         | `data`                  |
-| --------------- | ------------------------------- | ----------------------- |
+| Type            | Sent to                              | `data`                  |
+| --------------- | ------------------------------------ | ----------------------- |
 | `room.knock`    | every host and moderator of the room | `{ room_uid, user_id }` |
-| `room.admitted` | the admitted guest              | `{ room_uid }`          |
+| `room.admitted` | the admitted guest                   | `{ room_uid }`          |
 
 ---
 
@@ -359,11 +372,11 @@ ws://localhost:3000/event/ws?ticket=<ticket>
 
 Typing, reactions and moderation notices use LiveKit data messages, not the backend. Topics and limits come from `@contracts/room`.
 
-| Topic                    | Sender          | Payload                                                            |
-| ------------------------ | --------------- | ------------------------------------------------------------------ |
-| `mawiid.typing.v1`       | any participant | `{ "type": "typing", "typing": true }` (unreliable)                |
-| `mawiid.reaction.v1`     | any participant | `{ "type": "reaction", "reaction_id": "<uuid>", "reaction": "👍" }` (reliable) |
-| `mawiid.moderation.v1`   | **server only** | `participant.muted`, `participant.unmute_requested`, `participant.role_changed` |
+| Topic                  | Sender          | Payload                                                                         |
+| ---------------------- | --------------- | ------------------------------------------------------------------------------- |
+| `mawiid.typing.v1`     | any participant | `{ "type": "typing", "typing": true }` (unreliable)                             |
+| `mawiid.reaction.v1`   | any participant | `{ "type": "reaction", "reaction_id": "<uuid>", "reaction": "👍" }` (reliable)  |
+| `mawiid.moderation.v1` | **server only** | `participant.muted`, `participant.unmute_requested`, `participant.role_changed` |
 
 Limits (`room_signal_limit`):
 
@@ -382,7 +395,7 @@ Moderation messages must be ignored if they come from a participant: only messag
 ### Lobby socket
 
 ```ts
-import { create_participant_socket } from '<path>/participant.client'
+import { create_participant_socket } from '<path>/participant.client';
 
 const socket = create_participant_socket(
   base_url,
@@ -390,27 +403,30 @@ const socket = create_participant_socket(
     const res = await fetch(`${base_url}/event/ticket`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}` },
-    })
-    return (await res.json()).data.ticket
+    });
+    return (await res.json()).data.ticket;
   },
   {
     on_knock: ({ room_uid, user_id }) => show_admit_prompt(room_uid, user_id), // host UI
     on_admitted: ({ room_uid }) => console.log('admitted to', room_uid),
   },
-)
+);
 
 // Guest: join, and wait in the lobby if needed
 async function enter(room_uid: string) {
-  let res = await join(room_uid)
-  if (res.status === 403 && (await res.clone().json()).code === 'room-waiting') {
-    await socket.wait_admitted(room_uid)
-    res = await join(room_uid)
+  let res = await join(room_uid);
+  if (
+    res.status === 403 &&
+    (await res.clone().json()).code === 'room-waiting'
+  ) {
+    await socket.wait_admitted(room_uid);
+    res = await join(room_uid);
   }
-  return res
+  return res;
 }
 
 // On logout / unmount
-socket.close()
+socket.close();
 ```
 
 The helper reconnects automatically with exponential backoff (up to 30 s), requests a new ticket each time, and sends pings.
@@ -418,24 +434,27 @@ The helper reconnects automatically with exponential backoff (up to 30 s), reque
 ### Typing, reactions and moderation notices
 
 ```ts
-import { create_participant_signal } from '<path>/participant.client'
+import { create_participant_signal } from '<path>/participant.client';
 
 const signal = create_participant_signal(room, {
   on_typing: (identity, typing) => set_typing(identity, typing),
   on_reaction: (identity, { reaction }) => show_reaction(identity, reaction),
   on_moderation: (event) => {
-    if (event.type === 'participant.muted') toast(`Your ${event.track_source} was muted`)
-    if (event.type === 'participant.unmute_requested') ask_to_unmute(event.track_source)
-    if (event.type === 'participant.role_changed') set_role(event.room_member_role)
+    if (event.type === 'participant.muted')
+      toast(`Your ${event.track_source} was muted`);
+    if (event.type === 'participant.unmute_requested')
+      ask_to_unmute(event.track_source);
+    if (event.type === 'participant.role_changed')
+      set_role(event.room_member_role);
   },
-})
+});
 
-input.addEventListener('input', () => signal.send_typing(true)) // throttled; stops itself after 3 s idle
-input.addEventListener('blur', () => signal.send_typing(false))
-await signal.send_reaction('🎉') // returns false if invalid or rate limited
+input.addEventListener('input', () => signal.send_typing(true)); // throttled; stops itself after 3 s idle
+input.addEventListener('blur', () => signal.send_typing(false));
+await signal.send_reaction('🎉'); // returns false if invalid or rate limited
 
 // On leave
-signal.close()
+signal.close();
 ```
 
 ---
@@ -446,11 +465,11 @@ signal.close()
 
 Available to the host, and to members whose `access.actions` includes `audit.find`. Everyone else gets `403`.
 
-| Query          | Type     | Notes                                       |
-| -------------- | -------- | ------------------------------------------- |
-| `room_uid`     | uuid     | required                                    |
-| `page`         | number   | default `1`                                 |
-| `take`         | number   | default `20`, max `100`                     |
+| Query          | Type     | Notes                                                |
+| -------------- | -------- | ---------------------------------------------------- |
+| `room_uid`     | uuid     | required                                             |
+| `page`         | number   | default `1`                                          |
+| `take`         | number   | default `20`, max `100`                              |
 | `audit_action` | string[] | filter, repeatable: `?audit_action=a&audit_action=b` |
 
 ```
@@ -470,7 +489,11 @@ GET /audit?room_uid=7d0f6c1e-...&take=50&audit_action=room_member.ban
       "user_id": 1,
       "audit_action": "room_member.ban",
       "audit_target": "user_42",
-      "audit_metadata": { "room_uid": "7d0f6c1e-...", "room_member_role": "member", "ban": true },
+      "audit_metadata": {
+        "room_uid": "7d0f6c1e-...",
+        "room_member_role": "member",
+        "ban": true
+      },
       "created_at": "2026-10-22T10:05:00.000Z"
     }
   ]
@@ -479,16 +502,16 @@ GET /audit?room_uid=7d0f6c1e-...&take=50&audit_action=room_member.ban
 
 Results are sorted newest first. `user_id` is the actor (`null` for server enforcement). `audit_target` is `user_<id>`, or `room_<uid>` for room-level actions.
 
-| Action                        | Written by                                              | Metadata                                |
-| ----------------------------- | ------------------------------------------------------- | --------------------------------------- |
-| `room.update`                 | `PATCH /room`                                           | `previous`, `next`                      |
-| `lobby.admit` / `lobby.deny`  | `PATCH /room-member` (status)                           | `previous_status`, `next_status`        |
-| `room_member.role`            | `PATCH /room-member` (role)                             | `previous_role`, `next_role`            |
-| `room_member.delete` / `room_member.ban` | `DELETE /room-member`                        | `room_member_role`, `ban`               |
-| `participant.mute` / `participant.unmute_request` | `POST /participant/mute`            | `track_source`, `track_sids`            |
-| `participant.promote` / `participant.demote` | `POST /participant/promote` / `demote`  | `previous_role`, `next_role`            |
-| `participant.remove`          | `DELETE /participant`                                   | `connected`, `block_minutes`            |
-| `participant.enforce_remove`  | LiveKit webhook (server)                                | `participant_sid`                       |
+| Action                                            | Written by                             | Metadata                         |
+| ------------------------------------------------- | -------------------------------------- | -------------------------------- |
+| `room.update`                                     | `PATCH /room`                          | `previous`, `next`               |
+| `lobby.admit` / `lobby.deny`                      | `PATCH /room-member` (status)          | `previous_status`, `next_status` |
+| `room_member.role`                                | `PATCH /room-member` (role)            | `previous_role`, `next_role`     |
+| `room_member.delete` / `room_member.ban`          | `DELETE /room-member`                  | `room_member_role`, `ban`        |
+| `participant.mute` / `participant.unmute_request` | `POST /participant/mute`               | `track_source`, `track_sids`     |
+| `participant.promote` / `participant.demote`      | `POST /participant/promote` / `demote` | `previous_role`, `next_role`     |
+| `participant.remove`                              | `DELETE /participant`                  | `connected`, `block_minutes`     |
+| `participant.enforce_remove`                      | LiveKit webhook (server)               | `participant_sid`                |
 
 ---
 
