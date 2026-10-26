@@ -1,18 +1,21 @@
 [project]
 name = "mawiid-ai"
 version = "0.1.0"
-description = "Mawiid sovereign AI service: real-time speech-to-text."
+description = "Mawiid sovereign AI service: real-time speech-to-text and translation."
 requires-python = ">=3.11"
 dependencies = [
     "faster-whisper>=1.1.0",
     "numpy>=1.26",
     "opencc>=1.1.9",
+    "sentencepiece>=0.2",
 ]
 
 [project.optional-dependencies]
 mic = ["sounddevice>=0.4.6"]
-bench = ["jiwer>=3.0", "soundfile>=0.12"]
+bench = ["jiwer>=3.0", "soundfile>=0.12", "sacrebleu>=2.4"]
 dev = ["pytest>=8.0"]
+# One-time model conversion (scripts/convert_translation_model.py); install torch's CPU build first.
+convert = ["torch>=2.2", "transformers>=4.40,<5", "protobuf>=4"]
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -43,3 +43,44 @@ sudo apt install libportaudio2                      # only for the mic demo
 ```
 
 `data/` is git-ignored (downloaded clips, results).
+
+
+## Translation (`mawiid_ai.translation`)
+
+Each speech-to-text result goes in with the languages listeners picked, and one subtitle per language comes out.
+
+```python
+from mawiid_ai.translation import build_translator
+
+translator = build_translator()          # loads MADLAD-400, GPU if it can
+for result in stream.push_audio(chunk):  # one speaker's transcripts
+    for subtitle in translator.translate(result, ["en-US", "ar-SA", "zh-TW"]):
+        send(subtitle.language, subtitle.text)
+```
+
+- Each language is translated once, however many listeners picked it. `zh-CN` and `zh-TW` share one translation, converted to each script. Listeners who speak the speaker's language get the transcript as-is.
+- Only finals are translated. Partials go only to listeners of the speaker's language (`MAWIID_MT_PARTIALS=1` translates them too, at several times the GPU load).
+- Model: [MADLAD-400 3B](https://huggingface.co/google/madlad400-3b-mt) (Apache 2.0), int8 in CTranslate2, greedy decoding. Finals are split into sentences, because MADLAD drops sentences from long inputs. Output length is capped, and looping outputs are retried. `&apos;` and similar escapes are cleaned up.
+- If the engine fails, it is skipped for 60 s, like the speech-to-text router. `MAWIID_MT_CPU_BACKUP=1` loads a second copy on the CPU as backup (~3 GB of RAM). It is a last resort: on a Core Ultra 7 155H it needs 2.6 s median and 4.6 s p95 per final, against 0.7 s on the GPU.
+
+Settings: `MAWIID_MT_MODEL_PATH`, `MAWIID_MT_DEVICE` (`auto`/`cpu`/`cuda`; auto falls back to the CPU if the GPU can't load), `MAWIID_MT_COMPUTE_TYPE`, `MAWIID_MT_CPU_THREADS`, `MAWIID_MT_PARTIALS`, `MAWIID_MT_CPU_BACKUP`.
+
+### Setup
+
+The model is converted once per machine into `data/models/madlad400-3b-mt-ct2` (~2.8 GB). This needs ~12 GB of downloads and ~9 GB of RAM; see `scripts/convert_translation_model.py`:
+
+```sh
+.venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+.venv/bin/pip install -e ".[convert]"
+.venv/bin/python scripts/convert_translation_model.py
+```
+
+On a GPU, CTranslate2 (Whisper and MADLAD) needs CUDA 12 cuBLAS and cuDNN 9. Without a CUDA toolkit installed, use the pip wheels: `pip install nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*"`. Then put their library folders on the search path: `site-packages/nvidia/{cublas,cudnn}/lib` on `LD_LIBRARY_PATH` (Linux), or `site-packages\nvidia\{cublas,cudnn,cuda_nvrtc}\bin` on `PATH` (Windows).
+
+```sh
+.venv/bin/python scripts/translation_benchmark.py      # chrF quality matrix + latency
+.venv/bin/python scripts/pipeline_benchmark.py         # last word -> every subtitle, real-time
+.venv/bin/python scripts/mic_demo.py --language fr-FR --translate en-US ar-SA zh-TW
+```
+
+Measured on an RTX 4060 laptop GPU with Whisper `small` and MADLAD on the same GPU, a room with all 5 languages, and FLEURS clips streamed at real-time pace. From the end of the last word to every subtitle being ready: median 1.24 s, p95 2.38 s, max 2.81 s (30 finals). This includes the 500 ms pause that ends a phrase. The tail comes from long Chinese and Arabic finals. Translation quality: mean chrF 54.3 over 20 language pairs.

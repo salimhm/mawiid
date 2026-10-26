@@ -41,7 +41,7 @@ class CircuitBreaker:
     def record_failure(self, engine: str, reason: str) -> None:
         with self._lock:
             self._open_until[engine] = self._clock() + self._cooldown
-        log.warning("stt engine %s marked down for %.0fs: %s", engine, self._cooldown, reason)
+        log.warning("engine %s marked down for %.0fs: %s", engine, self._cooldown, reason)
 
 
 class SttRouter:

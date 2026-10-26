@@ -2,6 +2,8 @@
 
 Each clip is real read speech with a reference transcript. Clips land in
 ``data/samples/<language>/`` next to a ``manifest.jsonl`` the benchmark reads.
+FLEURS reads the same sentences in every language, so the sentences shared by all
+languages also go to ``data/translation/parallel.jsonl`` for translation_benchmark.py.
 
     python scripts/fetch_samples.py --per-language 10
 """
@@ -32,6 +34,7 @@ FLEURS_CONFIGS = {
 }
 
 DEFAULT_OUT = Path(__file__).resolve().parent.parent / "data" / "samples"
+DEFAULT_PARALLEL = Path(__file__).resolve().parent.parent / "data" / "translation" / "parallel.jsonl"
 
 
 def read_transcripts(config: str) -> dict[str, tuple[str, str]]:
@@ -42,9 +45,8 @@ def read_transcripts(config: str) -> dict[str, tuple[str, str]]:
     return {row[1]: (row[0], row[2]) for row in rows if len(row) > 2}
 
 
-def fetch_language(language: str, per_language: int, out_dir: Path) -> None:
+def fetch_language(language: str, transcripts: dict[str, tuple[str, str]], per_language: int, out_dir: Path) -> None:
     config = FLEURS_CONFIGS[language]
-    transcripts = read_transcripts(config)
     to_traditional = opencc.OpenCC("s2tw") if language == "zh-TW" else None
 
     lang_dir = out_dir / language
@@ -81,15 +83,38 @@ def fetch_language(language: str, per_language: int, out_dir: Path) -> None:
     print(f"{language}: {len(entries)} clips -> {lang_dir}")
 
 
+def write_parallel(transcripts: dict[str, dict[str, tuple[str, str]]], path: Path) -> None:
+    """One line per sentence that every language has: {"id": ..., "en-US": ..., "fr-FR": ...}."""
+    by_id = {
+        language: {sentence_id: text for sentence_id, text in rows.values()} for language, rows in transcripts.items()
+    }
+    shared = sorted(set.intersection(*(set(sentences) for sentences in by_id.values())), key=int)
+    to_traditional = opencc.OpenCC("s2tw")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as out:
+        for sentence_id in shared:
+            row = {"id": sentence_id}
+            for language, sentences in by_id.items():
+                text = sentences[sentence_id]
+                row[language] = to_traditional.convert(text) if language == "zh-TW" else text
+            out.write(json.dumps(row, ensure_ascii=False) + "\n")
+    print(f"translation: {len(shared)} sentences shared by {len(by_id)} languages -> {path}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--per-language", type=int, default=10)
     parser.add_argument("--languages", nargs="+", default=list(FLEURS_CONFIGS), choices=list(FLEURS_CONFIGS))
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--parallel", type=Path, default=DEFAULT_PARALLEL)
     args = parser.parse_args()
 
+    by_config = {config: read_transcripts(config) for config in {FLEURS_CONFIGS[lang] for lang in args.languages}}
+    transcripts = {language: by_config[FLEURS_CONFIGS[language]] for language in args.languages}
     for language in args.languages:
-        fetch_language(language, args.per_language, args.out)
+        fetch_language(language, transcripts[language], args.per_language, args.out)
+    if len(args.languages) > 1:
+        write_parallel(transcripts, args.parallel)
     return 0
 
 
