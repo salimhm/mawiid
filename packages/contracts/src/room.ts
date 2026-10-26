@@ -37,6 +37,7 @@ export type type_room_socket_envelope<data = unknown> = {
 export type type_room_event_knock = {
   room_uid: string
   user_id: number
+  user_name: string
 }
 
 export type type_room_event_admitted = {

@@ -11,6 +11,7 @@
         "db:migrate:tenant": "bun x prisma migrate dev --config prisma.tenant.config.ts",
         "db:generate": "bun x prisma generate --config prisma.main.config.ts && bun x prisma generate --config prisma.tenant.config.ts",
         "db:deploy:main": "bun run --env-file=../../.env src/db/migrate.db.ts",
+        "db:seed": "bun run --env-file=../../.env scripts/seed.ts",
         "postman:seed": "bun run --env-file=postman/.env.postman postman/seed.ts",
         "postman:dev": "bun run --env-file=postman/.env.postman --watch src/app.ts"
     },

@@ -12,6 +12,7 @@ import { service_room_route } from '@module/main/participants/room-route.service
 import { dto_room } from '@module/main/participants/room.dto'
 
 export type room_vault = ReturnType<ReturnType<typeof create_database_client>['vault_db']>
+type room_knock_user = { user_id: number; user_first_name: string; user_last_name: string }
 
 const room_role_rank: Record<string, number> = { host: 3, moderator: 2, member: 1, viewer: 0 }
 const room_staff_roles = ['host', 'moderator']
@@ -20,7 +21,7 @@ const room_knock_ttl_seconds = 10
 const room_lock_release = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end"
 
 export const service_room = {
-  async authorize(
+  async access(
     room_uid: string,
     payload: lib_dto_payload,
     database: ReturnType<typeof create_database_client>,
@@ -34,8 +35,31 @@ export const service_room = {
       service_room.banned(vault, room.room_id, payload.user_id),
       redis.exists(service_room.block_key(room_uid, payload.user_id)),
     ])
-    if (!member || banned || blocked) throw lib_error.forbidden
+    if (banned || blocked) throw lib_error.forbidden
     return { vault, room, member }
+  },
+
+  async authorize(
+    room_uid: string,
+    payload: lib_dto_payload,
+    database: ReturnType<typeof create_database_client>,
+    redis: RedisClient,
+  ) {
+    const { vault, room, member } = await service_room.access(room_uid, payload, database, redis)
+    if (!member) throw lib_error.forbidden
+    return { vault, room, member }
+  },
+
+  async enlist(vault: room_vault, room: Room, user_id: number) {
+    try {
+      return await vault.roomMember.create({
+        data: { room_id: room.room_id, user_id, room_member_role: 'member', room_member_status: 'waiting' },
+      })
+    } catch (error) {
+      const existing = await vault.roomMember.findFirst({ where: { room_id: room.room_id, user_id, deleted_at: null } })
+      if (!existing) throw error
+      return existing
+    }
   },
 
   block_key(room_uid: string, user_id: number) {
@@ -118,8 +142,8 @@ export const service_room = {
     return { data }
   },
 
-  async knock(vault: room_vault, room: Room, user_id: number, redis: RedisClient) {
-    const fresh = await redis.send('SET', [`knock:${room.room_uid}:${user_id}`, '1', 'EX', String(room_knock_ttl_seconds), 'NX'])
+  async knock(vault: room_vault, room: Room, user: room_knock_user, redis: RedisClient) {
+    const fresh = await redis.send('SET', [`knock:${room.room_uid}:${user.user_id}`, '1', 'EX', String(room_knock_ttl_seconds), 'NX'])
     if (!fresh) return
     const staff = await vault.roomMember.findMany({
       where: {
@@ -134,7 +158,7 @@ export const service_room = {
       redis,
       staff.map((row) => row.user_id),
       room_socket_event.knock,
-      { room_uid: room.room_uid, user_id },
+      { room_uid: room.room_uid, user_id: user.user_id, user_name: `${user.user_first_name} ${user.user_last_name}` },
     )
   },
 
@@ -168,10 +192,15 @@ export const service_room = {
     database: ReturnType<typeof create_database_client>,
     redis: RedisClient,
   ): Promise<Static<typeof dto_room.join.response>> {
-    const { vault, room, member } = await service_room.authorize(body.room_uid, payload, database, redis)
+    const access = await service_room.access(body.room_uid, payload, database, redis)
+    const { vault, room } = access
     if (room.room_status === 'closed') throw lib_error.room_closed
+    if (!access.member && !room.room_lobby_enabled) throw lib_error.forbidden
+    if (room.room_locked && access.member?.room_member_role !== 'host') throw lib_error.room_locked
+    const user = await database.main_db.user.findFirst({ where: { user_id: payload.user_id, deleted_at: null } })
+    if (!user) throw lib_error.forbidden
+    const member = access.member ?? (await service_room.enlist(vault, room, user.user_id))
     if (member.room_member_status === 'declined') throw lib_error.forbidden
-    if (room.room_locked && member.room_member_role !== 'host') throw lib_error.room_locked
     const staff = service_room.staff(member.room_member_role)
     if (room.room_lobby_enabled && !staff && member.room_member_status !== 'active') {
       if (member.room_member_status !== 'waiting') {
@@ -180,7 +209,7 @@ export const service_room = {
           data: { room_member_status: 'waiting' },
         })
       }
-      await service_room.knock(vault, room, member.user_id, redis)
+      await service_room.knock(vault, room, user, redis)
       throw lib_error.room_waiting
     }
     if (member.room_member_status !== 'active') {
@@ -189,8 +218,6 @@ export const service_room = {
         data: { room_member_status: 'active' },
       })
     }
-    const user = await database.main_db.user.findFirst({ where: { user_id: payload.user_id, deleted_at: null } })
-    if (!user) throw lib_error.forbidden
     await service_room.ensure(room, redis)
     const participant_token = await lib_livekit_token(
       room.room_uid,

@@ -17,6 +17,10 @@ const seed_user = [
   { key: 'outsider', first_name: 'Omar', role: null, status: null },
 ]
 
+function seed_phone(index: number) {
+  return `+2135500000${index}`
+}
+
 function seed_jwt(user_id: number) {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
   const header = encode({ alg: 'HS256', typ: 'JWT' })
@@ -42,7 +46,7 @@ const user_password_hash = await Bun.password.hash(seed_password, { algorithm: '
 for (const [index, user] of seed_user.entries()) {
   const row = await database.main_db.user.create({
     data: {
-      user_phone: `+2135500000${index}`,
+      user_phone: seed_phone(index),
       user_username: user.key,
       user_email: `${user.key}@mawiid.test`,
       user_password_hash,
@@ -60,6 +64,7 @@ const vault = await database.main_db.vault.create({
 })
 await database.main_db.roomRoute.create({ data: { room_uid, vault_id: vault.vault_id } })
 const tenant = database.vault_db(vault_url)
+await tenant.access.create({ data: { user_id: user_id.host!, actions: ['room.create'] } })
 const room = await tenant.room.create({
   data: {
     room_uid,
@@ -93,6 +98,16 @@ writeFileSync(
   ),
 )
 console.log(`Seeded room ${room_uid}`)
-console.table(seed_user.map((user) => ({ user: user.key, user_id: user_id[user.key], email: `${user.key}@mawiid.test`, role: user.role ?? 'not a member', status: user.status ?? '' })))
-console.log(`Every seeded user signs in with its username or email and the password "${seed_password}".`)
+console.table(
+  seed_user.map((user, index) => ({
+    user: user.key,
+    user_id: user_id[user.key],
+    email: `${user.key}@mawiid.test`,
+    phone: seed_phone(index),
+    password: seed_password,
+    role: user.role ?? 'not a member',
+    status: user.status ?? '',
+  })),
+)
+console.log('Sign in with the username or email and the password, or with the phone number and a code (Phone code tab).')
 console.log('Import postman/mawiid.postman_environment.json and postman/mawiid.postman_collection.json into Postman.')

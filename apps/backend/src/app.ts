@@ -11,6 +11,9 @@ import { controller_participant } from '@module/main/participants/participant.co
 import { controller_room_member } from '@module/main/participants/room-member.controller';
 import { controller_room } from '@module/main/participants/room.controller';
 import { controller_webhook } from '@module/main/participants/webhook.controller';
+import { controller_presence } from '@module/main/presence/presence.controller';
+import { service_presence } from '@module/main/presence/presence.service';
+import { controller_room as controller_tenant_room } from '@module/tenant/room/room.controller';
 
 if (import.meta.main) {
   try {
@@ -24,12 +27,15 @@ if (import.meta.main) {
       .use(controller_auth)
       .use(controller_participant)
       .use(controller_room)
+      .use(controller_tenant_room)
       .use(controller_room_member)
       .use(controller_audit)
       .use(controller_event)
       .use(controller_webhook)
+      .use(controller_presence)
       .onStop(async () => {
         subscriber.close();
+        stop_presence();
         redis.close();
         await database.close();
       })
@@ -38,6 +44,7 @@ if (import.meta.main) {
         return { message: 'hello world' };
       });
     const subscriber = await service_event.relay(app.server!, redis);
+    const stop_presence = await service_presence.start(app.server!, database, redis);
 
     let stopping = false;
     const stop = () => {
