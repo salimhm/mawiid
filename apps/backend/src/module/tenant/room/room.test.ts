@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from 'bun:test'
 import { Elysia } from 'elysia'
 import type { Static } from 'elysia'
@@ -5,6 +6,7 @@ import type { create_database_client } from '@db/client.db'
 import { lib_error } from '@lib/error.lib'
 import { lib_middleware_error } from '@lib/middleware.lib'
 import type { dto_room } from '@module/tenant/room/room.dto'
+import { service_vault } from '@module/main/vault/vault.service'
 import { service_room } from '@module/tenant/room/room.service'
 
 const previous_env = process.env.ENV
@@ -18,13 +20,15 @@ afterAll(() => {
   else process.env.ENV = previous_env
 })
 
-mock.module('@lib/jwt.lib', () => ({
-  lib_jwt: new Elysia({ name: 'lib_jwt' }).derive({ as: 'scoped' }, ({ headers }) => {
-    const user_id = Number(headers['x-user-id'])
-    if (process.env.ENV !== 'dev' || !Number.isInteger(user_id) || user_id < 1) throw lib_error.unauthorized
-    return { payload: { user_id } }
-  }),
-}))
+process.env.JWT_SECRET_KEY ||= 'room-test-secret'
+
+function create_token(user_id: number) {
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
+  const header = encode({ alg: 'HS256', typ: 'JWT' })
+  const body = encode({ user_id, exp: Math.floor(Date.now() / 1000) + 60 })
+  const signature = createHmac('sha256', process.env.JWT_SECRET_KEY!).update(`${header}.${body}`).digest('base64url')
+  return `${header}.${body}.${signature}`
+}
 
 const { controller_room } = await import('@module/tenant/room/room.controller')
 
@@ -90,7 +94,7 @@ function create_request(body: unknown, authenticated = true) {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      ...(authenticated ? { 'x-user-id': '1' } : {}),
+      ...(authenticated ? { authorization: `Bearer ${create_token(1)}` } : {}),
     },
     body: JSON.stringify(body),
   })
@@ -98,7 +102,7 @@ function create_request(body: unknown, authenticated = true) {
 
 function find_request(query = 'vault_id=1', user_id: number | null = 1) {
   return new Request(`http://localhost/room?${query}`, {
-    headers: user_id === null ? {} : { 'x-user-id': String(user_id) },
+    headers: user_id === null ? {} : { authorization: `Bearer ${create_token(user_id)}` },
   })
 }
 
@@ -107,7 +111,7 @@ function update_request(body: unknown, user_id: number | null = 1) {
     method: 'PATCH',
     headers: {
       'content-type': 'application/json',
-      ...(user_id === null ? {} : { 'x-user-id': String(user_id) }),
+      ...(user_id === null ? {} : { authorization: `Bearer ${create_token(user_id)}` }),
     },
     body: JSON.stringify(body),
   })
@@ -118,7 +122,7 @@ function delete_request(body: unknown, user_id: number | null = 1) {
     method: 'DELETE',
     headers: {
       'content-type': 'application/json',
-      ...(user_id === null ? {} : { 'x-user-id': String(user_id) }),
+      ...(user_id === null ? {} : { authorization: `Bearer ${create_token(user_id)}` }),
     },
     body: JSON.stringify(body),
   })
@@ -164,7 +168,7 @@ describe('POST /room/join', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(user_id === null ? {} : { 'x-user-id': String(user_id) }),
+        ...(user_id === null ? {} : { authorization: `Bearer ${create_token(user_id)}` }),
       },
       body: JSON.stringify(input),
     })
@@ -814,7 +818,7 @@ describe('POST /room', () => {
     const result = await response.json() as Static<typeof dto_room.create.response>
 
     expect(response.status).toBe(200)
-    expect(result.data).toMatchObject({ room_title: 'Team meeting', room_type: 'group', room_status: 'open', user_id: 1 })
+    expect(result.data).toMatchObject({ room_title: 'Team meeting', room_type: 'group', room_status: 'open', room_lobby_enabled: true, user_id: 1 })
     expect(result.data.room_uid).toMatch(/^[0-9a-f-]{36}$/)
     expect(fixture.vault_db).toHaveBeenCalledWith('file:test-vault.db')
     expect(fixture.room_route.create).toHaveBeenCalledWith({ data: { room_uid: result.data.room_uid, vault_id: 1 } })
@@ -844,16 +848,19 @@ describe('POST /room', () => {
     expect(fixture.room_route.create).not.toHaveBeenCalled()
   })
 
-  test('rejects development authentication outside development', async () => {
+  test('rejects a token signed with another secret', async () => {
     const fixture = create_fixture()
-    process.env.ENV = 'production'
-    try {
-      const response = await create_app(fixture.database).handle(create_request({ vault_id: 1, room_title: 'Meeting' }))
-      expect(response.status).toBe(401)
-      expect(fixture.room.create).not.toHaveBeenCalled()
-    } finally {
-      process.env.ENV = 'dev'
-    }
+    const [header, body] = create_token(1).split('.')
+    const forged = `${header}.${body}.${createHmac('sha256', 'another-secret').update(`${header}.${body}`).digest('base64url')}`
+    const request = new Request('http://localhost/room', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${forged}` },
+      body: JSON.stringify({ vault_id: 1, room_title: 'Meeting' }),
+    })
+    const response = await create_app(fixture.database).handle(request)
+
+    expect(response.status).toBe(401)
+    expect(fixture.room.create).not.toHaveBeenCalled()
   })
 
   test('rejects a missing or deleted creator', async () => {
@@ -871,6 +878,35 @@ describe('POST /room', () => {
 
     await expect(service_room.create({ vault_id: 1, room_title: 'Meeting' }, { user_id: 1 }, fixture.database)).rejects.toEqual(lib_error.forbidden)
     expect(fixture.vault_db).not.toHaveBeenCalled()
+  })
+
+  test('uses the caller personal vault when no vault is given', async () => {
+    const fixture = create_fixture()
+    const response = await create_app(fixture.database).handle(create_request({ room_title: 'Meeting' }))
+
+    expect(response.status).toBe(200)
+    expect(fixture.vault.findFirst).toHaveBeenCalledWith({ where: { vault_owner_type: 'user', vault_owner_id: 1, deleted_at: null } })
+    expect(fixture.room_route.create).toHaveBeenCalledWith({ data: { room_uid: expect.any(String), vault_id: 1 } })
+  })
+
+  test('creates the personal vault on first use', async () => {
+    const fixture = create_fixture()
+    const provision = spyOn(service_vault, 'create').mockResolvedValueOnce({ vault_id: 7, vault_database_url: 'file:new-vault.db' } as Awaited<ReturnType<typeof service_vault.create>>)
+    await service_room.create({ room_title: 'Meeting' }, { user_id: 1 }, fixture.database)
+
+    expect(provision).toHaveBeenCalledWith(1, fixture.database)
+    expect(fixture.vault_db).toHaveBeenCalledWith('file:new-vault.db')
+    expect(fixture.room_route.create).toHaveBeenCalledWith({ data: { room_uid: expect.any(String), vault_id: 7 } })
+    provision.mockRestore()
+  })
+
+  test('does not route a room when the personal vault cannot be created', async () => {
+    const fixture = create_fixture()
+    const provision = spyOn(service_vault, 'create').mockRejectedValueOnce(lib_error.vault_unavailable)
+
+    await expect(service_room.create({ room_title: 'Meeting' }, { user_id: 1 }, fixture.database)).rejects.toEqual(lib_error.vault_unavailable)
+    expect(fixture.room_route.create).not.toHaveBeenCalled()
+    provision.mockRestore()
   })
 
   test('checks creation permission in the requested vault', async () => {

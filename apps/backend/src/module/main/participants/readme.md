@@ -54,6 +54,16 @@ Support the following room settings:
 4. The host admits the guest through `PATCH /room-member`.
 5. The guest receives the `room.admitted` event and can enter the room.
 
+### Knock to Enter
+
+Anyone signed in who has the room code can knock, even without an invitation:
+
+- Rooms created with `POST /room` start with the lobby enabled.
+- When the lobby is enabled, `POST /room/join` by a non-member adds them as a `waiting` member with the `member` role, sends `room.knock` (`{ room_uid, user_id, user_name }`) to the host and moderators, and answers `403 room-waiting`.
+- A declined knocker gets `403 forbidden` on later attempts. Banned, temporarily removed, locked-out and closed-room cases are refused before any knock.
+- When the lobby is disabled, non-members get `403 forbidden`: the room is invite-only.
+- Every other room endpoint still requires an existing membership (`service_room.authorize`), so a waiting knocker cannot moderate or read the audit log.
+
 ---
 
 ## 3. Client-Side Features
@@ -103,6 +113,8 @@ Record the following information where applicable:
 - Enforce removal or ban restrictions on the server, not only in the client.
 - Check membership and ban status before issuing a new join token.
 - Disconnect unauthorized participants who attempt to bypass room restrictions.
+
+LiveKit must send webhooks to `POST /webhook/livekit`: on `participant_joined` the backend re-checks membership, bans and removal blocks, and disconnects anyone who connected with a still-valid token (audit action `participant.enforce_remove`). Local dev gets this from `infra/livekit.dev.yaml` (mounted by `make livekit`); `infra/liveKit.yaml` is the production template, with the API key, secret and backend URL to fill in.
 
 ---
 

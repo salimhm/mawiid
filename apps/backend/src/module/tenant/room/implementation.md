@@ -4,7 +4,7 @@
 
 - `POST /room`, `GET /room`, `PATCH /room`, `DELETE /room`, and `POST /room/join` are implemented and registered on `rooms-module`.
 - `room.dto.ts` owns the room response schema and has no dependency on the participants module.
-- The controller uses the existing `lib_context` and development authentication from `lib_jwt`. Send `x-user-id` with `ENV=dev`; real JWT authentication is not implemented on this branch.
+- The controller uses `lib_middleware_context` and JWT authentication from `lib_jwt`. Send `Authorization: Bearer <access_token>` from `/auth/login`.
 - Creation requires an active main-database user, an active vault, and an active vault `Access` row whose `actions` contains `room.create`. Vault ownership alone does not bypass this permission.
 - The main database stores `Vault` and `RoomRoute`. The vault stores `Room` and `RoomMember`. The corresponding additive migrations are in each schema's `20261021220000_room_creation` directory.
 - Each room starts as an open, private group room with capacity 12. The creator becomes its active host; initial invitees become invited members.

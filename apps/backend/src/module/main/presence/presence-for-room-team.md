@@ -10,7 +10,7 @@ room / room-member / participant  ──calls──►  service_presence  ──
 
 - Import: `import { service_presence } from '@module/main/presence/presence.service';`
 - Direction: your modules import presence; presence never imports them.
-- `database` and `redis` are the same clients your handlers get from `lib_context`.
+- `database` and `redis` are the same clients your handlers get from `lib_middleware_context` (decorated in `app.ts`).
 
 ## 1. The three functions
 

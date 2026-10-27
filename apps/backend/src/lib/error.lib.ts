@@ -1,14 +1,21 @@
 export const lib_error = {
   bad_request: { status: 400, code: 'bad-request' },
   invalid_token: { status: 401, code: 'invalid-token' },
+  invalid_credentials: { status: 401, code: 'invalid-credentials' },
+  invalid_otp_code: { status: 401, code: 'invalid-otp-code' },
+  code_expired: { status: 401, code: 'code-expired' },
   unauthorized: { status: 401, code: 'unauthorized' },
   forbidden: { status: 403, code: 'forbidden' },
   room_waiting: { status: 403, code: 'room-waiting' },
   not_found: { status: 404, code: 'not-found' },
+  user_not_found: { status: 404, code: 'user-not-found' },
   room_not_found: { status: 404, code: 'room-not-found' },
   room_member_not_found: { status: 404, code: 'room-member-not-found' },
   participant_not_found: { status: 404, code: 'participant-not-found' },
   track_not_found: { status: 404, code: 'track-not-found' },
+  phone_already_exist: { status: 409, code: 'user-phone-exist' },
+  email_already_exist: { status: 409, code: 'user-email-exist' },
+  username_already_exist: { status: 409, code: 'user-username-exist' },
   room_full: { status: 409, code: 'room-full' },
   room_not_open: { status: 409, code: 'room-not-open' },
   room_not_deletable: { status: 409, code: 'room-not-deletable' },
@@ -19,6 +26,7 @@ export const lib_error = {
   internal_server_error: { status: 500, code: 'internal-server-error' },
   service_unavailable: { status: 503, code: 'service-unavailable' },
   livekit_unavailable: { status: 503, code: 'livekit-unavailable' },
+  vault_unavailable: { status: 503, code: 'vault-unavailable' },
 }
 
 export type lib_error_value = (typeof lib_error)[keyof typeof lib_error]

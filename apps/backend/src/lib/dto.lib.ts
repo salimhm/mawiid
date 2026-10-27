@@ -4,6 +4,13 @@ export type lib_dto_payload = {
   user_id: number
 }
 
+export const lib_dto_error_response = t.Object(
+  {
+    code: t.String({ description: 'Error code from lib_error, for example `invalid-token`' }),
+  },
+  { title: 'Error' },
+)
+
 export const lib_dto_find_query = {
   page: t.Optional(t.Numeric()),
   take: t.Optional(t.Numeric()),

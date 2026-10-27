@@ -25,14 +25,14 @@ LiveKit reports room and participant events by webhook. Webhooks are push-only: 
 
 ## 2. Events
 
-| Event                            | Handler                          | Effect                                                                                       |
-| -------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------- |
-| `room_started`                   | `service_room.start`             | `room_status = 'live'`, `room_started_at`, add to `rooms:live`, send `room.started`          |
-| `room_finished`                  | `service_room.finish(_, 'empty')` | Close the room (first reason wins)                                                          |
-| `participant_joined`             | `service_participant.join`       | Ignore agents; open a `participant` row; add to `room:<room_uid>:live`; set `busy`; remove at once if banned |
-| `participant_left`               | `service_participant.leave`      | Close the row; remove from `room:<room_uid>:live`; set `online`; in a `direct` room close it for both |
-| `participant_connection_aborted` | `service_participant.leave`      | Same as `participant_left`                                                                   |
-| `track_published`                | Later                            | Only when recording or AI features need it                                                   |
+| Event                            | Handler                           | Effect                                                                                                       |
+| -------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `room_started`                   | `service_room.start`              | `room_status = 'live'`, `room_started_at`, add to `rooms:live`, send `room.started`                          |
+| `room_finished`                  | `service_room.finish(_, 'empty')` | Close the room (first reason wins)                                                                           |
+| `participant_joined`             | `service_participant.join`        | Ignore agents; open a `participant` row; add to `room:<room_uid>:live`; set `busy`; remove at once if banned |
+| `participant_left`               | `service_participant.leave`       | Close the row; remove from `room:<room_uid>:live`; set `online`; in a `direct` room close it for both        |
+| `participant_connection_aborted` | `service_participant.leave`       | Same as `participant_left`                                                                                   |
+| `track_published`                | Later                             | Only when recording or AI features need it                                                                   |
 
 Accept events in any order: a `room_finished` that arrives before `participant_left` must still close everything.
 

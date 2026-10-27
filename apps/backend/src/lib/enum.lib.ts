@@ -6,3 +6,4 @@ export const enum_room_member_status = ['invited', 'waiting', 'active', 'decline
 export const enum_room_member_decision = ['active', 'declined'] as const
 export const enum_participant_track_source = ['camera', 'microphone', 'screen_share', 'screen_share_audio'] as const
 export const enum_vault_owner_type = ['user', 'department', 'organization'] as const
+export const enum_presence_status = ['online', 'away', 'busy', 'offline'] as const

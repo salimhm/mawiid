@@ -4,15 +4,16 @@ import type { lib_dto_payload } from '@lib/dto.lib';
 import { lib_error } from '@lib/error.lib';
 import { lib_middleware_context } from '@lib/middleware.lib';
 
+export const lib_jwt_access_ttl_seconds = 15 * 60
+
+export const lib_jwt_sign = new Elysia({ name: 'lib_jwt_sign' })
+  .use(jwt({ name: 'lib_jwt_signer', secret: process.env.JWT_SECRET_KEY!, exp: `${lib_jwt_access_ttl_seconds}s` }))
+
+export type lib_jwt_signer = (typeof lib_jwt_sign)['decorator']['lib_jwt_signer']
+
 export const lib_jwt = new Elysia({ name: 'lib_jwt' })
   .use(lib_middleware_context)
-  .use(
-    jwt({
-      name: 'lib_jwt_signer',
-      secret: process.env.JWT_SECRET_KEY!,
-      exp: '15m',
-    }),
-  )
+  .use(lib_jwt_sign)
   .derive({ as: 'scoped' }, async ({ headers, lib_jwt_signer }) => {
     const [scheme, token] = headers.authorization?.split(' ') ?? [];
     if (scheme !== 'Bearer' || !token) throw lib_error.unauthorized;
