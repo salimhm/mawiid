@@ -75,21 +75,27 @@ export const service_message = {
       database,
       redis,
     );
-    if (room.room_status !== 'live') throw lib_error.room_not_open;
+    // Same rule as joining: rooms are created 'open', and only the not yet
+    // implemented room_started webhook would move them to 'live'.
+    if (room.room_status !== 'open' && room.room_status !== 'live')
+      throw lib_error.room_not_open;
     if (member.room_member_status !== message_active_status)
       throw lib_error.forbidden;
 
-    const recipient = await vault.roomMember.findFirst({
-      where: {
-        room_id: room.room_id,
-        user_id: body.recipient_user_id,
-        deleted_at: null,
-        room_member_banned_at: null,
-        room_member_status: message_active_status,
-      },
-      select: { room_member_id: true },
-    });
-    if (!recipient) throw lib_error.forbidden;
+    const recipient_user_id = body.recipient_user_id ?? null;
+    if (recipient_user_id !== null) {
+      const recipient = await vault.roomMember.findFirst({
+        where: {
+          room_id: room.room_id,
+          user_id: recipient_user_id,
+          deleted_at: null,
+          room_member_banned_at: null,
+          room_member_status: message_active_status,
+        },
+        select: { room_member_id: true },
+      });
+      if (!recipient) throw lib_error.forbidden;
+    }
 
     const message = await vault.message.upsert({
       where: {
@@ -112,7 +118,7 @@ export const service_message = {
       message_id: message.message_id,
       room_uid: room.room_uid,
       user_id: message.user_id,
-      recipient_user_id: body.recipient_user_id,
+      recipient_user_id,
       message_client_id: message.message_client_id,
       message_text: message.message_text,
       created_at: message.created_at,
@@ -123,9 +129,15 @@ export const service_message = {
       created_at: data.created_at.toISOString(),
     };
 
-    await lib_livekit_broadcast(room.room_uid, room_topic.message, event, [
-      lib_livekit_identity(body.recipient_user_id),
-    ]);
+    // No recipient: every participant in the live room, the sender included.
+    await lib_livekit_broadcast(
+      room.room_uid,
+      room_topic.message,
+      event,
+      recipient_user_id === null
+        ? undefined
+        : [lib_livekit_identity(recipient_user_id)],
+    );
 
     return { data };
   },

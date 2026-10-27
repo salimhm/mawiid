@@ -37,6 +37,31 @@ function moderationActions(participant, localRole, moderation)
     return actions;
 }
 
+const MESSAGE_MAX_LENGTH = 3000;
+
+const formatTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+function ChatMessage({ message, name, isOwn, onRetry })
+{
+    return (
+        <div className={isOwn ? 'ml-auto w-fit max-w-[85%] text-right' : 'w-fit max-w-[85%]'}>
+            <p className='text-base font-montserrat font-semibold leading-none mb-2'>{name}</p>
+            <div className={isOwn ? 'flex items-end gap-2 justify-end' : 'flex items-end gap-2'}>
+                {isOwn && <span className='shrink-0 text-xs text-primary-white/80'>{formatTime(message.createdAt)}</span>}
+                <span className={`inline-block text-left whitespace-pre-wrap break-words rounded-[14px] px-5 py-2.5 text-sm font-montserrat ${isOwn ? 'rounded-br-[40px] bg-secondary-green' : 'rounded-bl-[40px] bg-primary-dark-red'} ${message.status === 'sending' ? 'opacity-60' : ''}`}>
+                    {message.text}
+                </span>
+                {!isOwn && <span className='shrink-0 text-xs text-primary-white/80'>{formatTime(message.createdAt)}</span>}
+            </div>
+            {message.status === 'failed' && (
+                <button className='mt-1 text-xs text-red-300 hover:text-red-200 underline-offset-2 hover:underline cursor-pointer' onClick={() => onRetry?.(message)}>
+                    Not sent. Retry
+                </button>
+            )}
+        </div>
+    );
+}
+
 function typingLabel(typing)
 {
     if (typing.length === 1)
@@ -59,15 +84,18 @@ function SettingToggle({ label, description, checked, onChange })
     );
 }
 
-export default function MeetHeader({ fullScreen, participants = [], localRole = '', isStaff = false, moderation, settings, onUpdateSettings, typing = [], onTyping })
+export default function MeetHeader({ fullScreen, participants = [], localRole = '', isStaff = false, moderation, settings, onUpdateSettings, typing = [], onTyping, messages = [], hasOlderMessages = false, loadingOlderMessages = false, onSendMessage, onRetryMessage, onLoadOlderMessages })
 {
     const [actionsFor, setActionsFor] = useState(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuPage, setMenuPage] = useState('chat');
     const [chatInput, setChatInput] = useState('');
-    const [hostMsgs, setHostMsgs] = useState([]);
     const messagesEndRef = useRef(null);
+    // Only a new latest message scrolls to the bottom, not loading older ones.
+    const lastMessageKey = messages.at(-1)?.key;
+    const localUserId = participants.find((participant) => participant.isLocal)?.userId;
+    const namesById = new Map(participants.filter((participant) => participant.userId).map((participant) => [participant.userId, participant.name]));
     const closeMenuTimerRef = useRef(null);
 
     const closeMenu = useCallback(() => {
@@ -125,7 +153,7 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
             return;
 
         messagesEndRef.current?.scrollIntoView({ block: 'end' });
-    }, [hostMsgs, menuPage, menuOpen]);
+    }, [lastMessageKey, menuPage, menuOpen]);
 
     const handleChatClick = (e) => {
         e.stopPropagation();
@@ -143,7 +171,7 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
         if (!text)
             return;
 
-        setHostMsgs((prev) => [...prev, text]);
+        onSendMessage?.(text);
         setChatInput('');
         onTyping?.(false);
     };
@@ -205,34 +233,28 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
                                     </div>
 
                                     <div className='meet-scrollbar min-h-0 flex-1 overflow-y-auto pr-1 space-y-4 text-primary-white'>
-                                        <div>
-                                            <p className='text-base font-montserrat font-semibold leading-none mb-2'>Guest Name</p>
-                                            <div className='flex items-center gap-2'>
-                                                <span className='inline-flex text-xs items-center rounded-[14px] rounded-bl-[40px] bg-primary-dark-red px-7 py-2.5 text-sm font-montserrat'>Guest Language</span>
-                                                <span className='text-xs text-primary-white/80'>20:40</span>
-                                            </div>
-                                            <div className='mt-2 ml-16 flex items-center text-[8px] text-primary-white/70'>
-                                                <button className='cursor-pointer hover:text-primary-white underline-offset-2 hover:underline' onClick={() => {}}>
-                                                    Change to original text
-                                                </button>
-                                                <span className='mx-2'>/</span>
-                                                <button className='cursor-pointer hover:text-primary-white underline-offset-2 hover:underline' onClick={() => {}}>
-                                                    Translate
+                                        {hasOlderMessages && (
+                                            <div className='flex justify-center'>
+                                                <button className='text-xs text-primary-white/70 hover:text-primary-white underline-offset-2 hover:underline cursor-pointer disabled:cursor-wait' disabled={loadingOlderMessages} onClick={onLoadOlderMessages}>
+                                                    {loadingOlderMessages ? 'Loading…' : 'Load earlier messages'}
                                                 </button>
                                             </div>
-                                        </div>
-
-                                        {hostMsgs.map((msg, i) => (
-                                            <div key={`${msg}-${i}`} className='ml-auto w-fit text-right'>
-                                                <p className='text-base font-montserrat font-semibold leading-none mb-2'>Host Name</p>
-                                                <div className='flex items-center gap-2 justify-end'>
-                                                    <span className='text-xs text-primary-white/80'>20:40</span>
-                                                    <span className='inline-flex text-xs items-center rounded-[14px] rounded-br-[40px] bg-secondary-green px-7 py-2.5 text-sm font-montserrat'>
-                                                        {msg}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        ))}
+                                        )}
+                                        {messages.length === 0 && (
+                                            <p className='pt-6 text-center text-sm text-primary-white/60'>No messages yet. Say hello!</p>
+                                        )}
+                                        {messages.map((message) => {
+                                            const isOwn = message.userId === localUserId;
+                                            return (
+                                                <ChatMessage
+                                                    key={message.key}
+                                                    message={message}
+                                                    isOwn={isOwn}
+                                                    name={isOwn ? 'You' : namesById.get(message.userId) || `User #${message.userId}`}
+                                                    onRetry={onRetryMessage}
+                                                />
+                                            );
+                                        })}
                                         <div ref={messagesEndRef}></div>
                                     </div>
 
@@ -245,6 +267,7 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
                                             <input
                                                 type='text'
                                                 placeholder='Chat ...'
+                                                maxLength={MESSAGE_MAX_LENGTH}
                                                 value={chatInput}
                                                 onChange={(e) => {
                                                     setChatInput(e.target.value);

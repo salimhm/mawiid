@@ -56,6 +56,12 @@ export default function MeetRoomPage() {
                 onUpdateSettings={room.updateSettings}
                 typing={room.typing}
                 onTyping={room.sendTyping}
+                messages={room.messages}
+                hasOlderMessages={room.hasOlderMessages}
+                loadingOlderMessages={room.loadingOlderMessages}
+                onSendMessage={room.sendMessage}
+                onRetryMessage={room.retryMessage}
+                onLoadOlderMessages={room.loadOlderMessages}
             />
             <MeetMain
                 localUser={room.localUser}

@@ -198,6 +198,18 @@ export const api = {
     promoteParticipant: (room_uid, user_id) => apiFetch('/participant/promote', { method: 'POST', body: { room_uid, user_id } }),
     demoteParticipant: (room_uid, user_id) => apiFetch('/participant/demote', { method: 'POST', body: { room_uid, user_id } }),
     removeParticipant: (room_uid, user_id, block_minutes) => apiFetch('/participant', { method: 'DELETE', body: { room_uid, user_id, ...(block_minutes ? { block_minutes } : {}) } }),
+    // Newest first. Pass before_message_id or after_message_id, not both.
+    listMessages: (room_uid, { take, before_message_id, after_message_id } = {}) => {
+        const query = new URLSearchParams({ room_uid })
+        if (take)
+            query.set('take', take)
+        if (before_message_id)
+            query.set('before_message_id', before_message_id)
+        if (after_message_id)
+            query.set('after_message_id', after_message_id)
+        return apiFetch(`/message?${query}`)
+    },
+    sendMessage: (room_uid, message_client_id, message_text) => apiFetch('/message', { method: 'POST', body: { room_uid, message_client_id, message_text } }),
 }
 
 const ERROR_MESSAGES = {
@@ -221,6 +233,7 @@ const ERROR_MESSAGES = {
     'vault-unavailable': 'Your workspace could not be set up right now. Try again in a moment.',
     'room-closed': 'This room has been closed.',
     'room-locked': 'This room is locked by the host.',
+    'room-not-open': 'This room is not open, so messages cannot be sent.',
     'room-waiting': 'Waiting for the host to let you in…',
     'unprocessable-entity': 'Some of the information is invalid. Check it and try again.',
     'livekit-unavailable': 'The media server is unavailable. Try again shortly.',

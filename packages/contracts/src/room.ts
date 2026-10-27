@@ -65,7 +65,7 @@ export type type_room_event_message = {
   room_uid: string
   message_id: number
   user_id: number
-  recipient_user_id: number
+  recipient_user_id: number | null
   message_client_id: string
   message_text: string
   created_at: string

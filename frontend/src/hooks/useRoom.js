@@ -14,11 +14,46 @@ const ATTRIBUTE = {
 const KNOCK_RETRY_MS = 10000
 const REACTION_VISIBLE_MS = 4000
 const STAFF_ROLES = ['host', 'moderator']
+const MESSAGE_PAGE = 50
+const MESSAGE_PAGE_MAX = 100
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const userIdOf = (identity, attributes) =>
     Number(attributes[ATTRIBUTE.userId]) || Number(/^user_(\d+)$/.exec(identity)?.[1]) || null
+
+// A message is identified by its sender and message_client_id, so the
+// optimistic copy, the HTTP response and the LiveKit event all collapse into
+// one entry. Saved messages are ordered by message_id; unsent ones go last.
+const messageKey = (userId, clientId) => `${userId}:${clientId}`
+
+const fromServer = (message) => ({
+    key: messageKey(message.user_id, message.message_client_id),
+    id: message.message_id,
+    clientId: message.message_client_id,
+    userId: message.user_id,
+    text: message.message_text,
+    createdAt: new Date(message.created_at).toISOString(),
+    status: 'sent',
+})
+
+function mergeMessages(current, incoming) {
+    const byKey = new Map(current.map((message) => [message.key, message]))
+    for (const message of incoming) {
+        const existing = byKey.get(message.key)
+        if (!existing || existing.status !== 'sent' || message.status === 'sent')
+            byKey.set(message.key, message)
+    }
+    return [...byKey.values()].sort((a, b) => {
+        if (a.id && b.id)
+            return a.id - b.id
+        if (a.id || b.id)
+            return a.id ? -1 : 1
+        return a.createdAt.localeCompare(b.createdAt)
+    })
+}
+
+const lastSavedId = (messages) => messages.reduce((max, message) => Math.max(max, message.id || 0), 0)
 
 // Room settings travel in the LiveKit room metadata (see service_room.metadata).
 function readSettings(metadata) {
@@ -50,6 +85,32 @@ export function useRoom(roomUid, {
     const [typing, setTyping] = useState([])
     const [reactions, setReactions] = useState([])
     const [settings, setSettings] = useState({ locked: false, lobby: false })
+    const [messages, setMessages] = useState([])
+    const [hasOlderMessages, setHasOlderMessages] = useState(false)
+    const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+    const messagesRef = useRef(messages)
+    messagesRef.current = messages
+
+    const addMessages = useCallback((incoming) => {
+        if (incoming.length)
+            setMessages((prev) => mergeMessages(prev, incoming))
+    }, [])
+
+    // Fetches everything after the newest saved message. The API returns the
+    // newest page first, so a full page means a gap, filled with before cursors.
+    const catchUpMessages = useCallback(async () => {
+        const after = lastSavedId(messagesRef.current)
+        if (!after)
+            return
+        let page = await api.listMessages(roomUid, { after_message_id: after, take: MESSAGE_PAGE_MAX })
+        addMessages(page.map(fromServer))
+        while (page.length === MESSAGE_PAGE_MAX) {
+            const before = Math.min(...page.map((message) => message.message_id))
+            page = (await api.listMessages(roomUid, { before_message_id: before, take: MESSAGE_PAGE_MAX }))
+                .filter((message) => message.message_id > after)
+            addMessages(page.map(fromServer))
+        }
+    }, [roomUid, addMessages])
 
     // One MediaStream per track, so tiles don't re-attach on every refresh.
     const streamFor = useCallback((track) => {
@@ -147,6 +208,10 @@ export function useRoom(roomUid, {
         }
 
         const signal = createRoomSignal(room, {
+            onMessage: (event) => {
+                if (event.room_uid === roomUid)
+                    addMessages([fromServer(event)])
+            },
             onModeration: (event) => {
                 if (event.type === 'participant.muted')
                     setNotice(`Your ${event.track_source.replace(/_/g, ' ')} was muted by a moderator`)
@@ -191,7 +256,10 @@ export function useRoom(roomUid, {
             .on(RoomEvent.ParticipantPermissionsChanged, refresh)
             .on(RoomEvent.RoomMetadataChanged, onMetadata)
             .on(RoomEvent.Reconnecting, () => setStatus('reconnecting'))
-            .on(RoomEvent.Reconnected, () => setStatus('connected'))
+            .on(RoomEvent.Reconnected, () => {
+                setStatus('connected')
+                catchUpMessages().catch(() => {})
+            })
             .on(RoomEvent.Disconnected, onDisconnected)
 
         const join = async () => {
@@ -224,6 +292,17 @@ export function useRoom(roomUid, {
                 return
 
             setStatus('connected')
+            api.listMessages(roomUid, { take: MESSAGE_PAGE })
+                .then((page) => {
+                    if (cancelled)
+                        return
+                    addMessages(page.map(fromServer))
+                    setHasOlderMessages(page.length === MESSAGE_PAGE)
+                })
+                .catch(() => {
+                    if (!cancelled)
+                        setNotice('Unable to load the chat history')
+                })
             setSettings(readSettings(room.metadata) || { locked: Boolean(joined.room?.room_locked), lobby: Boolean(joined.room?.room_lobby_enabled) })
             refresh()
 
@@ -240,6 +319,8 @@ export function useRoom(roomUid, {
             refresh()
         }
 
+        setMessages([])
+        setHasOlderMessages(false)
         start().catch((err) => {
             if (cancelled)
                 return
@@ -260,7 +341,7 @@ export function useRoom(roomUid, {
                 roomRef.current = null
         }
         // Device choices only apply when joining.
-    }, [roomUid, refresh, showReaction])
+    }, [roomUid, refresh, showReaction, addMessages, catchUpMessages])
 
     const runLocal = useCallback(async (action, failure) => {
         const room = roomRef.current
@@ -320,6 +401,53 @@ export function useRoom(roomUid, {
         signalRef.current?.sendTyping(isTyping).catch(() => {})
     }, [])
 
+    const deliverMessage = useCallback(async (message) => {
+        addMessages([{ ...message, status: 'sending' }])
+        try {
+            const saved = await api.sendMessage(roomUid, message.clientId, message.text)
+            addMessages([fromServer(saved)])
+        } catch (err) {
+            addMessages([{ ...message, status: 'failed' }])
+            setNotice(err instanceof ApiError && err.code === 'forbidden' ? 'You are not allowed to send messages in this room.' : errorMessage(err))
+        }
+    }, [roomUid, addMessages])
+
+    const sendMessage = useCallback((text) => {
+        const room = roomRef.current
+        const trimmed = text.trim()
+        if (!room || room.state !== 'connected' || !trimmed)
+            return
+        const userId = userIdOf(room.localParticipant.identity, room.localParticipant.attributes || {})
+        const clientId = crypto.randomUUID()
+        deliverMessage({
+            key: messageKey(userId, clientId),
+            id: null,
+            clientId,
+            userId,
+            text: trimmed,
+            createdAt: new Date().toISOString(),
+        })
+    }, [deliverMessage])
+
+    // Same message_client_id, so a retry never creates a duplicate.
+    const retryMessage = useCallback((message) => deliverMessage(message), [deliverMessage])
+
+    const loadOlderMessages = useCallback(async () => {
+        const saved = messagesRef.current.filter((message) => message.id)
+        if (!saved.length || loadingOlderMessages)
+            return
+        setLoadingOlderMessages(true)
+        try {
+            const page = await api.listMessages(roomUid, { before_message_id: saved[0].id, take: MESSAGE_PAGE })
+            addMessages(page.map(fromServer))
+            setHasOlderMessages(page.length === MESSAGE_PAGE)
+        } catch (err) {
+            setNotice(errorMessage(err))
+        } finally {
+            setLoadingOlderMessages(false)
+        }
+    }, [roomUid, addMessages, loadingOlderMessages])
+
     const sendReaction = useCallback(async (reaction) => {
         try {
             const event = await signalRef.current?.sendReaction(reaction)
@@ -372,6 +500,12 @@ export function useRoom(roomUid, {
         knocks,
         typing,
         reactions,
+        messages,
+        hasOlderMessages,
+        loadingOlderMessages,
+        sendMessage,
+        retryMessage,
+        loadOlderMessages,
         settings,
         isStaff: STAFF_ROLES.includes(localUser.role),
         roomCode: roomUid,

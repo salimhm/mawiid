@@ -1,10 +1,11 @@
 import { RoomEvent } from 'livekit-client'
 
-// LiveKit data messages (typing, reactions, moderation notices). Port of
+// LiveKit data messages (chat, typing, reactions, moderation notices). Port of
 // create_participant_signal from
 // apps/backend/src/module/main/participants/participant.client.ts.
 // Keep in sync with packages/contracts/src/room.ts
 export const ROOM_TOPIC = {
+    message: 'mawiid.message.v1',
     moderation: 'mawiid.moderation.v1',
     typing: 'mawiid.typing.v1',
     reaction: 'mawiid.reaction.v1',
@@ -16,6 +17,8 @@ const LIMIT = {
     reactionIntervalMs: 250,
     reactionMaxLength: 16,
     payloadMaxBytes: 1024,
+    // Chat text is up to 3,000 characters; LiveKit's reliable limit is 15 KiB.
+    messageMaxBytes: 15 * 1024,
 }
 
 const MODERATION_TYPES = ['participant.muted', 'participant.unmute_requested', 'participant.role_changed']
@@ -24,8 +27,8 @@ const decoder = new TextDecoder()
 
 const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value)
 
-function parse(payload) {
-    if (!payload || payload.byteLength === 0 || payload.byteLength > LIMIT.payloadMaxBytes)
+function parse(payload, maxBytes = LIMIT.payloadMaxBytes) {
+    if (!payload || payload.byteLength === 0 || payload.byteLength > maxBytes)
         return null
     try {
         return JSON.parse(decoder.decode(payload))
@@ -55,7 +58,17 @@ const isModeration = (value) =>
     && typeof value.room_uid === 'string'
     && (typeof value.track_source === 'string' || typeof value.room_member_role === 'string')
 
-export function createRoomSignal(room, { onTyping, onReaction, onModeration } = {}) {
+const isMessage = (value) =>
+    isRecord(value)
+    && value.type === 'message.created'
+    && typeof value.room_uid === 'string'
+    && Number.isInteger(value.message_id)
+    && Number.isInteger(value.user_id)
+    && typeof value.message_client_id === 'string'
+    && typeof value.message_text === 'string'
+    && typeof value.created_at === 'string'
+
+export function createRoomSignal(room, { onMessage, onTyping, onReaction, onModeration } = {}) {
     const typingTimers = new Map()
     let typingActive = false
     let typingSentAt = 0
@@ -73,8 +86,16 @@ export function createRoomSignal(room, { onTyping, onReaction, onModeration } = 
             onTyping?.(participant, typing)
     }
 
-    // Moderation notices are only trusted when sent by the server (no participant).
+    // Chat and moderation events are only trusted when sent by the server (no participant).
     const onData = (payload, participant, _kind, topic) => {
+        if (topic === ROOM_TOPIC.message) {
+            if (participant)
+                return
+            const event = parse(payload, LIMIT.messageMaxBytes)
+            if (isMessage(event))
+                onMessage?.(event)
+            return
+        }
         if (topic === ROOM_TOPIC.moderation) {
             if (participant)
                 return

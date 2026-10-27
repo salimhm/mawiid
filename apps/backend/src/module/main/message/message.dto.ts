@@ -12,7 +12,7 @@ export const dto_schema_message = t.Object({
 
 export const dto_schema_message_delivery = t.Object({
   ...dto_schema_message.properties,
-  recipient_user_id: t.Integer(),
+  recipient_user_id: t.Nullable(t.Integer()),
 });
 
 export const dto_message = {
@@ -54,10 +54,13 @@ export const dto_message = {
   create: {
     body: t.Object({
       ...lib_dto_room_body,
-      recipient_user_id: t.Integer({
-        minimum: 1,
-        description: 'The one active room member who receives this message.',
-      }),
+      recipient_user_id: t.Optional(
+        t.Integer({
+          minimum: 1,
+          description:
+            'The one active room member who receives this message. Omit to send it to the whole room.',
+        }),
+      ),
       message_client_id: t.String({
         format: 'uuid',
         description: 'Client-generated id used to retry safely.',

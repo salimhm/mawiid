@@ -141,6 +141,31 @@ describe('service_message.create', () => {
     );
   });
 
+  test('broadcasts to the whole room when no recipient is given', async () => {
+    mock.clearAllMocks();
+    const fixture = create_fixture();
+
+    const result = await service_message.create(
+      { room_uid, message_client_id, message_text: 'Hello everyone' },
+      { user_id: 1 },
+      fixture.database,
+      fixture.redis,
+    );
+
+    expect(result.data.recipient_user_id).toBeNull();
+    expect(fixture.room_member.findFirst).not.toHaveBeenCalled();
+    expect(broadcast).toHaveBeenCalledWith(
+      room_uid,
+      'mawiid.message.v1',
+      expect.objectContaining({
+        type: 'message.created',
+        recipient_user_id: null,
+        message_id: 9,
+      }),
+      undefined,
+    );
+  });
+
   test('refuses a recipient who is not an active, unbanned room member', async () => {
     mock.clearAllMocks();
     const fixture = create_fixture();
@@ -164,12 +189,12 @@ describe('service_message.create', () => {
     expect(broadcast).not.toHaveBeenCalled();
   });
 
-  test('refuses messages outside an active live room', async () => {
+  test('refuses messages in a room that is not open or live', async () => {
     mock.clearAllMocks();
     const fixture = create_fixture();
     authorize.mockResolvedValue({
       vault: { roomMember: fixture.room_member, message: fixture.message },
-      room: { room_id: 4, room_uid, room_status: 'open' },
+      room: { room_id: 4, room_uid, room_status: 'scheduled' },
       member: { room_member_status: 'active' },
     });
 

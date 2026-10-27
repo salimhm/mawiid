@@ -2,18 +2,18 @@
 
 ## Current first slice
 
-`POST /message` now sends a persisted `mawiid.message.v1` event to exactly one active room member. Its body is:
+`POST /message` sends a persisted `mawiid.message.v1` event to the room. Its body is:
 
 ```json
 {
   "room_uid": "<room UUID>",
-  "recipient_user_id": 2,
   "message_client_id": "<client UUID>",
-  "message_text": "Hello"
+  "message_text": "Hello",
+  "recipient_user_id": 2
 }
 ```
 
-The caller and recipient must be active, unbanned room members and the room must be live. The server stores the message before sending it through LiveKit with `destinationIdentities: ["user_<recipient_user_id>"]`; the sender receives the saved message in the HTTP response. Future room-wide delivery only needs to replace that single destination with the room's active participant identities.
+`recipient_user_id` is optional. Without it, the message goes to every participant in the live room, the sender included, and the response has `recipient_user_id: null`. With it, the recipient must be an active, unbanned room member and LiveKit delivers only to `user_<recipient_user_id>`. The caller must be an active, unbanned room member and the room must be live. The server stores the message before sending it, and the sender receives the saved message in the HTTP response.
 
 `GET /message?room_uid=<room UUID>` lists that room's non-deleted history, newest first. It accepts `take` (default 50, maximum 100), plus either `before_message_id` for older messages or `after_message_id` for newer messages. The caller must be an authorized room member.
 
