@@ -18,7 +18,19 @@ for chunk in audio_chunks:               # int16 bytes/array or float32, any chu
 stream.flush()                           # speaker left: finalize what's buffered
 ```
 
-Supported languages: `en-US`, `fr-FR`, `ar-SA`, `zh-CN`, `zh-TW` (same Mandarin audio; the text is converted to the chosen script). Darija (`ar-MA`) comes later.
+Supported languages: `en-US`, `fr-FR`, `ar-SA`, `zh-CN`, `zh-TW` (same Mandarin audio; the text is converted to the chosen script) and `ar-MA` (Darija, see below).
+
+### Darija (`ar-MA`)
+
+Stock Whisper hears Darija as Arabic and misses most dialect words, so `ar-MA` routes to a Darija-tuned Whisper first (`whisper-darija`), with stock Whisper as the backup. The model is converted once per machine into `data/models/whisper-darija-ct2` (needs the same `convert` extras as the translation model):
+
+```sh
+.venv/bin/python scripts/convert_darija_model.py --model turbo    # anaszil/whisper-large-v3-turbo-darija (MIT)
+.venv/bin/python scripts/convert_darija_model.py --model medium --out data/models/whisper-darija-medium-ct2  # ychafiqui (Apache 2.0)
+MAWIID_STT_DARIJA_MODEL=data/models/whisper-darija-medium-ct2 ...  # pick another conversion
+```
+
+Without a converted model the engine is skipped and Darija goes to stock Whisper. Output is Arabic script. Test clips come from DVoice v2.0 and adiren7/darija_speech_to_text (`fetch_samples.py --languages ar-MA`); the benchmark scores each source separately and also reports CER, because Darija has no standard spelling and WER counts every spelling variant as an error.
 
 ### How it works
 
