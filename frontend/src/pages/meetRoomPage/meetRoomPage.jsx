@@ -58,6 +58,7 @@ export default function MeetRoomPage() {
                 onTyping={room.sendTyping}
                 messages={room.messages}
                 hasOlderMessages={room.hasOlderMessages}
+                joinedAtMessageId={room.joinedAtMessageId}
                 loadingOlderMessages={room.loadingOlderMessages}
                 onSendMessage={room.sendMessage}
                 onRetryMessage={room.retryMessage}

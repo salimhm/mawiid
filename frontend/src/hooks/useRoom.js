@@ -87,6 +87,8 @@ export function useRoom(roomUid, {
     const [settings, setSettings] = useState({ locked: false, lobby: false })
     const [messages, setMessages] = useState([])
     const [hasOlderMessages, setHasOlderMessages] = useState(false)
+    // Newest message_id in the history loaded on join: those count as read.
+    const [joinedAtMessageId, setJoinedAtMessageId] = useState(0)
     const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
     const messagesRef = useRef(messages)
     messagesRef.current = messages
@@ -298,6 +300,7 @@ export function useRoom(roomUid, {
                         return
                     addMessages(page.map(fromServer))
                     setHasOlderMessages(page.length === MESSAGE_PAGE)
+                    setJoinedAtMessageId(page[0]?.message_id || 0)
                 })
                 .catch(() => {
                     if (!cancelled)
@@ -321,6 +324,7 @@ export function useRoom(roomUid, {
 
         setMessages([])
         setHasOlderMessages(false)
+        setJoinedAtMessageId(0)
         start().catch((err) => {
             if (cancelled)
                 return
@@ -502,6 +506,7 @@ export function useRoom(roomUid, {
         reactions,
         messages,
         hasOlderMessages,
+        joinedAtMessageId,
         loadingOlderMessages,
         sendMessage,
         retryMessage,

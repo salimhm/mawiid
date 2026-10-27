@@ -62,6 +62,17 @@ function ChatMessage({ message, name, isOwn, onRetry })
     );
 }
 
+function UnreadBadge({ count })
+{
+    if (!count)
+        return null;
+    return (
+        <span className='absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-[18px] text-center pointer-events-none'>
+            {count > 99 ? '99+' : count}
+        </span>
+    );
+}
+
 function typingLabel(typing)
 {
     if (typing.length === 1)
@@ -84,7 +95,7 @@ function SettingToggle({ label, description, checked, onChange })
     );
 }
 
-export default function MeetHeader({ fullScreen, participants = [], localRole = '', isStaff = false, moderation, settings, onUpdateSettings, typing = [], onTyping, messages = [], hasOlderMessages = false, loadingOlderMessages = false, onSendMessage, onRetryMessage, onLoadOlderMessages })
+export default function MeetHeader({ fullScreen, participants = [], localRole = '', isStaff = false, moderation, settings, onUpdateSettings, typing = [], onTyping, messages = [], hasOlderMessages = false, joinedAtMessageId = 0, loadingOlderMessages = false, onSendMessage, onRetryMessage, onLoadOlderMessages })
 {
     const [actionsFor, setActionsFor] = useState(null);
     const [menuOpen, setMenuOpen] = useState(false);
@@ -95,6 +106,18 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
     // Only a new latest message scrolls to the bottom, not loading older ones.
     const lastMessageKey = messages.at(-1)?.key;
     const localUserId = participants.find((participant) => participant.isLocal)?.userId;
+    // Messages from others newer than what the chat last showed are unread.
+    const [readUpToId, setReadUpToId] = useState(0);
+    const chatVisible = menuOpen && menuPage === 'chat';
+    const newestMessageId = messages.reduce((max, message) => Math.max(max, message.id || 0), 0);
+    const readCursor = Math.max(readUpToId, joinedAtMessageId);
+    const unreadCount = chatVisible ? 0 : messages.filter((message) => message.id > readCursor && message.userId !== localUserId).length;
+
+    useEffect(() => {
+        if (chatVisible)
+            setReadUpToId((current) => Math.max(current, newestMessageId));
+    }, [chatVisible, newestMessageId]);
+
     const namesById = new Map(participants.filter((participant) => participant.userId).map((participant) => [participant.userId, participant.name]));
     const closeMenuTimerRef = useRef(null);
 
@@ -187,7 +210,11 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
             {!menuOpen && (
                 <div className='ml-auto'>
                     <ControlsButtons buttons={[
-                        { icon: icons.chatIcon(20, 20), onClick: handleChatClick },
+                        {
+                            icon: <span className='relative inline-flex'>{icons.chatIcon(20, 20)}<UnreadBadge count={unreadCount} /></span>,
+                            onClick: handleChatClick,
+                            label: unreadCount ? `Chat, ${unreadCount} unread` : 'Chat',
+                        },
                         { icon: icons.usersIcon(20, 20), onClick: handleUsersClick }
                     ]} containerClassName='gap-2 sm:gap-4 px-1 py-1' buttonClassName='text-base sm:text-xl p-1 cursor-pointer'/>
                 </div>
@@ -204,7 +231,7 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
                                 onClick={() => setMenuPage('chat')}
                                 className={menuPage === 'chat' ? 'flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm sm:text-base font-montserrat bg-overlay-white_10 text-primary-white border-r border-overlay-white_40' : 'flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm sm:text-base font-montserrat text-primary-white/80 border-r border-overlay-white_40'}
                             >
-                                {icons.chatIcon(20, 20, 1.8)}
+                                <span className='relative inline-flex'>{icons.chatIcon(20, 20, 1.8)}<UnreadBadge count={unreadCount} /></span>
                                 Chat
                             </button>
                             <button
