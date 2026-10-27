@@ -108,6 +108,9 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
     const localUserId = participants.find((participant) => participant.isLocal)?.userId;
     // Messages from others newer than what the chat last showed are unread.
     const [readUpToId, setReadUpToId] = useState(0);
+    const [unreadMarkerKey, setUnreadMarkerKey] = useState(null);
+    const unreadMarkerRef = useRef(null);
+    const pendingScrollRef = useRef(null);
     const chatVisible = menuOpen && menuPage === 'chat';
     const newestMessageId = messages.reduce((max, message) => Math.max(max, message.id || 0), 0);
     const readCursor = Math.max(readUpToId, joinedAtMessageId);
@@ -171,12 +174,32 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
         };
     }, []);
 
+    // Opening the chat lands on the first unread message, under a divider;
+    // with nothing unread, and for new messages while it is open, the bottom.
     useEffect(() => {
-        if (menuPage !== 'chat')
+        if (!chatVisible) {
+            setUnreadMarkerKey(null);
             return;
+        }
+        // Read at the moment the chat opens, before it marks everything read.
+        const firstUnread = messages.find((message) => message.id > readCursor && message.userId !== localUserId);
+        setUnreadMarkerKey(firstUnread?.key ?? null);
+        pendingScrollRef.current = firstUnread ? 'unread' : 'bottom';
+    }, [chatVisible]);
 
-        messagesEndRef.current?.scrollIntoView({ block: 'end' });
-    }, [lastMessageKey, menuPage, menuOpen]);
+    useEffect(() => {
+        if (!chatVisible)
+            return;
+        if (pendingScrollRef.current === 'unread') {
+            // The divider renders once unreadMarkerKey is set.
+            if (!unreadMarkerRef.current)
+                return;
+            unreadMarkerRef.current.scrollIntoView({ block: 'start' });
+        } else {
+            messagesEndRef.current?.scrollIntoView({ block: 'end' });
+        }
+        pendingScrollRef.current = null;
+    }, [chatVisible, unreadMarkerKey, lastMessageKey]);
 
     const handleChatClick = (e) => {
         e.stopPropagation();
@@ -273,13 +296,21 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
                                         {messages.map((message) => {
                                             const isOwn = message.userId === localUserId;
                                             return (
-                                                <ChatMessage
-                                                    key={message.key}
-                                                    message={message}
-                                                    isOwn={isOwn}
-                                                    name={isOwn ? 'You' : namesById.get(message.userId) || `User #${message.userId}`}
-                                                    onRetry={onRetryMessage}
-                                                />
+                                                <div key={message.key}>
+                                                    {message.key === unreadMarkerKey && (
+                                                        <div ref={unreadMarkerRef} className='flex items-center gap-3 mb-4 text-xs text-red-300 font-montserrat'>
+                                                            <span className='h-px flex-1 bg-red-400/60'></span>
+                                                            New messages
+                                                            <span className='h-px flex-1 bg-red-400/60'></span>
+                                                        </div>
+                                                    )}
+                                                    <ChatMessage
+                                                        message={message}
+                                                        isOwn={isOwn}
+                                                        name={isOwn ? 'You' : namesById.get(message.userId) || `User #${message.userId}`}
+                                                        onRetry={onRetryMessage}
+                                                    />
+                                                </div>
                                             );
                                         })}
                                         <div ref={messagesEndRef}></div>
