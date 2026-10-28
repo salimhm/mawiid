@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,7 +20,8 @@ LANGUAGES: dict[str, Language] = {
     "ar-SA": Language("ar"),
     "zh-CN": Language("zh", script="simplified"),
     "zh-TW": Language("zh", script="traditional"),
-    # "ar-MA" (Darija) comes later with its own engine.
+    # Whisper has no Darija token; Darija models are trained under "ar".
+    "ar-MA": Language("ar"),
 }
 
 # Engines tried in order for each language. Engines that are not loaded
@@ -30,7 +32,12 @@ DEFAULT_ROUTES: dict[str, list[str]] = {
     "ar-SA": ["voxtral", "whisper"],
     "zh-CN": ["voxtral", "whisper"],
     "zh-TW": ["voxtral", "whisper"],
+    # Stock Whisper only as a last resort: it hears Darija as Arabic and misses most dialect words.
+    "ar-MA": ["whisper-darija", "whisper"],
 }
+
+# Written by scripts/convert_darija_model.py; data/ is git-ignored.
+DEFAULT_DARIJA_MODEL_PATH = Path(__file__).resolve().parents[3] / "data" / "models" / "whisper-darija-ct2"
 
 
 def _env(name: str, default: str) -> str:
@@ -63,10 +70,18 @@ class WhisperSettings:
     min_avg_logprob: float = -1.0
 
 
+def _darija_settings() -> WhisperSettings:
+    # Same tuning as the main Whisper engine, different weights.
+    return WhisperSettings(model=_env("DARIJA_MODEL", str(DEFAULT_DARIJA_MODEL_PATH)))
+
+
 @dataclass(frozen=True, slots=True)
 class FailoverSettings:
     cooldown_s: float = 60.0  # how long a failed engine is skipped before it is retried
-    slow_call_s: float = 3.0  # a call slower than this counts as a failure (engine overloaded)
+    # A call counts as a failure (engine overloaded) only when it is both long and slower than the
+    # audio it covered: a 6 s final for a 15 s phrase still keeps up and must not demote a better model.
+    slow_call_s: float = 3.0
+    max_real_time_factor: float = 1.0
     max_replay_s: float = 30.0  # audio kept since the last final, replayed into the backup engine
 
 
@@ -74,5 +89,6 @@ class FailoverSettings:
 class SttSettings:
     vad: VadSettings = field(default_factory=VadSettings)
     whisper: WhisperSettings = field(default_factory=WhisperSettings)
+    darija: WhisperSettings = field(default_factory=_darija_settings)
     failover: FailoverSettings = field(default_factory=FailoverSettings)
     routes: dict[str, list[str]] = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_ROUTES.items()})
