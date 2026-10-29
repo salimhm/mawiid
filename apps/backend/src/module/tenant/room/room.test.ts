@@ -20,7 +20,7 @@ afterAll(() => {
   else process.env.ENV = previous_env
 })
 
-process.env.JWT_SECRET_KEY ||= 'room-test-secret'
+process.env.JWT_SECRET_KEY = 'mawiid-test-jwt-secret'
 
 function create_token(user_id: number) {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
@@ -34,7 +34,7 @@ const { controller_room } = await import('@module/tenant/room/room.controller')
 
 function create_fixture() {
   const user = {
-    findFirst: mock(async (): Promise<{ user_id: number } | null> => ({ user_id: 1 })),
+    findFirst: mock(async (): Promise<{ user_id: number; user_session_version: number } | null> => ({ user_id: 1, user_session_version: 0 })),
     count: mock(async (input: { where: { user_id: { in: number[] } } }) => input.where.user_id.in.length),
   }
   const vault = {
@@ -226,7 +226,7 @@ describe('POST /room/join', () => {
     fixture.user.findFirst.mockResolvedValue(null)
     const response = await create_app(fixture.database).handle(join_request())
 
-    expect(response.status).toBe(403)
+    expect(response.status).toBe(401)
     expect(fixture.vault_db).not.toHaveBeenCalled()
   })
 
@@ -478,8 +478,8 @@ describe('DELETE /room', () => {
     fixture.user.findFirst.mockResolvedValue(null)
     const response = await create_app(fixture.database).handle(delete_request(body))
 
-    expect(response.status).toBe(403)
-    expect(fixture.user.findFirst).toHaveBeenCalledWith({ where: { user_id: 1, deleted_at: null } })
+    expect(response.status).toBe(401)
+    expect(fixture.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { user_id: 1, deleted_at: null } }))
     expect(fixture.vault_db).not.toHaveBeenCalled()
   })
 
@@ -626,8 +626,8 @@ describe('PATCH /room', () => {
     fixture.user.findFirst.mockResolvedValue(null)
     const response = await create_app(fixture.database).handle(update_request(body))
 
-    expect(response.status).toBe(403)
-    expect(fixture.user.findFirst).toHaveBeenCalledWith({ where: { user_id: 1, deleted_at: null } })
+    expect(response.status).toBe(401)
+    expect(fixture.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { user_id: 1, deleted_at: null } }))
     expect(fixture.room.update).not.toHaveBeenCalled()
   })
 
@@ -777,8 +777,8 @@ describe('GET /room', () => {
     fixture.user.findFirst.mockResolvedValue(null)
     const response = await create_app(fixture.database).handle(find_request())
 
-    expect(response.status).toBe(403)
-    expect(fixture.user.findFirst).toHaveBeenCalledWith({ where: { user_id: 1, deleted_at: null } })
+    expect(response.status).toBe(401)
+    expect(fixture.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { user_id: 1, deleted_at: null } }))
     expect(fixture.vault_db).not.toHaveBeenCalled()
   })
 

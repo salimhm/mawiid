@@ -10,7 +10,6 @@ import { useMediaDevices } from './hooks/useMediaDevices'
 export default function WelcomingPage() {
     const location = useLocation()
     const navigate = useNavigate()
-    const [mediaError, setMediaError] = useState('')
     const [actionError, setActionError] = useState('')
     const [creating, setCreating] = useState(false)
     const { user } = useAuth()
@@ -29,10 +28,9 @@ export default function WelcomingPage() {
         handleVideoChange,
         handleAudioChange,
         handleSpeakerChange,
-        requestMediaPermissions,
+        mediaError,
     } = useMediaDevices()
 
-    const hasPermissions = micPermission && camPermission
     const meetingMediaState = useMemo(() => ({
         micPermission,
         camPermission,
@@ -41,26 +39,8 @@ export default function WelcomingPage() {
         selectedDevices,
     }), [micPermission, camPermission, isMicActive, isCamActive, selectedDevices])
 
-    const ensureMediaPermissions = async () => {
-        if (hasPermissions)
-            return true
-
-        try {
-            await requestMediaPermissions()
-            return false
-        } catch {
-            setMediaError('Camera and microphone permission is required before joining the meeting')
-            return false
-        }
-    }
-
     const handleJoinMeet = async () => {
-        setMediaError('')
         setActionError('')
-
-        const canContinue = await ensureMediaPermissions()
-        if (!canContinue)
-            return
 
         if (isCreator) {
             setCreating(true)

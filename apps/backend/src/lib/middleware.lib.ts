@@ -16,13 +16,23 @@ export const lib_middleware_context = new Elysia({ name: 'lib_middleware_context
 export const lib_middleware_error = new Elysia({ name: 'lib_middleware_error' }).onError(
   { as: 'global' },
   ({ code, error, set }) => {
+    if (code === 'VALIDATION') {
+      set.status = lib_error.validation_error.status
+      const errors = new Map<string, { field: string; message: string }>()
+      for (const issue of error.all) {
+        const field = issue.path.replace(/^\//, '').replaceAll('/', '.') || (error.type === 'property' ? 'request' : error.type)
+        const message = typeof issue.schema?.error === 'string' ? issue.schema.error : 'Please check this field.'
+        errors.set(field, { field, message })
+      }
+      return {
+        code: lib_error.validation_error.code,
+        message: 'Please check the information you entered.',
+        errors: [...errors.values()],
+      }
+    }
     if (is_lib_error(error)) {
       set.status = error.status
-      return { code: error.code }
-    }
-    if (code === 'VALIDATION') {
-      set.status = lib_error.unprocessable_entity.status
-      return { code: lib_error.unprocessable_entity.code }
+      return { code: error.code, ...('message' in error ? { message: error.message } : {}) }
     }
     if (code === 'PARSE') {
       set.status = lib_error.bad_request.status

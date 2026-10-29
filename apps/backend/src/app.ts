@@ -1,5 +1,6 @@
 import '@lib/env.lib';
 import { Elysia } from 'elysia';
+import { openapi } from '@elysiajs/openapi';
 import { create_database_client } from '@db/client.db';
 import { create_redis_client } from '@storage/redis.storage';
 import { lib_middleware_error } from '@lib/middleware.lib';
@@ -21,6 +22,7 @@ if (import.meta.main) {
     const redis = create_redis_client();
     const port = Number(process.env.BACKEND_PORT) || 3000;
     const app = new Elysia()
+      .use(openapi())
       .decorate('database', database)
       .decorate('redis', redis)
       .use(lib_middleware_error)
