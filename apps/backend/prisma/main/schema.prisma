@@ -36,19 +36,21 @@ model Department {
 }
 
 model User {
-  user_id            Int       @id @default(autoincrement())
-  user_phone         String?
-  user_username      String?
-  user_email         String?
-  user_password_hash String?
-  user_first_name    String
-  user_last_name     String
-  user_image         String?
-  user_language      String?
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @default(now()) @updatedAt
-  deleted_at         DateTime?
-  members            Member[]
+  user_id                Int       @id @default(autoincrement())
+  user_phone             String?
+  user_username          String?
+  user_email             String?
+  user_email_verified_at DateTime?
+  user_password_hash     String?
+  user_session_version   Int       @default(0)
+  user_first_name        String
+  user_last_name         String
+  user_image             String?
+  user_language          String?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @default(now()) @updatedAt
+  deleted_at             DateTime?
+  members                Member[]
 
   @@unique([user_phone], map: "user_phone_idx", where: { deleted_at: null })
   @@unique([user_username], map: "user_username_idx", where: { deleted_at: null })

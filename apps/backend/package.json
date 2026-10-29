@@ -7,6 +7,7 @@
         "dev": "bun run --env-file=../../.env --watch src/app.ts",
         "typecheck": "bun x tsc --noEmit",
         "test": "bun test src",
+        "email:check": "bun run --env-file=../../.env scripts/check-email.ts",
         "db:migrate:main": "bun x prisma migrate dev --config prisma.main.config.ts",
         "db:migrate:tenant": "bun x prisma migrate dev --config prisma.tenant.config.ts",
         "db:generate": "bun x prisma generate --config prisma.main.config.ts && bun x prisma generate --config prisma.tenant.config.ts",
@@ -17,15 +18,18 @@
     },
     "dependencies": {
         "@elysiajs/jwt": "^1.4.2",
+        "@elysiajs/openapi": "^1.4.16",
         "@libsql/client": "^0.18.0",
         "@prisma/adapter-libsql": "7",
         "@prisma/client": "7",
         "elysia": "^1.4.30",
-        "livekit-server-sdk": "^2.19.1"
+        "livekit-server-sdk": "^2.19.1",
+        "nodemailer": "^10.2.1"
     },
     "devDependencies": {
         "@types/bun": "1.4.2",
         "@types/node": "^26.6.5",
+        "@types/nodemailer": "^8.0.2",
         "prisma": "7",
         "typescript": "5.9.3"
     }
