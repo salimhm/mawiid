@@ -1,5 +1,7 @@
 # Room implementation status
 
+Shared authentication now checks the main user's session version before room controllers run. A password reset invalidates earlier JWTs; missing/deleted users also receive `401 invalid-token` at that shared guard. Room permission and lifecycle logic is unchanged. Tests include the session version and reflect this shared authentication response.
+
 ## Implemented
 
 - `POST /room`, `GET /room`, `PATCH /room`, `DELETE /room`, and `POST /room/join` are implemented and registered on `rooms-module`.

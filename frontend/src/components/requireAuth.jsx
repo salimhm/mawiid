@@ -16,6 +16,6 @@ export default function RequireAuth({ children }) {
     if (isLoading)
         return <AuthLoading />
     if (!isSignedIn)
-        return <Navigate to='/login' replace state={{ from: { pathname: location.pathname, search: location.search, state: location.state } }} />
+        return <Navigate to='/' replace state={{ from: { pathname: location.pathname, search: location.search, state: location.state } }} />
     return children
 }

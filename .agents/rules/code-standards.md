@@ -10,6 +10,7 @@ trigger: always_on
 - **Strictly use module path aliases instead of relative paths: `@ai`, `@tool`, `@module`, `@lib`, `@db`, and `@<every-single-module-name>`**
 - **Strictly interact with the database through services only. Do not perform any queries or operations directly using the table schema**
 - Every implemented module must have its own `implementation.md` in its module directory. Keep it updated with each change: explain what is implemented, what remains missing, and how to test the current behavior. Include endpoint contracts, permissions, and known limitations where relevant so the team shares the same understanding. Keep existing planning documents separate from implementation status.
+- For every implemented or changed endpoint, include an example request with its HTTP method, path, required headers, query parameters or JSON body, and expected status and response. Include these examples in the module's `implementation.md` and the change report so the endpoint can be tested directly.
 
 # Naming Conventions
 

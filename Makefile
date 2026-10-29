@@ -72,6 +72,12 @@ backend: ## Run the local backend with the public LiveKit configuration
 		LIVEKIT_PUBLIC_URL="$${LIVEKIT_PUBLIC_URL:-$$LIVEKIT_URL}" \
 		LIVEKIT_API_KEY="$$LIVEKIT_API_KEY" \
 		LIVEKIT_API_SECRET="$$LIVEKIT_API_SECRET" \
+		PUBLIC_APP_URL="$${PUBLIC_APP_URL:-http://localhost:$(FRONTEND_PORT)}" \
+		SMTP_HOST="$$SMTP_HOST" \
+		SMTP_PORT="$$SMTP_PORT" \
+		SMTP_USER="$$SMTP_USER" \
+		SMTP_FROM="$$SMTP_FROM" \
+		GOOGLE_APP_PASSWORD="$$GOOGLE_APP_PASSWORD" \
 		bun run postman:dev
 
 frontend: ## Build and run the frontend in production on :3100, or FRONTEND_PORT

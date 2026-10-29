@@ -311,13 +311,19 @@ export function useRoom(roomUid, {
 
             if (room.localParticipant.permissions?.canPublish === false)
                 return
-            try {
-                if (initialCamOn)
+            if (initialCamOn) {
+                try {
                     await room.localParticipant.setCameraEnabled(true)
-                if (initialMicOn)
+                } catch {
+                    setNotice('Unable to access camera')
+                }
+            }
+            if (initialMicOn) {
+                try {
                     await room.localParticipant.setMicrophoneEnabled(true)
-            } catch {
-                setNotice('Unable to access your camera or microphone')
+                } catch {
+                    setNotice('Unable to access microphone')
+                }
             }
             refresh()
         }
