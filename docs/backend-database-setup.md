@@ -49,14 +49,14 @@ Keep the three Prisma packages on the same version. npm's `latest` tag for `pris
 
 Data is split into one shared main database and one separate database per user (the tenant database). Only the main database exists so far.
 
-|  | Main database | Tenant database |
-| --- | --- | --- |
-| How many | One: `mawiid-dev-main` on Turso | One per user; none created yet |
-| Holds | Users, plus the URL of each user's own database (`User.databaseUrl`) | That user's private data; the schema is a placeholder `User` model for now |
-| Schema file | `prisma/main/schema.prisma` | `prisma/tenant/schema.prisma` |
-| Client in code | `main_db` | `vault_db(url)`, one cached client per database |
-| Feature code | `src/module/main/*`: auth, user, organization, department, health | `src/module/tenant/*`: room, message, translation, access, audit |
-| Status | Live; both migrations applied and tested | Group-token connections implemented; created per person on their first room by `service_vault.create` |
+|                | Main database                                                        | Tenant database                                                                                       |
+| -------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| How many       | One: `mawiid-dev-main` on Turso                                      | One per user; none created yet                                                                        |
+| Holds          | Users, plus the URL of each user's own database (`User.databaseUrl`) | That user's private data; the schema is a placeholder `User` model for now                            |
+| Schema file    | `prisma/main/schema.prisma`                                          | `prisma/tenant/schema.prisma`                                                                         |
+| Client in code | `main_db`                                                            | `vault_db(url)`, one cached client per database                                                       |
+| Feature code   | `src/module/main/*`: auth, user, organization, department, health    | `src/module/tenant/*`: room, message, translation, access, audit                                      |
+| Status         | Live; both migrations applied and tested                             | Group-token connections implemented; created per person on their first room by `service_vault.create` |
 
 Why separate databases: one user's data cannot leak into another's through a forgotten `WHERE` clause, and a user's data can be exported or deleted as a single database. `vault_db` keeps at most `DB_MAX_CACHED_TENANTS` (default 100) connections open and closes the least recently used.
 

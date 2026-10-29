@@ -116,4 +116,3 @@ model Audit {
   @@index([deleted_at], map: "audit_deleted_at_idx")
   @@map("audit")
 }
-
