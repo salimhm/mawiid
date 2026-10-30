@@ -141,7 +141,7 @@ LiveKit identities have the form `user_<user_id>`. The role is exposed as the pa
 
 ---
 
-## 3. Room settings: lock and lobby
+## 3. Room settings: lock, lobby and live translation
 
 ### `PATCH /room` (host or moderator)
 
@@ -149,7 +149,8 @@ LiveKit identities have the form `user_<user_id>`. The role is exposed as the pa
 {
   "room_uid": "7d0f6c1e-...",
   "room_locked": true, // optional
-  "room_lobby_enabled": true // optional
+  "room_lobby_enabled": true, // optional
+  "room_translation_enabled": true // optional
 }
 ```
 
@@ -168,6 +169,19 @@ Returns `{ "data": <room> }`. If nothing changes, it returns the room without wr
 
 - **Locked**: nobody except the host can get a join token. People already connected stay connected.
 - **Lobby**: non-staff members who are not `active` must be admitted before they get a token.
+- **Live translation**: the backend dispatches the AI translation agent (`LIVEKIT_TRANSLATOR_AGENT`, default `mawiid-translator`) into the live room. If nobody has joined yet, the LiveKit room is created with the agent on the first `POST /room/join`. Turning it off removes the dispatch, and the agent leaves when it sees `room_translation_enabled: false` in the metadata. The agent joins as a LiveKit participant with `kind` agent (`participant.isAgent` in `livekit-client`): do not show it as a tile. Captions arrive as text streams (section 8). The worker must be running (`make ai`, see `services/ai/README.md`), otherwise nothing joins.
+
+Example (host token, room live):
+
+```http
+PATCH /room
+Authorization: Bearer <host access token>
+Content-Type: application/json
+
+{ "room_uid": "7d0f6c1e-...", "room_translation_enabled": true }
+```
+
+`200` with `{ "data": { ..., "room_translation_enabled": true } }`; the agent joins within a few seconds. A member who is not host or moderator gets `403 { "code": "forbidden" }`.
 
 ---
 
@@ -385,6 +399,17 @@ Limits (`room_signal_limit`):
 - Reactions: at most 16 characters, at most one every 250 ms.
 
 Moderation messages must be ignored if they come from a participant: only messages with no sender (i.e. from the server) are trusted. The client helper below already does this.
+
+### Live captions (text streams from the AI agent)
+
+When live translation is on, the AI agent publishes captions as LiveKit text streams (`room.registerTextStreamHandler(topic, handler)`):
+
+| Topic                   | Sent to                                                       | Text                                    |
+| ----------------------- | ------------------------------------------------------------- | --------------------------------------- |
+| `lk.transcription`      | everyone                                                      | what the speaker said, in their language |
+| `mawiid.translation.v1` | only participants whose `mawiid.language` is that language    | the translation                         |
+
+Both carry the attributes `lk.segment_id` (one phrase), `lk.transcribed_track_id` (the speaker's microphone track), `lk.transcription_final` (`"true"` or `"false"`) and `mawiid.language` (the caption's language, for example `fr-FR`). A phrase's partial captions and its final one share a segment id; replace the partial with the final, and the original with its translation. Listeners whose language is the spoken one only get the original. Only accept captions whose sender `isAgent`. The language a participant speaks and reads is their `mawiid.language` attribute, changed with `PATCH /participant` (`participant_language`: `en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`). The frontend implementation is `frontend/src/services/roomCaption.js`.
 
 ---
 

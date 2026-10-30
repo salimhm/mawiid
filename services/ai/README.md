@@ -96,3 +96,39 @@ On a GPU, CTranslate2 (Whisper and MADLAD) needs CUDA 12 cuBLAS and cuDNN 9. Wit
 ```
 
 Measured on an RTX 4060 laptop GPU with Whisper `small` and MADLAD on the same GPU, a room with all 5 languages, and FLEURS clips streamed at real-time pace. From the end of the last word to every subtitle being ready: median 1.24 s, p95 2.38 s, max 2.81 s (30 finals). This includes the 500 ms pause that ends a phrase. The tail comes from long Chinese and Arabic finals. Translation quality: mean chrF 54.3 over 20 language pairs.
+
+
+## Live worker (`mawiid_ai.agent`)
+
+Links the two modules above to the app's calls. It is a LiveKit agent (`livekit-agents`) named `mawiid-translator`: LiveKit sends it only the rooms the backend dispatches it to, which happens when a host turns on live translation (`PATCH /room` with `room_translation_enabled: true`, or the room is created with it on). It leaves when translation is turned off or the room closes.
+
+In each room it:
+
+1. Subscribes to every person's microphone (16 kHz mono) and runs one speech-to-text stream per speaker, in the language of the speaker's `mawiid.language` attribute (`en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`; other codes fall back to the language without region, then to `en-US`).
+2. Sends each partial and final result to everyone on the `lk.transcription` text-stream topic.
+3. Translates each final once per language that listeners picked (the same `mawiid.language` attribute) and sends it on `mawiid.translation.v1`, only to the listeners of that language. Listeners of the spoken language only get the original.
+4. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s).
+
+Without the converted MADLAD model, step 3 is skipped and everyone gets captions in the spoken language. The topics and attributes are described in `apps/backend/src/module/main/participants/integration.md` (section 8). The code: `pipeline.py` (one room, no LiveKit code, tested with fakes in `tests/test_pipeline.py`), `uploader.py` (transcript batches), `worker.py` (LiveKit wiring). Rooms run as threads in one process, so every room shares the models loaded once.
+
+### Running it
+
+From the repository root, with the backend's LiveKit settings in `.env`:
+
+```sh
+make ai-install    # .venv with Python 3.11+ (make ai-install PYTHON=python3.12)
+make infra seed    # local LiveKit and Redis, test users
+make backend       # in another terminal
+make ai            # in another terminal: python -m mawiid_ai.agent dev
+```
+
+Or directly: `.venv/bin/python -m mawiid_ai.agent dev` (`start` in production) with these variables:
+
+| Variable                                             | Purpose                                                         |
+| ---------------------------------------------------- | --------------------------------------------------------------- |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | The LiveKit server, same project as the backend                 |
+| `LIVEKIT_TRANSLATOR_AGENT`                           | Agent name, default `mawiid-translator`; must match the backend |
+| `MAWIID_BACKEND_URL`, `INTERNAL_SERVICE_TOKEN`       | Where to save transcripts; without them nothing is saved        |
+| `MAWIID_STT_*`, `MAWIID_MT_*`                        | Model settings (sections above)                                 |
+
+The first start downloads Whisper. On a machine without CUDA libraries, set `MAWIID_STT_WHISPER_DEVICE=cpu` (partials are then off, finals arrive about half a second after the speaker pauses).

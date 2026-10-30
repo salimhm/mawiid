@@ -4,7 +4,14 @@ import type { create_database_client } from '@db/client.db'
 import type { Room, RoomMember } from '@db/generated/tenant/client.ts'
 import type { lib_dto_payload } from '@lib/dto.lib'
 import { lib_error } from '@lib/error.lib'
-import { lib_livekit_call, lib_livekit_ensure, lib_livekit_room, lib_livekit_token } from '@lib/livekit.lib'
+import {
+  lib_livekit_call,
+  lib_livekit_ensure,
+  lib_livekit_room,
+  lib_livekit_token,
+  lib_livekit_translator_start,
+  lib_livekit_translator_stop,
+} from '@lib/livekit.lib'
 import { room_socket_event } from '@contracts/room'
 import { service_audit } from '@module/main/participants/audit.service'
 import { service_event } from '@module/main/participants/event.service'
@@ -115,12 +122,21 @@ export const service_room = {
     const { vault, room, member } = await service_room.authorize(body.room_uid, payload, database, redis)
     service_room.moderate(member)
     if (room.room_status === 'closed') throw lib_error.room_closed
-    const previous = { room_locked: room.room_locked, room_lobby_enabled: room.room_lobby_enabled }
+    const previous = {
+      room_locked: room.room_locked,
+      room_lobby_enabled: room.room_lobby_enabled,
+      room_translation_enabled: room.room_translation_enabled,
+    }
     const next = {
       room_locked: body.room_locked ?? room.room_locked,
       room_lobby_enabled: body.room_lobby_enabled ?? room.room_lobby_enabled,
+      room_translation_enabled: body.room_translation_enabled ?? room.room_translation_enabled,
     }
-    if (next.room_locked === previous.room_locked && next.room_lobby_enabled === previous.room_lobby_enabled) {
+    if (
+      next.room_locked === previous.room_locked &&
+      next.room_lobby_enabled === previous.room_lobby_enabled &&
+      next.room_translation_enabled === previous.room_translation_enabled
+    ) {
       return { data: room }
     }
     const [data] = await vault.$transaction([
@@ -139,7 +155,17 @@ export const service_room = {
       }),
     ])
     await service_room.sync(data)
+    if (next.room_translation_enabled !== previous.room_translation_enabled) await service_room.translate(data)
     return { data }
+  },
+
+  async translate(room: Room) {
+    try {
+      if (room.room_translation_enabled) await lib_livekit_translator_start(room.room_uid)
+      else await lib_livekit_translator_stop(room.room_uid)
+    } catch {
+      console.error('Could not update the translator agent in LiveKit', room.room_uid)
+    }
   },
 
   async knock(vault: room_vault, room: Room, user: room_knock_user, redis: RedisClient) {
@@ -174,6 +200,7 @@ export const service_room = {
             room_uid: room.room_uid,
             room_max_participants: room.room_max_participants,
             room_metadata: service_room.metadata(room),
+            room_translation_enabled: room.room_translation_enabled,
           })
           if (!live) throw lib_error.livekit_unavailable
           return live

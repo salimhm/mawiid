@@ -1,6 +1,8 @@
 import {
   AccessToken,
+  AgentDispatchClient,
   DataPacket_Kind,
+  RoomAgentDispatch,
   RoomServiceClient,
   ServerError,
   TrackSource,
@@ -12,9 +14,11 @@ import { lib_error } from '@lib/error.lib'
 
 const api_key = process.env.LIVEKIT_API_KEY!
 const api_secret = process.env.LIVEKIT_API_SECRET!
+const translator_agent = process.env.LIVEKIT_TRANSLATOR_AGENT || 'mawiid-translator'
 const encoder = new TextEncoder()
 
 export const lib_livekit_room = new RoomServiceClient(process.env.LIVEKIT_URL!, api_key, api_secret)
+export const lib_livekit_dispatch = new AgentDispatchClient(process.env.LIVEKIT_URL!, api_key, api_secret)
 export const lib_livekit_webhook = new WebhookReceiver(api_key, api_secret)
 
 export const lib_livekit_track_source: Record<string, TrackSource> = {
@@ -89,7 +93,12 @@ export async function lib_livekit_token(
   return await token.toJwt()
 }
 
-export async function lib_livekit_ensure(room: { room_uid: string; room_max_participants: number; room_metadata: string }) {
+export async function lib_livekit_ensure(room: {
+  room_uid: string
+  room_max_participants: number
+  room_metadata: string
+  room_translation_enabled: boolean
+}) {
   const rooms = await lib_livekit_call(() => lib_livekit_room.listRooms([room.room_uid]))
   const existing = rooms?.[0]
   if (existing) return existing
@@ -100,7 +109,35 @@ export async function lib_livekit_ensure(room: { room_uid: string; room_max_part
       departureTimeout: 20,
       maxParticipants: room.room_max_participants,
       metadata: room.room_metadata,
+      agents: room.room_translation_enabled ? [lib_livekit_translator(room.room_uid)] : undefined,
     }),
+  )
+}
+
+export function lib_livekit_translator(room_uid: string) {
+  return new RoomAgentDispatch({ agentName: translator_agent, metadata: JSON.stringify({ room_uid }) })
+}
+
+async function lib_livekit_translator_dispatch(room_uid: string) {
+  const dispatches = await lib_livekit_call(() => lib_livekit_dispatch.listDispatch(room_uid))
+  return dispatches?.filter((dispatch) => dispatch.agentName === translator_agent) ?? []
+}
+
+export async function lib_livekit_translator_start(room_uid: string) {
+  const rooms = await lib_livekit_call(() => lib_livekit_room.listRooms([room_uid]))
+  if (!rooms?.length) return null
+  const [existing] = await lib_livekit_translator_dispatch(room_uid)
+  if (existing) return existing
+  const dispatch = lib_livekit_translator(room_uid)
+  return await lib_livekit_call(() =>
+    lib_livekit_dispatch.createDispatch(room_uid, dispatch.agentName, { metadata: dispatch.metadata }),
+  )
+}
+
+export async function lib_livekit_translator_stop(room_uid: string) {
+  const dispatches = await lib_livekit_translator_dispatch(room_uid)
+  await Promise.all(
+    dispatches.map((dispatch) => lib_livekit_call(() => lib_livekit_dispatch.deleteDispatch(dispatch.id, room_uid))),
   )
 }
 

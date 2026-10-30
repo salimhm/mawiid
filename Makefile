@@ -6,6 +6,8 @@ SHELL := /bin/bash
 
 BACKEND  := apps/backend
 FRONTEND := frontend
+AI       := services/ai
+PYTHON   ?= python3
 
 BACKEND_URL   ?= http://localhost:3000
 FRONTEND_PORT ?= 3100
@@ -16,8 +18,8 @@ REDIS_IMAGE       := redis:7
 LIVEKIT_CONTAINER := mawiid-livekit
 LIVEKIT_IMAGE     := livekit/livekit-server
 
-.PHONY: help install infra redis livekit infra-down infra-logs seed backend frontend dev stop users \
-        tokens typecheck build test-unit check smoke test clean
+.PHONY: help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
+        tokens typecheck build test-unit test-ai check smoke test clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -28,6 +30,9 @@ install: ## Install dependencies and generate the Prisma clients
 	bun install
 	cd $(BACKEND) && bun run db:generate
 	cd $(FRONTEND) && bun install
+
+ai-install: ## Create the AI worker's Python environment (Python 3.11+: make ai-install PYTHON=python3.12)
+	cd $(AI) && $(PYTHON) -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
 # ---------------------------------------------------------------- infrastructure
 
@@ -80,6 +85,22 @@ backend: ## Run the local backend with the public LiveKit configuration
 		GOOGLE_APP_PASSWORD="$$GOOGLE_APP_PASSWORD" \
 		bun run postman:dev
 
+# Same LiveKit server as `make backend`, and the backend's internal token from postman/.env.postman.
+# Model settings (MAWIID_STT_*, MAWIID_MT_*) come from .env. The first run downloads Whisper.
+ai: ## Run the AI translation worker (live captions; make ai-install first)
+	@set -a; . ./.env; set +a; \
+		if [ -z "$$LIVEKIT_URL" ] || [ -z "$$LIVEKIT_API_KEY" ] || [ -z "$$LIVEKIT_API_SECRET" ]; then \
+			echo "Missing LIVEKIT_URL, LIVEKIT_API_KEY, or LIVEKIT_API_SECRET in .env"; exit 1; \
+		fi; \
+		if [ ! -x $(AI)/.venv/bin/python ]; then echo "Run make ai-install first"; exit 1; fi; \
+		livekit_url="$$LIVEKIT_URL"; livekit_key="$$LIVEKIT_API_KEY"; livekit_secret="$$LIVEKIT_API_SECRET"; \
+		set -a; . $(BACKEND)/postman/.env.postman; set +a; \
+		cd $(AI) && \
+		LIVEKIT_URL="$$livekit_url" \
+		LIVEKIT_API_KEY="$$livekit_key" \
+		LIVEKIT_API_SECRET="$$livekit_secret" \
+		.venv/bin/python -m mawiid_ai.agent dev
+
 frontend: ## Build and run the frontend in production on :3100, or FRONTEND_PORT
 	cd $(FRONTEND) && PORT=$(FRONTEND_PORT) BACKEND_URL=$(BACKEND_URL) bun run build && PORT=$(FRONTEND_PORT) BACKEND_URL=$(BACKEND_URL) bun run start
 
@@ -121,6 +142,9 @@ build: ## Production build of the frontend (frontend/dist)
 test-unit: ## Run backend unit tests
 	@if find $(BACKEND)/src -name '*.test.ts' | grep -q .; then cd $(BACKEND) && bun test src; \
 		else echo "No backend unit tests yet (*.test.ts under $(BACKEND)/src)"; fi
+
+test-ai: ## Run the AI worker's tests (make ai-install first; model tests skip without models)
+	cd $(AI) && .venv/bin/python -m pytest -q
 
 check: typecheck test-unit build ## Static checks, no services needed
 

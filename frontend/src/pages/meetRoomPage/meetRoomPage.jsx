@@ -1,6 +1,7 @@
 import MeetHeader from './components/MeetHeader'
 import MeetMain from './components/MeetMain'
 import MeetControls from './components/MeetControls'
+import MeetCaptions from './components/MeetCaptions'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useRoom } from '../../hooks/useRoom'
@@ -75,6 +76,7 @@ export default function MeetRoomPage() {
                 micOn={room.localUser.isMicOn}
                 camOn={room.localUser.isCamOn}
                 handRaised={room.localUser.handRaised}
+                language={room.localUser.language}
                 onMicToggle={room.toggleMic}
                 onCamToggle={room.toggleCam}
                 onScreenShareToggle={room.toggleScreenShare}
@@ -84,6 +86,8 @@ export default function MeetRoomPage() {
                 onLeave={handleLeave}
                 roomCode={room.roomCode}
             />
+
+            {room.settings.translation && <MeetCaptions captions={room.captions} />}
 
             {overlayMessage && (
                 <div className='fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-black/85 backdrop-blur-sm px-6 text-center'>

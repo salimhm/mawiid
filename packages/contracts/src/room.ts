@@ -3,6 +3,8 @@ export const room_topic = {
   moderation: 'mawiid.moderation.v1',
   typing: 'mawiid.typing.v1',
   reaction: 'mawiid.reaction.v1',
+  transcription: 'lk.transcription',
+  translation: 'mawiid.translation.v1',
 } as const
 
 export const room_attribute = {
@@ -10,6 +12,13 @@ export const room_attribute = {
   role: 'mawiid.role',
   language: 'mawiid.language',
   hand_raised: 'mawiid.hand_raised',
+} as const
+
+export const room_caption_attribute = {
+  segment_id: 'lk.segment_id',
+  track_id: 'lk.transcribed_track_id',
+  final: 'lk.transcription_final',
+  language: 'mawiid.language',
 } as const
 
 export const room_socket_event = {

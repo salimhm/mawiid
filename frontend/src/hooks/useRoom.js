@@ -3,6 +3,7 @@ import { DisconnectReason, Room, RoomEvent, Track } from 'livekit-client'
 import { api, ApiError, errorMessage } from '../services/api'
 import { createEventSocket } from '../services/eventSocket'
 import { createRoomSignal } from '../services/roomSignal'
+import { createRoomCaptions } from '../services/roomCaption'
 
 // Keep in sync with packages/contracts/src/room.ts
 const ATTRIBUTE = {
@@ -16,6 +17,8 @@ const REACTION_VISIBLE_MS = 4000
 const STAFF_ROLES = ['host', 'moderator']
 const MESSAGE_PAGE = 50
 const MESSAGE_PAGE_MAX = 100
+const CAPTION_VISIBLE_MS = 6000
+const CAPTION_MAX = 3
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -56,13 +59,37 @@ function mergeMessages(current, incoming) {
 const lastSavedId = (messages) => messages.reduce((max, message) => Math.max(max, message.id || 0), 0)
 
 // Room settings travel in the LiveKit room metadata (see service_room.metadata).
+const toSettings = (room) => ({
+    locked: Boolean(room.room_locked),
+    lobby: Boolean(room.room_lobby_enabled),
+    translation: Boolean(room.room_translation_enabled),
+})
+
 function readSettings(metadata) {
     try {
-        const parsed = JSON.parse(metadata || '{}')
-        return { locked: Boolean(parsed.room_locked), lobby: Boolean(parsed.room_lobby_enabled) }
+        return toSettings(JSON.parse(metadata || '{}'))
     } catch {
         return null
     }
+}
+
+const baseLanguage = (code) => (code || '').split('-')[0].toLowerCase()
+
+// The participant who published the captioned track (the speaker).
+function trackOwner(room, trackId) {
+    return [room.localParticipant, ...room.remoteParticipants.values()]
+        .find((participant) => participant.trackPublications.has(trackId)) || null
+}
+
+// A translation replaces the original of the same segment, never the other way round:
+// the original final arrives first, its translation a moment later.
+function mergeCaption(current, caption) {
+    const existing = current.find((entry) => entry.id === caption.id)
+    if (!existing)
+        return [...current, caption].slice(-CAPTION_MAX)
+    if (existing.translated && !caption.translated)
+        return current
+    return current.map((entry) => (entry.id === caption.id ? caption : entry))
 }
 
 export function useRoom(roomUid, {
@@ -84,7 +111,8 @@ export function useRoom(roomUid, {
     const [knocks, setKnocks] = useState([])
     const [typing, setTyping] = useState([])
     const [reactions, setReactions] = useState([])
-    const [settings, setSettings] = useState({ locked: false, lobby: false })
+    const [settings, setSettings] = useState({ locked: false, lobby: false, translation: false })
+    const [captions, setCaptions] = useState([])
     const [messages, setMessages] = useState([])
     const [hasOlderMessages, setHasOlderMessages] = useState(false)
     // Newest message_id in the history loaded on join: those count as read.
@@ -162,8 +190,39 @@ export function useRoom(roomUid, {
         if (!room)
             return
         setLocalUser(toParticipant(room.localParticipant, true))
-        setParticipants([...room.remoteParticipants.values()].map((p) => toParticipant(p, false)))
+        // The AI translation worker joins as a participant too; it has no tile.
+        setParticipants([...room.remoteParticipants.values()].filter((p) => !p.isAgent).map((p) => toParticipant(p, false)))
     }, [toParticipant])
+
+    const showCaption = useCallback((caption) => {
+        const room = roomRef.current
+        if (!room)
+            return
+        const speaker = trackOwner(room, caption.trackId)
+        const myLanguage = room.localParticipant.attributes?.[ATTRIBUTE.language]
+        setCaptions((prev) => mergeCaption(prev, {
+            id: caption.segmentId,
+            speaker: speaker === room.localParticipant ? 'You' : speaker?.name || speaker?.identity || 'Speaker',
+            text: caption.text,
+            final: caption.final,
+            translated: caption.translated,
+            foreign: !caption.translated && Boolean(myLanguage) && baseLanguage(caption.language) !== baseLanguage(myLanguage),
+            shownAt: Date.now(),
+        }))
+    }, [])
+
+    useEffect(() => {
+        if (!captions.length)
+            return
+        const timer = setInterval(() => {
+            const now = Date.now()
+            setCaptions((prev) => {
+                const kept = prev.filter((caption) => now - caption.shownAt < CAPTION_VISIBLE_MS)
+                return kept.length === prev.length ? prev : kept
+            })
+        }, 1000)
+        return () => clearInterval(timer)
+    }, [captions.length])
 
     useEffect(() => {
         if (!roomUid)
@@ -232,11 +291,15 @@ export function useRoom(roomUid, {
             onReaction: (participant, event) => showReaction(participant.name || participant.identity, event),
         })
         signalRef.current = signal
+        const captionFeed = createRoomCaptions(room, { onCaption: showCaption })
 
         const onMetadata = (metadata) => {
             const next = readSettings(metadata)
-            if (next)
-                setSettings(next)
+            if (!next)
+                return
+            setSettings(next)
+            if (!next.translation)
+                setCaptions([])
         }
 
         const onDisconnected = (reason) => {
@@ -306,7 +369,7 @@ export function useRoom(roomUid, {
                     if (!cancelled)
                         setNotice('Unable to load the chat history')
                 })
-            setSettings(readSettings(room.metadata) || { locked: Boolean(joined.room?.room_locked), lobby: Boolean(joined.room?.room_lobby_enabled) })
+            setSettings(readSettings(room.metadata) || toSettings(joined.room || {}))
             refresh()
 
             if (room.localParticipant.permissions?.canPublish === false)
@@ -329,6 +392,7 @@ export function useRoom(roomUid, {
         }
 
         setMessages([])
+        setCaptions([])
         setHasOlderMessages(false)
         setJoinedAtMessageId(0)
         start().catch((err) => {
@@ -342,6 +406,7 @@ export function useRoom(roomUid, {
             cancelled = true
             socket.close()
             signal.close()
+            captionFeed.close()
             signalRef.current = null
             room.removeAllListeners()
             room.disconnect()
@@ -351,7 +416,7 @@ export function useRoom(roomUid, {
                 roomRef.current = null
         }
         // Device choices only apply when joining.
-    }, [roomUid, refresh, showReaction, addMessages, catchUpMessages])
+    }, [roomUid, refresh, showReaction, showCaption, addMessages, catchUpMessages])
 
     const runLocal = useCallback(async (action, failure) => {
         const room = roomRef.current
@@ -491,7 +556,9 @@ export function useRoom(roomUid, {
 
     const updateSettings = useCallback((changes) => moderate(async () => {
         const data = await api.updateRoom(roomUid, changes)
-        setSettings({ locked: Boolean(data.room_locked), lobby: Boolean(data.room_lobby_enabled) })
+        setSettings(toSettings(data))
+        if (!data.room_translation_enabled)
+            setCaptions([])
     }), [moderate, roomUid])
 
     const leave = useCallback(() => {
@@ -518,6 +585,7 @@ export function useRoom(roomUid, {
         retryMessage,
         loadOlderMessages,
         settings,
+        captions,
         isStaff: STAFF_ROLES.includes(localUser.role),
         roomCode: roomUid,
         sendTyping,

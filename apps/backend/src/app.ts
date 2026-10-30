@@ -14,6 +14,7 @@ import { controller_room_member } from '@module/main/participants/room-member.co
 import { controller_webhook } from '@module/main/participants/webhook.controller';
 import { controller_presence } from '@module/main/presence/presence.controller';
 import { service_presence } from '@module/main/presence/presence.service';
+import { controller_transcript } from '@module/main/transcript/transcript.controller';
 import { controller_room as controller_tenant_room } from '@module/tenant/room/room.controller';
 
 if (import.meta.main) {
@@ -36,6 +37,7 @@ if (import.meta.main) {
       .use(controller_webhook)
       .use(controller_message)
       .use(controller_presence)
+      .use(controller_transcript)
       .onStop(async () => {
         stop_presence();
         redis.close();

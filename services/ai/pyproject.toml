@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Mawiid sovereign AI service: real-time speech-to-text and translation."
 requires-python = ">=3.11"
 dependencies = [
+    "aiohttp>=3.9",
     "faster-whisper>=1.1.0",
+    "livekit-agents>=1.8,<2",
     "numpy>=1.26",
     "opencc>=1.1.9",
     "sentencepiece>=0.2",
