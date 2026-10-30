@@ -106,6 +106,7 @@ async def entrypoint(ctx: JobContext) -> None:
     room = ctx.room
     session = aiohttp.ClientSession()
     uploader = make_uploader(room.name, session)
+    upload_loop: asyncio.Task[None] | None = None  # runs until cancelled, so it is not in tasks
     audio_streams: dict[str, rtc.AudioStream] = {}
     tasks: set[asyncio.Task[None]] = set()
 
@@ -182,6 +183,9 @@ async def entrypoint(ctx: JobContext) -> None:
         audio_streams.clear()
         if tasks:
             await asyncio.wait(set(tasks), timeout=SHUTDOWN_TIMEOUT_S)
+        if upload_loop is not None:
+            upload_loop.cancel()
+            await asyncio.gather(upload_loop, return_exceptions=True)
         if uploader is not None:
             await uploader.flush()
         await session.close()
@@ -197,4 +201,4 @@ async def entrypoint(ctx: JobContext) -> None:
         for publication in participant.track_publications.values():
             listen(publication, participant)
     if uploader is not None:
-        spawn(uploader.run())
+        upload_loop = asyncio.create_task(uploader.run())
