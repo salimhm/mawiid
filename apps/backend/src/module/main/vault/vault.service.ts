@@ -25,7 +25,7 @@ function provision_local(user_id: number): vault_location {
 }
 
 async function turso(path: string, init?: RequestInit) {
-  const token = process.env.TURSODB_API_TOKEN
+  const token = process.env.TURSODB_TOKEN
   if (!token) {
     console.error('[vault] TURSODB_API_TOKEN is not set: vault databases cannot be created')
     throw lib_error.vault_unavailable

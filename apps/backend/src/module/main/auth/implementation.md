@@ -89,7 +89,7 @@ Signup now issues and emails verification tokens. Copy the `token` query paramet
 
 `POST /auth/register` remains public. It creates an unverified account with an Argon2id password hash, stores a 24-hour verification token in Redis, and sends the verification email. It returns a confirmation, not an access token or refresh cookie.
 
-Configure `PUBLIC_APP_URL` in the root `.env`. Local development uses `http://localhost:3100`, the current frontend dev port. Other environments require HTTPS. The verification URL is built from this configured origin, never from request headers. Email links use `/auth/verify-email?token=...`.
+The frontend sends its current origin as optional `app_url` in registration, verification resend, and password-reset requests. In development the backend accepts local loopback origins and HTTPS Cloudflare Quick Tunnel (`*.trycloudflare.com`) origins; all other supplied origins are rejected. In production an `app_url` must exactly match the HTTPS `PUBLIC_APP_URL` allowlist entry. `PUBLIC_APP_URL` remains the fallback for non-browser calls. Email links use `/auth/verify-email?token=...`.
 
 Example request, replacing the email with an inbox you control and using a username not already registered:
 
@@ -276,7 +276,7 @@ Expected `200`:
 }
 ```
 
-For an eligible account, check the inbox for `Reset your Mawiid password`. The link uses `PUBLIC_APP_URL/auth/reset-password?token=...`. No token or account information is returned in the response. The frontend page remains deferred; copy the token into `POST /auth/password/reset` below to change the password through the backend.
+For an eligible account, check the inbox for `Reset your Mawiid password`. The link uses the validated request `app_url` (or the `PUBLIC_APP_URL` fallback) followed by `/auth/reset-password?token=...`. No token or account information is returned in the response. The frontend page remains deferred; copy the token into `POST /auth/password/reset` below to change the password through the backend.
 
 Tokens are purpose-bound, expire after 30 minutes and can be consumed once. Requesting another link after the cooldown invalidates previous reset links. Reset tokens cannot be used by the email-verification endpoint, and requesting a reset does not replace email-verification tokens.
 
