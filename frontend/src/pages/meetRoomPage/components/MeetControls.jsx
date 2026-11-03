@@ -3,20 +3,32 @@ import { useNavigate } from 'react-router-dom';
 import ControlsButtons from '../../../components/controlButtons';
 import * as icons from '../../../assets/icons';
 
-const LANGUAGE_CODES = { English: 'en', Arabic: 'ar', French: 'fr' };
+// The languages the AI translation worker handles (services/ai/README.md).
+const LANGUAGE_CODES = {
+    English: 'en',
+    Arabic: 'ar',
+    'Darija (Moroccan Arabic)': 'ar-MA',
+    French: 'fr',
+    'Chinese (Simplified)': 'zh-CN',
+    'Chinese (Traditional)': 'zh-TW',
+};
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮'];
 
-export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, onLanguageChange, onReaction, onLeave, roomCode = '' })
+export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, language = '', onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, onLanguageChange, onReaction, onLeave, roomCode = '' })
 {
     const [translating, setTranslating] = useState(false);
     const [reacting, setReacting] = useState(false);
     const [reactionPos, setReactionPos] = useState({ x: 0, y: 0 });
     const [copied, setCopied] = useState(false);
     const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
-    const [currLanguage, setCurrLanguage] = useState('English');
+    const [pickedLanguage, setPickedLanguage] = useState('');
 
     const navigate = useNavigate();
     const languages = Object.keys(LANGUAGE_CODES);
+    const currLanguage = pickedLanguage
+        || languages.find((name) => LANGUAGE_CODES[name] === language)
+        || languages.find((name) => LANGUAGE_CODES[name] === language.split('-')[0])
+        || 'English';
     const roomID = roomCode;
 
     useEffect(() => {
@@ -65,9 +77,9 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
         setTranslating((prev) => !prev);
     };
 
-    const handleLanguageChange = (language) => {
-        setCurrLanguage(language);
-        onLanguageChange?.(LANGUAGE_CODES[language]);
+    const handleLanguageChange = (name) => {
+        setPickedLanguage(name);
+        onLanguageChange?.(LANGUAGE_CODES[name]);
     };
 
     const handleCopyClick = async () => {

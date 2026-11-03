@@ -4,6 +4,8 @@ import type { create_database_client } from '@db/client.db'
 import { lib_error } from '@lib/error.lib'
 import { lib_jwt_access_ttl_seconds, type lib_jwt_signer } from '@lib/jwt.lib'
 import { dto_auth } from '@module/main/auth/auth.dto'
+import { service_auth_token } from '@module/main/auth/auth-token.service'
+import { service_email } from '@module/main/email/email.service'
 
 const otp_ttl_seconds = 5 * 60
 const otp_cooldown_seconds = 60
@@ -18,6 +20,7 @@ export const service_auth_refresh_ttl_seconds = 30 * 24 * 60 * 60
 
 type auth_database = ReturnType<typeof create_database_client>
 type auth_user = Static<typeof dto_auth.login.response>['data']['user']
+type auth_account = auth_user & { user_password_hash: string | null; user_session_version: number }
 type auth_session = { body: Static<typeof dto_auth.login.response>; refresh_token: string }
 
 function otp_key(user_phone: string) {
@@ -56,6 +59,17 @@ function normalize(value: string) {
   return value.trim().toLowerCase()
 }
 
+function auth_url(path: string) {
+  try {
+    if (!process.env.PUBLIC_APP_URL) throw lib_error.email_unavailable
+    const url = new URL(path, process.env.PUBLIC_APP_URL)
+    if (url.protocol !== 'https:' && !(process.env.ENV === 'dev' && url.protocol === 'http:')) throw lib_error.email_unavailable
+    return url
+  } catch {
+    throw lib_error.email_unavailable
+  }
+}
+
 function generate_otp_code() {
   const [value] = crypto.getRandomValues(new Uint32Array(1))
   return String(value! % 1_000_000).padStart(6, '0')
@@ -75,6 +89,7 @@ function to_auth_user(user: auth_user): auth_user {
     user_phone: user.user_phone,
     user_username: user.user_username,
     user_email: user.user_email,
+    user_email_verified_at: user.user_email_verified_at,
     user_first_name: user.user_first_name,
     user_last_name: user.user_last_name,
     user_image: user.user_image,
@@ -100,10 +115,107 @@ async function revoke_reused(refresh_token: string, redis: RedisClient) {
 }
 
 export const service_auth = {
-  async session(user: auth_user, signer: lib_jwt_signer, redis: RedisClient, family = generate_token()): Promise<auth_session> {
-    const access_token = await signer.sign({ user_id: user.user_id })
+  async reset_password(
+    body: Static<typeof dto_auth.reset_password.body>,
+    database: auth_database,
+    redis: RedisClient,
+  ): Promise<Static<typeof dto_auth.reset_password.response>> {
+    const token = await service_auth_token.delete(body.token, 'password_reset', redis)
+    const where = {
+      user_id: token.user_id, user_email: token.user_email, deleted_at: null,
+      user_email_verified_at: { not: null }, user_session_version: token.user_session_version ?? 0,
+    }
+    const user = await database.main_db.user.findFirst({ where })
+    if (!user?.user_password_hash) throw lib_error.invalid_token
+    const user_password_hash = await Bun.password.hash(body.user_password, password_option)
+    const updated = await database.main_db.user.updateMany({
+      where: { ...where, user_password_hash: user.user_password_hash },
+      data: { user_password_hash, user_session_version: { increment: 1 } },
+    })
+    if (updated.count !== 1) throw lib_error.invalid_token
+    await redis.del(login_attempt_key(token.user_email), login_attempt_key(user.user_username || token.user_email)).catch(() => {
+      console.error('Password reset succeeded, but sign-in rate limits could not be cleared.')
+    })
+    let notification_sent = true
+    try {
+      await service_email.create_notification(token.user_email)
+    } catch {
+      notification_sent = false
+      console.error('Password reset succeeded, but the confirmation email could not be sent.')
+    }
+    return { data: { password_reset: true, notification_sent } }
+  },
+
+  async forgot_password(
+    body: Static<typeof dto_auth.forgot_password.body>,
+    database: auth_database,
+    redis: RedisClient,
+  ): Promise<Static<typeof dto_auth.forgot_password.response>> {
+    const link = auth_url('/auth/reset-password')
+    const user_email = normalize(body.user_email)
+    const allowed = await redis.set(`auth_password_reset_cooldown:${hash(user_email)}`, '1', 'EX', '60', 'NX')
+    if (!allowed) throw lib_error.too_many_requests
+    const response = { data: { message: 'If your account is eligible, a password reset link will arrive shortly.' } }
+    const user = await database.main_db.user.findFirst({
+      where: { user_email, deleted_at: null, user_email_verified_at: { not: null }, user_password_hash: { not: null } },
+    })
+    if (!user?.user_password_hash) return response
+    const reset = await service_auth_token.create({ user_id: user.user_id, user_email, user_session_version: user.user_session_version }, 'password_reset', redis)
+    link.searchParams.set('token', reset.token)
+    try {
+      await service_email.create({ user_email, purpose: 'password_reset', link: link.toString(), expires_in: reset.expires_in })
+    } catch (error) {
+      await service_auth_token.delete(reset.token, 'password_reset', redis).catch(() => {})
+      throw error
+    }
+    return response
+  },
+
+  async resend_email(
+    body: Static<typeof dto_auth.resend_email.body>,
+    database: auth_database,
+    redis: RedisClient,
+  ): Promise<Static<typeof dto_auth.resend_email.response>> {
+    const link = auth_url('/auth/verify-email')
+    const user_email = normalize(body.user_email)
+    const allowed = await redis.set(`auth_email_cooldown:${hash(user_email)}`, '1', 'EX', '60', 'NX')
+    if (!allowed) throw lib_error.too_many_requests
+    const response = { data: { message: 'If your account needs verification, an email will arrive shortly.' } }
+    const user = await database.main_db.user.findFirst({ where: { user_email, deleted_at: null, user_email_verified_at: null } })
+    if (!user) return response
+    const verification = await service_auth_token.create({ user_id: user.user_id, user_email }, 'email_verification', redis)
+    link.searchParams.set('token', verification.token)
+    try {
+      await service_email.create({ user_email, purpose: 'email_verification', link: link.toString(), expires_in: verification.expires_in })
+    } catch (error) {
+      await service_auth_token.delete(verification.token, 'email_verification', redis).catch(() => {})
+      throw error
+    }
+    return response
+  },
+
+  async verify_email(
+    body: Static<typeof dto_auth.verify_email.body>,
+    database: auth_database,
+    redis: RedisClient,
+  ): Promise<Static<typeof dto_auth.verify_email.response>> {
+    const { user_id, user_email } = await service_auth_token.delete(body.token, 'email_verification', redis)
+    const result = await database.main_db.user.updateMany({
+      where: { user_id, user_email, deleted_at: null, user_email_verified_at: null },
+      data: { user_email_verified_at: new Date() },
+    })
+    if (result.count !== 1) throw lib_error.invalid_token
+    return { data: { email_verified: true } }
+  },
+
+  async session(user: auth_account, signer: lib_jwt_signer, redis: RedisClient, family = generate_token()): Promise<auth_session> {
+    if (user.user_password_hash && !user.user_email_verified_at) {
+      await redis.del(refresh_family_key(family))
+      throw lib_error.email_not_verified
+    }
+    const access_token = await signer.sign({ user_id: user.user_id, session_version: user.user_session_version })
     const refresh_token = generate_token()
-    await redis.set(refresh_key(refresh_token), `${user.user_id}:${family}`, 'EX', service_auth_refresh_ttl_seconds)
+    await redis.set(refresh_key(refresh_token), `${user.user_id}:${family}:${user.user_session_version}`, 'EX', service_auth_refresh_ttl_seconds)
     await redis.set(refresh_family_key(family), String(user.user_id), 'EX', service_auth_refresh_ttl_seconds)
     return {
       body: {
@@ -119,13 +231,15 @@ export const service_auth = {
 
   async register(
     body: Static<typeof dto_auth.register.body>,
-    signer: lib_jwt_signer,
     database: auth_database,
     redis: RedisClient,
-  ): Promise<auth_session> {
+  ): Promise<Static<typeof dto_auth.register.response>> {
+    const link = auth_url('/auth/verify-email')
     const user_username = normalize(body.user_username)
     const user_email = normalize(body.user_email)
     await ensure_available(user_username, user_email, database)
+    const allowed = await redis.set(`auth_email_cooldown:${hash(user_email)}`, '1', 'EX', '60', 'NX')
+    if (!allowed) throw lib_error.too_many_requests
     const user_password_hash = await Bun.password.hash(body.user_password, password_option)
     const user = await database.main_db.user
       .create({
@@ -142,7 +256,21 @@ export const service_auth = {
         if (is_unique_violation(error)) await ensure_available(user_username, user_email, database)
         throw error
       })
-    return await service_auth.session(user, signer, redis)
+    let token: string | undefined
+    try {
+      const verification = await service_auth_token.create({ user_id: user.user_id, user_email }, 'email_verification', redis)
+      token = verification.token
+      link.searchParams.set('token', token)
+      await service_email.create({ user_email, purpose: 'email_verification', link: link.toString(), expires_in: verification.expires_in })
+      return { data: { verification_sent: true, expires_in: verification.expires_in } }
+    } catch (error) {
+      await database.main_db.user.updateMany({
+        where: { user_id: user.user_id, deleted_at: null, user_email_verified_at: null },
+        data: { deleted_at: new Date() },
+      })
+      if (token) await service_auth_token.delete(token, 'email_verification', redis).catch(() => {})
+      throw error
+    }
   },
 
   async login(
@@ -242,11 +370,15 @@ export const service_auth = {
       await revoke_reused(refresh_token, redis)
       throw lib_error.invalid_token
     }
-    const [user_id_value, family] = stored.split(':')
+    const [user_id_value, family, session_version] = stored.split(':')
     await redis.set(refresh_used_key(refresh_token), `${family}:${Date.now()}`, 'EX', service_auth_refresh_ttl_seconds)
     if (!family || !(await redis.exists(refresh_family_key(family)))) throw lib_error.invalid_token
     const user = await database.main_db.user.findFirst({ where: { user_id: Number(user_id_value), deleted_at: null } })
     if (!user) throw lib_error.invalid_token
+    if (user.user_session_version !== Number(session_version ?? 0)) {
+      await redis.del(refresh_family_key(family))
+      throw lib_error.invalid_token
+    }
     return await service_auth.session(user, signer, redis, family)
   },
 

@@ -53,6 +53,12 @@ def error_rate(reference: str, hypothesis: str, language: str) -> float:
     return jiwer.wer(ref, hyp)
 
 
+def char_error_rate(reference: str, hypothesis: str, language: str) -> float:
+    """CER ignoring spaces. Fairer for Darija, which has no standard spelling or word splitting."""
+    ref, hyp = normalize(reference, language), normalize(hypothesis, language)
+    return jiwer.cer(ref.replace(" ", ""), hyp.replace(" ", ""))
+
+
 def load_audio(path: Path) -> np.ndarray:
     audio, rate = sf.read(path, dtype="float32", always_2d=False)
     if audio.ndim > 1:
@@ -106,6 +112,8 @@ def main() -> int:
     parser.add_argument("--model", help="whisper model size, e.g. small, medium, large-v3-turbo")
     parser.add_argument("--beam", type=int, help="beam size for final results (default 5; 1 is faster)")
     parser.add_argument("--partials", action="store_true", help="also produce live partial results (slower)")
+    parser.add_argument("--darija-model", help="converted Darija model folder (default: data/models/whisper-darija-ct2)")
+    parser.add_argument("--engines", nargs="+", help="force this engine order for every language, e.g. --engines whisper")
     parser.add_argument("--limit", type=int, help="clips per language")
     parser.add_argument("--json", type=Path, help="write per-clip results here")
     parser.add_argument("-v", "--verbose", action="store_true", help="print every reference/hypothesis pair")
@@ -118,6 +126,10 @@ def main() -> int:
     if args.beam:
         whisper = replace(whisper, beam_size=args.beam)
     settings = replace(settings, whisper=whisper)
+    if args.darija_model:
+        settings = replace(settings, darija=replace(settings.darija, model=args.darija_model))
+    if args.engines:
+        settings = replace(settings, routes={lang: list(args.engines) for lang in settings.routes})
 
     load_start = time.perf_counter()
     router = build_router(settings)
@@ -128,40 +140,51 @@ def main() -> int:
     for language in languages:
         lang_dir = args.samples / language
         entries = [json.loads(line) for line in (lang_dir / "manifest.jsonl").read_text(encoding="utf-8").splitlines()]
-        entries = entries[: args.limit] if args.limit else entries
-        errors, rtfs, final_delays, partial_delays, durations = [], [], [], [], []
+        # Darija clips come from several datasets; score each separately.
+        by_source: dict[str, list[dict]] = {}
         for entry in entries:
-            audio = load_audio(lang_dir / entry["audio"])
-            result = run_clip(router, language, audio)
-            err = error_rate(entry["text"], result["hypothesis"], language)
-            errors.append(err)
-            rtfs.append(result["rtf"])
-            final_delays += result["final_delays"]
-            partial_delays += result["partial_delays"]
-            durations.append(len(audio) / SAMPLE_RATE)
-            records.append({"language": language, "audio": entry["audio"], "reference": entry["text"], "error": err, **result})
-            if args.verbose:
-                print(f"\n[{language}] {entry['audio']}  error={err:.0%}  rtf={result['rtf']:.2f}")
-                print(f"  ref: {entry['text']}")
-                print(f"  hyp: {result['hypothesis']}")
-        rows.append(
-            (
-                language,
-                "CER" if language.startswith("zh") else "WER",
-                mean(errors),
-                len(entries),
-                sum(durations),
-                mean(rtfs),
-                mean(final_delays) if final_delays else float("nan"),
-                mean(partial_delays) if partial_delays else float("nan"),
+            by_source.setdefault(entry.get("source", ""), []).append(entry)
+        for source, group in by_source.items():
+            label = f"{language}/{source}" if source else language
+            group = group[: args.limit] if args.limit else group
+            errors, cers, rtfs, final_delays, partial_delays, durations = [], [], [], [], [], []
+            for entry in group:
+                audio = load_audio(lang_dir / entry["audio"])
+                result = run_clip(router, language, audio)
+                err = error_rate(entry["text"], result["hypothesis"], language)
+                errors.append(err)
+                cers.append(char_error_rate(entry["text"], result["hypothesis"], language))
+                rtfs.append(result["rtf"])
+                final_delays += result["final_delays"]
+                partial_delays += result["partial_delays"]
+                durations.append(len(audio) / SAMPLE_RATE)
+                records.append(
+                    {"language": language, "source": source, "audio": entry["audio"], "reference": entry["text"], "error": err, **result}
+                )
+                if args.verbose:
+                    print(f"\n[{label}] {entry['audio']}  error={err:.0%}  rtf={result['rtf']:.2f}  engines={result['engines']}")
+                    print(f"  ref: {entry['text']}")
+                    print(f"  hyp: {result['hypothesis']}")
+            rows.append(
+                (
+                    label,
+                    "CER" if language.startswith("zh") else "WER",
+                    mean(errors),
+                    mean(cers),
+                    len(group),
+                    sum(durations),
+                    mean(rtfs),
+                    mean(final_delays) if final_delays else float("nan"),
+                    mean(partial_delays) if partial_delays else float("nan"),
+                )
             )
-        )
 
-    print(f"\n{'language':<8} {'metric':<6} {'error':>6} {'clips':>5} {'audio':>7} {'speed':>6} {'final':>7} {'partial':>8}")
-    for language, metric, err, clips, audio_s, rtf, final, partial in rows:
+    print(f"\n{'language':<14} {'metric':<6} {'error':>6} {'CER':>6} {'clips':>5} {'audio':>7} {'speed':>6} {'final':>7} {'partial':>8}")
+    for label, metric, err, cer, clips, audio_s, rtf, final, partial in rows:
         partial_s = f"{partial:.2f}s" if partial == partial else "-"
-        print(f"{language:<8} {metric:<6} {err:>6.1%} {clips:>5} {audio_s:>6.0f}s {rtf:>6.2f} {final:>6.2f}s {partial_s:>8}")
+        print(f"{label:<14} {metric:<6} {err:>6.1%} {cer:>6.1%} {clips:>5} {audio_s:>6.0f}s {rtf:>6.2f} {final:>6.2f}s {partial_s:>8}")
     print(
+        "\nCER  = character error rate, spaces ignored (Darija has no standard spelling, so WER overstates errors)"
         "\nspeed = processing time / audio length (below 1.0 keeps up with live speech)"
         "\nfinal = compute time to produce a final result after the pause is detected"
         f" (the pause itself adds {settings.vad.min_silence_ms} ms)"

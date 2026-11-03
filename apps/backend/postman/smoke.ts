@@ -129,7 +129,7 @@ await check('host can read the audit log', async () => {
 })
 
 await check('invalid body is rejected', async () => {
-  await expect_status('POST', '/room/join', 'host', { room_uid: 42 }, 422, 'unprocessable-entity')
+  await expect_status('POST', '/room/join', 'host', { room_uid: 42 }, 422, 'validation-error')
 })
 
 await check('event socket answers ping with a valid ticket', async () => {

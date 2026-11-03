@@ -9,6 +9,7 @@ export function useMediaDevices() {
     const [camPermission, setCamPermission] = useState(false)
     const [isCamActive, setIsCamActive] = useState(false)
     const [isMicActive, setIsMicActive] = useState(false)
+    const [mediaError, setMediaError] = useState('')
     const [devicesLoaded, setDevicesLoaded] = useState(false)
     const [devices, setDevices] = useState({ audio: [], video: [], speakers: [] })
     const [selectedDevices, setSelectedDevices] = useState({ audio: '', video: '', speaker: '' })
@@ -73,8 +74,9 @@ export function useMediaDevices() {
     }
 
     const handleCamClick = () => {
+        setMediaError('')
         if (!navigator.mediaDevices?.getUserMedia)
-            return console.error('Error: getUserMedia not supported')
+            return setMediaError('Camera is not supported in this browser')
 
         if (isCamActive) {
             videoTrackRef.current?.stop()
@@ -92,13 +94,14 @@ export function useMediaDevices() {
                     setCamPermission(true)
                     if (!devicesLoaded) loadDevices()
                 })
-                .catch((error) => console.error('Error accessing camera: ', error))
+                .catch(() => setMediaError('Unable to access camera. You can still join with it off.'))
         }
     }
 
     const handleMicClick = () => {
+        setMediaError('')
         if (!navigator.mediaDevices?.getUserMedia)
-            return console.error('Error: getUserMedia not supported')
+            return setMediaError('Microphone is not supported in this browser')
 
         if (isMicActive) {
             audioTrackRef.current?.stop()
@@ -114,7 +117,7 @@ export function useMediaDevices() {
                     setMicPermission(true)
                     if (!devicesLoaded) loadDevices()
                 })
-                .catch((error) => console.error('Error accessing microphone: ', error))
+                .catch(() => setMediaError('Unable to access microphone. You can still join with it off.'))
         }
     }
 
@@ -151,22 +154,6 @@ export function useMediaDevices() {
         if (videoRef.current?.setSinkId && deviceId)
             videoRef.current.setSinkId(deviceId)
                 .catch((error) => console.error('Error switching speaker: ', error))
-    }
-
-    const requestMediaPermissions = async () => {
-        if (!navigator.mediaDevices?.getUserMedia)
-            throw new Error('getUserMedia not supported')
-
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        stream.getTracks().forEach((track) => track.stop())
-
-        setMicPermission(true)
-        setCamPermission(true)
-
-        if (!devicesLoaded)
-            loadDevices()
-
-        return true
     }
 
     useEffect(() => {
@@ -226,6 +213,6 @@ export function useMediaDevices() {
         devices, selectedDevices,
         handleCamClick, handleMicClick,
         handleVideoChange, handleAudioChange, handleSpeakerChange,
-        requestMediaPermissions,
+        mediaError,
     }
 }

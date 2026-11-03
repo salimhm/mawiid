@@ -4,8 +4,10 @@ Needs PortAudio: sudo apt install libportaudio2
 
     python scripts/mic_demo.py --language fr-FR
     python scripts/mic_demo.py --language zh-TW --model medium
+    python scripts/mic_demo.py --language fr-FR --translate en-US ar-SA zh-TW
 
-Partial results overwrite the current line; final results stay. Ctrl+C to stop.
+Partial results overwrite the current line; final results stay, followed by their
+subtitles when --translate is given. Ctrl+C to stop.
 """
 
 from __future__ import annotations
@@ -14,9 +16,11 @@ import argparse
 import logging
 import queue
 import sys
+import time
 from dataclasses import replace
 
 from mawiid_ai.stt import LANGUAGES, SAMPLE_RATE, ResultKind, SttSettings, build_router
+from mawiid_ai.translation import build_translator
 
 CHUNK = SAMPLE_RATE // 50  # 20 ms
 
@@ -29,6 +33,7 @@ def main() -> int:
         "--partials", choices=["auto", "1", "0"], default="auto", help="live partial results (auto: GPU only)"
     )
     parser.add_argument("--device", type=int, help="input device index (see: python -m sounddevice)")
+    parser.add_argument("--translate", nargs="+", default=[], choices=list(LANGUAGES), help="listener languages")
     args = parser.parse_args()
 
     import sounddevice as sd
@@ -40,6 +45,7 @@ def main() -> int:
         whisper = replace(whisper, model=args.model)
     router = build_router(replace(settings, whisper=whisper))
     stream = router.open_stream(args.language)
+    translator = build_translator() if args.translate else None
 
     chunks: queue.Queue[bytes] = queue.Queue()
 
@@ -55,18 +61,25 @@ def main() -> int:
         ):
             while True:
                 for result in stream.push_audio(chunks.get()):
-                    show(result)
+                    show(result, translator, args.translate)
     except KeyboardInterrupt:
         for result in stream.flush():
-            show(result)
+            show(result, translator, args.translate)
     return 0
 
 
-def show(result) -> None:
+def show(result, translator, languages: list[str]) -> None:
     if result.kind is ResultKind.PARTIAL:
         print(f"\r\033[K… {result.text}", end="", flush=True)
-    else:
-        print(f"\r\033[K[{result.start:6.1f}s] {result.text}", flush=True)
+        return
+    print(f"\r\033[K[{result.start:6.1f}s] {result.text}", flush=True)
+    if translator is not None:
+        started = time.perf_counter()
+        subtitles = [s for s in translator.translate(result, languages) if s.language != result.language]
+        took = time.perf_counter() - started
+        for subtitle in subtitles:
+            print(f"          {subtitle.language}: {subtitle.text}")
+        print(f"          (translated in {took:.2f}s)", flush=True)
 
 
 if __name__ == "__main__":

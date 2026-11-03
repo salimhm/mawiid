@@ -2,6 +2,12 @@
 
 Each clip is real read speech with a reference transcript. Clips land in
 ``data/samples/<language>/`` next to a ``manifest.jsonl`` the benchmark reads.
+FLEURS reads the same sentences in every language, so the sentences shared by all
+languages also go to ``data/translation/parallel.jsonl`` for translation_benchmark.py.
+
+FLEURS has no Darija, so ar-MA clips come from two Darija sets, each tagged with its
+``source`` in the manifest: DVoice v2.0 test (CC-BY 4.0, short crowd-sourced phrases)
+and adiren7/darija_speech_to_text validation (Apache 2.0, ~25 s of TV/YouTube talk).
 
     python scripts/fetch_samples.py --per-language 10
 """
@@ -14,9 +20,13 @@ import io
 import json
 import sys
 import tarfile
+import urllib.parse
 import urllib.request
+import wave
 from pathlib import Path
 
+import av
+import numpy as np
 import opencc
 
 BASE_URL = "https://huggingface.co/datasets/google/fleurs/resolve/main/data"
@@ -31,7 +41,15 @@ FLEURS_CONFIGS = {
     "zh-TW": "cmn_hans_cn",
 }
 
+# Darija source name -> (Hugging Face dataset, split, transcript column, minimum clip seconds)
+DARIJA_SOURCES = {
+    "dvoice": ("BrunoHays/DVOICEv2.0-Darija", "test", "words", 2.0),
+    "adiren7": ("adiren7/darija_speech_to_text", "validation", "text", 0.0),
+}
+ROWS_API = "https://datasets-server.huggingface.co"
+
 DEFAULT_OUT = Path(__file__).resolve().parent.parent / "data" / "samples"
+DEFAULT_PARALLEL = Path(__file__).resolve().parent.parent / "data" / "translation" / "parallel.jsonl"
 
 
 def read_transcripts(config: str) -> dict[str, tuple[str, str]]:
@@ -42,9 +60,8 @@ def read_transcripts(config: str) -> dict[str, tuple[str, str]]:
     return {row[1]: (row[0], row[2]) for row in rows if len(row) > 2}
 
 
-def fetch_language(language: str, per_language: int, out_dir: Path) -> None:
+def fetch_language(language: str, transcripts: dict[str, tuple[str, str]], per_language: int, out_dir: Path) -> None:
     config = FLEURS_CONFIGS[language]
-    transcripts = read_transcripts(config)
     to_traditional = opencc.OpenCC("s2tw") if language == "zh-TW" else None
 
     lang_dir = out_dir / language
@@ -81,15 +98,98 @@ def fetch_language(language: str, per_language: int, out_dir: Path) -> None:
     print(f"{language}: {len(entries)} clips -> {lang_dir}")
 
 
+def _get_json(url: str) -> dict:
+    with urllib.request.urlopen(url, timeout=60) as response:
+        return json.load(response)
+
+
+def _write_wav_16k(data: bytes, path: Path) -> float:
+    """Decode any audio format, resample to 16 kHz mono int16 WAV; returns the duration in seconds."""
+    resampler = av.AudioResampler(format="s16", layout="mono", rate=16_000)
+    pcm = []
+    with av.open(io.BytesIO(data)) as container:
+        for frame in container.decode(audio=0):
+            pcm += [f.to_ndarray().reshape(-1) for f in resampler.resample(frame)]
+        pcm += [f.to_ndarray().reshape(-1) for f in resampler.resample(None)]
+    samples = np.concatenate(pcm).astype(np.int16)
+    with wave.open(str(path), "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(16_000)
+        out.writeframes(samples.tobytes())
+    return len(samples) / 16_000
+
+
+def fetch_darija(per_source: int, out_dir: Path) -> None:
+    lang_dir = out_dir / "ar-MA"
+    lang_dir.mkdir(parents=True, exist_ok=True)
+    entries = []
+    for source, (dataset, split, column, min_seconds) in DARIJA_SOURCES.items():
+        query = urllib.parse.urlencode({"dataset": dataset, "config": "default", "split": split})
+        total = _get_json(f"{ROWS_API}/size?dataset={urllib.parse.quote(dataset)}")["size"]["splits"]
+        total = next(s["num_rows"] for s in total if s["split"] == split)
+        # Spread picks across the split instead of taking the first rows (often one speaker or show).
+        step = max(1, total // (per_source * 2))
+        count = 0
+        for offset in range(0, total, step):
+            row = _get_json(f"{ROWS_API}/rows?{query}&offset={offset}&length=1")["rows"][0]["row"]
+            text = (row.get(column) or "").strip()
+            audio = row["audio"][0] if isinstance(row["audio"], list) else row["audio"]
+            if not text:
+                continue
+            name = f"{source}-{offset}.wav"
+            with urllib.request.urlopen(audio["src"], timeout=60) as response:
+                seconds = _write_wav_16k(response.read(), lang_dir / name)
+            if seconds < min_seconds:
+                (lang_dir / name).unlink()
+                continue
+            entries.append({"audio": name, "text": text, "language": "ar-MA", "source": source})
+            count += 1
+            if count >= per_source:
+                break
+        print(f"ar-MA/{source}: {count} clips from {dataset} ({split})")
+
+    with open(lang_dir / "manifest.jsonl", "w", encoding="utf-8") as manifest:
+        for entry in entries:
+            manifest.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def write_parallel(transcripts: dict[str, dict[str, tuple[str, str]]], path: Path) -> None:
+    """One line per sentence that every language has: {"id": ..., "en-US": ..., "fr-FR": ...}."""
+    by_id = {
+        language: {sentence_id: text for sentence_id, text in rows.values()} for language, rows in transcripts.items()
+    }
+    shared = sorted(set.intersection(*(set(sentences) for sentences in by_id.values())), key=int)
+    to_traditional = opencc.OpenCC("s2tw")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as out:
+        for sentence_id in shared:
+            row = {"id": sentence_id}
+            for language, sentences in by_id.items():
+                text = sentences[sentence_id]
+                row[language] = to_traditional.convert(text) if language == "zh-TW" else text
+            out.write(json.dumps(row, ensure_ascii=False) + "\n")
+    print(f"translation: {len(shared)} sentences shared by {len(by_id)} languages -> {path}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--per-language", type=int, default=10)
-    parser.add_argument("--languages", nargs="+", default=list(FLEURS_CONFIGS), choices=list(FLEURS_CONFIGS))
+    languages = [*FLEURS_CONFIGS, "ar-MA"]
+    parser.add_argument("--languages", nargs="+", default=languages, choices=languages)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--parallel", type=Path, default=DEFAULT_PARALLEL)
     args = parser.parse_args()
 
-    for language in args.languages:
-        fetch_language(language, args.per_language, args.out)
+    fleurs = [lang for lang in args.languages if lang in FLEURS_CONFIGS]
+    by_config = {config: read_transcripts(config) for config in {FLEURS_CONFIGS[lang] for lang in fleurs}}
+    transcripts = {language: by_config[FLEURS_CONFIGS[language]] for language in fleurs}
+    for language in fleurs:
+        fetch_language(language, transcripts[language], args.per_language, args.out)
+    if len(fleurs) > 1:
+        write_parallel(transcripts, args.parallel)
+    if "ar-MA" in args.languages:
+        fetch_darija(args.per_language, args.out)
     return 0
 
 

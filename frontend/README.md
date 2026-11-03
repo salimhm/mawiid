@@ -42,3 +42,9 @@ For quick testing you can still skip the login: open the app once with `?token=<
 
 Join a room by typing its `room_uid` on the landing page. Media goes directly from the browser to LiveKit at the
 `server_url` the backend returns (`LIVEKIT_PUBLIC_URL`), so LiveKit must be reachable from the browser.
+
+For a Windows browser testing against LiveKit on the same machine in WSL, use
+`LIVEKIT_PUBLIC_URL=ws://localhost:7880` in `apps/backend/postman/.env.postman` and restart
+`bun run postman:dev`. A stale LAN IP can prevent the browser from connecting even while
+the backend successfully creates media rooms. When using `make backend` or `make dev`,
+the root `.env` supplies the LiveKit settings instead.

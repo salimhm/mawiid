@@ -19,6 +19,8 @@ import Footer from "./components/footer";
 import AccountButton from "./components/accountButton";
 import { useNavigate } from "react-router-dom";
 
+import dark_logo from "../../assets/logo/mawiid_logo_dark.png"
+
 export default function Landing_Page() {
 
     const navigate = useNavigate();
@@ -42,11 +44,7 @@ export default function Landing_Page() {
             <div className="absolute top-4 right-4 sm:top-6 sm:right-8 z-20">
                 <AccountButton />
             </div>
-            <h1 className="text-primary-white font-montserrat font-bold text-6xl sm:text-8xl md:text-[140px] lg:text-[200px] h-auto lg:h-[300px] flex items-center justify-center tracking-tight select-none">
-                MAWI
-                    <span className="text-secondary-red_accent">I</span>
-                D
-            </h1>
+            <img src={dark_logo} alt="logo" className="w-[80%] h-[300px] object-cover" />
             <h2 className="font-montserrat text-2xl sm:text-4xl md:text-5xl lg:text-[66px] w-full max-w-5xl px-4 text-center font-extrabold leading-tight lg:leading-none text-primary-white">
                 Your future Meets Tool is finally here!
             </h2>

@@ -34,9 +34,9 @@ class FakeStream(SttStream):
         self.engine.received += samples
         self.pending += samples
         results = []
-        while self.pending >= PHRASE:
-            results.append(self._final(PHRASE))
-            self.pending -= PHRASE
+        while self.pending >= self.engine.phrase:
+            results.append(self._final(self.engine.phrase))
+            self.pending -= self.engine.phrase
         return results
 
     def flush(self):
@@ -60,6 +60,7 @@ class FakeEngine(SttEngine):
         self.crash = False
         self.fail_open = False
         self.call_seconds = 0.0
+        self.phrase = PHRASE  # samples per final result
         self.received = 0
         self.streams: list[FakeStream] = []
 
@@ -162,6 +163,18 @@ def test_slow_engine_hands_over_without_duplicating_finals(clock):
 
     assert stream.engine == "whisper"
     assert len([r for r in results if r.kind is ResultKind.FINAL]) == 1
+
+
+def test_slow_but_real_time_engine_is_kept(clock):
+    """A 4 s final for a 10 s phrase keeps up with live speech; switching would only lose accuracy."""
+    primary, backup = FakeEngine("whisper-darija", clock), FakeEngine("whisper", clock)
+    primary.phrase = 10 * SAMPLE_RATE
+    stream = make_router(clock, primary, backup, slow=3.0).open_stream("fr-FR")
+    push(stream, 9.9)
+    primary.call_seconds = 4.0
+    [final] = push(stream, 0.1)  # completes the 10 s phrase
+    assert final.end - final.start == 10.0
+    assert stream.engine == "whisper-darija"
 
 
 def test_slow_engine_is_kept_when_there_is_no_backup(clock):

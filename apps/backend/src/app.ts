@@ -1,5 +1,6 @@
 import '@lib/env.lib';
 import { Elysia } from 'elysia';
+import { openapi } from '@elysiajs/openapi';
 import { create_database_client } from '@db/client.db';
 import { create_redis_client } from '@storage/redis.storage';
 import { lib_middleware_error } from '@lib/middleware.lib';
@@ -13,6 +14,7 @@ import { controller_room_member } from '@module/main/participants/room-member.co
 import { controller_webhook } from '@module/main/participants/webhook.controller';
 import { controller_presence } from '@module/main/presence/presence.controller';
 import { service_presence } from '@module/main/presence/presence.service';
+import { controller_transcript } from '@module/main/transcript/transcript.controller';
 import { controller_room as controller_tenant_room } from '@module/tenant/room/room.controller';
 
 if (import.meta.main) {
@@ -21,6 +23,7 @@ if (import.meta.main) {
     const redis = create_redis_client();
     const port = Number(process.env.BACKEND_PORT) || 3000;
     const app = new Elysia()
+      .use(openapi())
       .decorate('database', database)
       .decorate('redis', redis)
       .use(lib_middleware_error)
@@ -34,6 +37,7 @@ if (import.meta.main) {
       .use(controller_webhook)
       .use(controller_message)
       .use(controller_presence)
+      .use(controller_transcript)
       .onStop(async () => {
         stop_presence();
         redis.close();

@@ -63,6 +63,8 @@ export function captureTokenFromUrl() {
     try {
         STALE_KEYS.forEach((key) => localStorage.removeItem(key))
     } catch {}
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/auth/'))
+        return
     const fromUrl = new URLSearchParams(window.location.search).get('token')
     if (!fromUrl)
         return
@@ -174,7 +176,11 @@ const signIn = async (path, body) => {
 
 export const auth = {
     login: (user_identifier, user_password) => signIn('/auth/login', { user_identifier, user_password }),
-    register: (fields) => signIn('/auth/register', fields),
+    register: (fields) => request('/auth/register', { method: 'POST', body: fields }),
+    resendEmail: (user_email) => request('/auth/email/resend', { method: 'POST', body: { user_email } }),
+    verifyEmail: (token) => request('/auth/email/verify', { method: 'POST', body: { token } }),
+    forgotPassword: (user_email) => request('/auth/password/forgot', { method: 'POST', body: { user_email } }),
+    resetPassword: (token, user_password) => request('/auth/password/reset', { method: 'POST', body: { token, user_password } }),
     requestCode: (user_phone) => request('/auth/otp', { method: 'POST', body: { user_phone } }),
     loginWithCode: (user_phone, otp_code) => signIn('/auth/otp/login', { user_phone, otp_code }),
     registerWithCode: (fields) => signIn('/auth/otp/register', fields),
@@ -216,6 +222,7 @@ const ERROR_MESSAGES = {
     'unauthorized': 'You are not signed in. Please sign in to continue.',
     'invalid-token': 'Your session has expired. Please sign in again.',
     'invalid-credentials': 'Incorrect username, email or password.',
+    'email-not-verified': 'Please verify your email before signing in.',
     'user-email-exist': 'An account already uses this email. Sign in instead.',
     'user-username-exist': 'This username is taken. Choose another one.',
     'invalid-otp-code': 'That code is incorrect. Check it and try again.',
@@ -224,6 +231,7 @@ const ERROR_MESSAGES = {
     'user-phone-exist': 'An account already uses this phone number. Sign in instead.',
     'too-many-requests': 'Too many attempts. Please wait a few minutes and try again.',
     'service-unavailable': 'Sign-in codes cannot be sent right now. Try again later.',
+    'email-unavailable': 'Verification emails cannot be sent right now. Try again later.',
     'forbidden': 'You are not allowed to join this room.',
     'participant-not-found': 'That participant is no longer connected.',
     'track-not-found': 'That participant is not sharing this yet.',

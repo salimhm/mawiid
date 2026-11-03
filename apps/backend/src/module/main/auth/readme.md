@@ -9,8 +9,12 @@ Two ways to sign in, both ending in the same session:
 
 | Method | Path                 | Body                                                                                                   | Returns                   |
 | ------ | -------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------- |
-| POST   | `/auth/register`     | `user_username`, `user_email`, `user_password`, `user_first_name`, `user_last_name`, `user_language?` | session                   |
+| POST   | `/auth/register`     | `user_username`, `user_email`, `user_password`, `user_first_name`, `user_last_name`, `user_language?` | `verification_sent`, `expires_in` |
 | POST   | `/auth/login`        | `user_identifier` (username or email), `user_password`                                                 | session                   |
+| POST   | `/auth/email/verify` | `token`                                                                                               | `email_verified: true`     |
+| POST   | `/auth/email/resend` | `user_email`                                                                                          | Generic confirmation message |
+| POST   | `/auth/password/forgot` | `user_email`                                                                                       | Generic confirmation; 30-minute reset link for eligible accounts |
+| POST   | `/auth/password/reset` | `token`, `user_password`                                                                             | `password_reset`, `notification_sent` |
 | POST   | `/auth/otp`          | `user_phone`                                                                                           | `expires_in`, `otp_code`* |
 | POST   | `/auth/otp/login`    | `user_phone`, `otp_code`                                                                               | session                   |
 | POST   | `/auth/otp/register` | `user_phone`, `otp_code`, `user_first_name`, `user_last_name`, `user_language?`                        | session                   |
@@ -29,6 +33,8 @@ to the console. Other environments get `503 service-unavailable`.
 
 ## Passwords
 
+Signup sends a verification link and returns a confirmation instead of a session. Verify the emailed token through `POST /auth/email/verify`. `POST /auth/email/resend` replaces an unverified account's link and shares the signup cooldown of one request per address per minute. Password-enabled accounts require verified email for new sessions and refresh; phone-only accounts keep OTP access. Existing password accounts are not automatically exempted. See `implementation.md` for request/response examples, test instructions and remaining work.
+
 - Hashed with argon2id (`Bun.password`, 19 MiB memory, 2 iterations: the OWASP baseline). Only the hash is stored
   (`user_password_hash`) and it is never returned.
 - 8 to 128 characters. Usernames are 3 to 32 letters, digits or underscores. Usernames and emails are trimmed, lowercased
@@ -40,7 +46,9 @@ to the console. Other environments get `503 service-unavailable`.
 
 ## Tokens
 
-- Access tokens are HS256 JWTs signed with `JWT_SECRET_KEY`, carry `user_id`, and last 15 minutes.
+Verified password accounts can request a reset link through `POST /auth/password/forgot`. Requests are limited to one per address per minute and preserve the current password and sessions. `POST /auth/password/reset` consumes the token, changes the password, invalidates older sessions and attempts a confirmation email. Sign in again afterward; see `implementation.md` for examples and migration instructions.
+
+- Access tokens are HS256 JWTs signed with `JWT_SECRET_KEY`, carry `user_id` and `session_version`, and last 15 minutes. Protected requests compare the version with the main user record; password reset increments it and invalidates earlier tokens immediately.
 - Refresh tokens are 256-bit random values, stored in Redis only as a SHA-256 hash (`auth_refresh:<hash>`). Each login
   starts a token family (`auth_refresh_family:<id>`).
 - Every refresh consumes the token and issues a new one in the same family. A rotated token presented again more than
@@ -59,6 +67,7 @@ to the console. Other environments get `503 service-unavailable`.
 | Status | Code                   | Meaning                                                                               |
 | ------ | ---------------------- | ------------------------------------------------------------------------------------- |
 | 401    | `invalid-credentials`  | Wrong identifier or password                                                          |
+| 403    | `email-not-verified`   | Includes `message`: `Please verify your email before signing in.`; verify before login/refresh |
 | 401    | `invalid-otp-code`     | Wrong code                                                                            |
 | 401    | `code-expired`         | No pending code (expired, used, or too many attempts)                                 |
 | 401    | `invalid-token`        | Missing, unknown, used or revoked refresh token, or an invalid or expired access token |
@@ -66,6 +75,7 @@ to the console. Other environments get `503 service-unavailable`.
 | 409    | `user-username-exist`  | Register with a username already in use                                              |
 | 409    | `user-email-exist`     | Register with an email already in use                                                 |
 | 409    | `user-phone-exist`     | OTP register for a phone that already has an account                                  |
-| 422    | `unprocessable-entity` | A field failed validation (format, length, missing)                                   |
+| 422    | `validation-error`     | Includes a readable `message` and `errors` array identifying invalid fields             |
 | 429    | `too-many-requests`    | Too many failed logins, or a code requested less than 60 seconds ago                  |
 | 503    | `service-unavailable`  | Code delivery is not available outside dev                                            |
+| 503    | `email-unavailable`    | Invalid email/application URL configuration or email delivery failure                  |

@@ -41,7 +41,7 @@ class CircuitBreaker:
     def record_failure(self, engine: str, reason: str) -> None:
         with self._lock:
             self._open_until[engine] = self._clock() + self._cooldown
-        log.warning("stt engine %s marked down for %.0fs: %s", engine, self._cooldown, reason)
+        log.warning("engine %s marked down for %.0fs: %s", engine, self._cooldown, reason)
 
 
 class SttRouter:
@@ -97,10 +97,10 @@ class FailoverStream(SttStream):
     def push_audio(self, audio: np.ndarray | bytes) -> list[Transcript]:
         chunk = to_float32(audio)
         self._remember(chunk)
-        return self._call(lambda stream: stream.push_audio(chunk), flush=False)
+        return self._call(lambda stream: stream.push_audio(chunk), flush=False, audio_s=len(chunk) / SAMPLE_RATE)
 
     def flush(self) -> list[Transcript]:
-        results = self._call(lambda stream: stream.flush(), flush=True)
+        results = self._call(lambda stream: stream.flush(), flush=True, audio_s=0.0)
         self._replay.clear()
         self._replay_samples = 0
         return results
@@ -110,7 +110,7 @@ class FailoverStream(SttStream):
 
     # -- internals ---------------------------------------------------------
 
-    def _call(self, op: Callable[[SttStream], list[Transcript]], flush: bool) -> list[Transcript]:
+    def _call(self, op: Callable[[SttStream], list[Transcript]], flush: bool, audio_s: float) -> list[Transcript]:
         replaying = False
         if self._switch_back_to is not None:
             target, self._switch_back_to = self._switch_back_to, None
@@ -134,7 +134,7 @@ class FailoverStream(SttStream):
             self._forget_finalized(results)
             elapsed = self._router.clock() - started
             # Replays carry seconds of audio at once, so only live calls are judged on speed.
-            if not replaying and elapsed > self._router.settings.slow_call_s and self._has_alternative():
+            if not replaying and self._too_slow(elapsed, audio_s, results) and self._has_alternative():
                 # The results are fine, but this engine can't keep up: move to the backup
                 # and replay only what hasn't been finalized yet.
                 self._router.breaker.record_failure(name, f"slow call ({elapsed:.1f}s)")
@@ -148,6 +148,13 @@ class FailoverStream(SttStream):
                 if better is not None and better < self._index:
                     self._switch_back_to = better
             return collected
+
+    def _too_slow(self, elapsed: float, audio_s: float, results: list[Transcript]) -> bool:
+        settings = self._router.settings
+        if elapsed <= settings.slow_call_s:
+            return False
+        covered = max([audio_s, *(r.end - r.start for r in results)])
+        return covered <= 0 or elapsed / covered > settings.max_real_time_factor
 
     def _replay_op(self, flush: bool) -> Callable[[SttStream], list[Transcript]]:
         chunks = [chunk for _, chunk in self._replay]

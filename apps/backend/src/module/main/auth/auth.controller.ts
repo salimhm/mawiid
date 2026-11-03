@@ -30,11 +30,53 @@ export const controller_auth = new Elysia({ prefix: '/auth' })
   .use(lib_jwt_sign)
 
   .post(
+    '/password/reset',
+    async (context) => {
+      const { body, cookie, database, redis } = context
+
+      const response = await service_auth.reset_password(body, database, redis)
+      write_refresh_cookie(cookie, '', 0)
+      return response
+    },
+    dto_auth.reset_password,
+  )
+
+  .post(
+    '/password/forgot',
+    async (context) => {
+      const { body, database, redis } = context
+
+      return await service_auth.forgot_password(body, database, redis)
+    },
+    dto_auth.forgot_password,
+  )
+
+  .post(
+    '/email/resend',
+    async (context) => {
+      const { body, database, redis } = context
+
+      return await service_auth.resend_email(body, database, redis)
+    },
+    dto_auth.resend_email,
+  )
+
+  .post(
+    '/email/verify',
+    async (context) => {
+      const { body, database, redis } = context
+
+      return await service_auth.verify_email(body, database, redis)
+    },
+    dto_auth.verify_email,
+  )
+
+  .post(
     '/register',
     async (context) => {
-      const { body, cookie, lib_jwt_signer, database, redis } = context
+      const { body, database, redis } = context
 
-      return deliver(cookie, await service_auth.register(body, lib_jwt_signer, database, redis))
+      return await service_auth.register(body, database, redis)
     },
     dto_auth.register,
   )

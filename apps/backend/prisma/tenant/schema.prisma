@@ -53,6 +53,7 @@ model Room {
   deleted_at               DateTime?
   room_members             RoomMember[]
   messages                 Message[]
+  transcripts              Transcript[]
 
   @@unique([room_uid], map: "room_uid_idx")
   @@index([room_status], map: "room_status_idx")
@@ -100,6 +101,40 @@ model Message {
   @@map("message")
 }
 
+model Transcript {
+  transcript_id         Int           @id @default(autoincrement())
+  room_id               Int
+  user_id               Int
+  transcript_segment_id String
+  transcript_language   String
+  transcript_text       String
+  transcript_started_ms Int
+  transcript_ended_ms   Int
+  created_at            DateTime      @default(now())
+  deleted_at            DateTime?
+  room                  Room          @relation(fields: [room_id], references: [room_id])
+  translations          Translation[]
+
+  @@unique([room_id, transcript_segment_id], map: "transcript_room_id_segment_id_idx")
+  @@index([user_id], map: "transcript_user_id_idx")
+  @@index([deleted_at], map: "transcript_deleted_at_idx")
+  @@map("transcript")
+}
+
+model Translation {
+  translation_id       Int        @id @default(autoincrement())
+  transcript_id        Int
+  translation_language String
+  translation_text     String
+  created_at           DateTime   @default(now())
+  deleted_at           DateTime?
+  transcript           Transcript @relation(fields: [transcript_id], references: [transcript_id])
+
+  @@unique([transcript_id, translation_language], map: "translation_transcript_id_language_idx")
+  @@index([deleted_at], map: "translation_deleted_at_idx")
+  @@map("translation")
+}
+
 model Audit {
   audit_id       Int       @id @default(autoincrement())
   room_id        Int?
@@ -116,4 +151,3 @@ model Audit {
   @@index([deleted_at], map: "audit_deleted_at_idx")
   @@map("audit")
 }
-

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Iterable
 
 import numpy as np
 
@@ -32,18 +33,25 @@ def _resolve_device(settings: WhisperSettings) -> tuple[str, str]:
 
 
 class WhisperEngine(SttEngine):
-    name = "whisper"
-
-    def __init__(self, settings: WhisperSettings, vad_settings: VadSettings) -> None:
+    def __init__(
+        self,
+        settings: WhisperSettings,
+        vad_settings: VadSettings,
+        name: str = "whisper",
+        languages: Iterable[str] | None = None,
+    ) -> None:
+        """``languages`` limits a fine-tuned model to what it was trained on (default: all)."""
         from faster_whisper import WhisperModel
 
+        self.name = name
+        self._languages = set(languages) if languages is not None else set(LANGUAGES)
         self.settings = settings
         self.vad_settings = vad_settings
         self.device, self.compute_type = _resolve_device(settings)
         self.partials = settings.partials == "1" or (settings.partials == "auto" and self.device == "cuda")
         log.info(
-            "loading whisper %s on %s (%s), partials %s",
-            settings.model, self.device, self.compute_type, "on" if self.partials else "off",
+            "loading %s (%s) on %s (%s), partials %s",
+            name, settings.model, self.device, self.compute_type, "on" if self.partials else "off",
         )
         self._model = WhisperModel(
             settings.model,
@@ -55,13 +63,13 @@ class WhisperEngine(SttEngine):
         self._lock = threading.Lock() if self.device == "cpu" else None
 
     def supports(self, language: str) -> bool:
-        return language in LANGUAGES
+        return language in self._languages
 
     def open_stream(
         self, language: str, time_offset: float = 0.0, vad_model: SpeechProbModel | None = None
     ) -> SttStream:
         if not self.supports(language):
-            raise SttError(f"whisper does not support {language}")
+            raise SttError(f"{self.name} does not support {language}")
         return WhisperStream(self, language, time_offset, vad_model)
 
     def transcribe(self, audio: np.ndarray, language: str, partial: bool = False) -> str:
@@ -73,7 +81,7 @@ class WhisperEngine(SttEngine):
                     return self._transcribe(audio, language, code, partial)
             return self._transcribe(audio, language, code, partial)
         except Exception as exc:
-            raise SttError(f"whisper failed: {exc}") from exc
+            raise SttError(f"{self.name} failed: {exc}") from exc
 
     def _transcribe(self, audio: np.ndarray, language: str, code: str, partial: bool) -> str:
         s = self.settings
