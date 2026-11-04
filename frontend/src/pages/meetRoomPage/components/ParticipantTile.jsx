@@ -1,69 +1,98 @@
 import { useEffect, useRef } from 'react'
 import * as icons from '../../../assets/icons'
 
-const GRADIENT_COLORS = [
-    'from-amber-400 via-amber-600 to-amber-900',
-    'from-rose-400 via-rose-600 to-rose-900',
-    'from-teal-400 via-teal-600 to-teal-900',
-    'from-lime-400 via-lime-600 to-lime-900',
-    'from-violet-400 via-violet-600 to-violet-900',
-    'from-sky-400 via-sky-600 to-sky-900',
-]
-
-function getGradient(id)
-{
-    let hash = 0
-    for (let i = 0; i < id.length; i++)
-        hash = id.charCodeAt(i) + ((hash << 5) - hash)
-    return GRADIENT_COLORS[Math.abs(hash) % GRADIENT_COLORS.length]
+function initials(name = '') {
+  return name
+    .replace(/\s*\(You\)\s*/i, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] || '')
+    .join('')
+    .toUpperCase() || 'M'
 }
 
-export default function ParticipantTile({ name, stream, isCamOn, isMicOn, handRaised, id })
-{
-    const videoElement = useRef(null)
+export default function ParticipantTile({
+  name,
+  stream,
+  isCamOn,
+  isMicOn,
+  handRaised,
+  isLocal = false,
+  isWaiting = false,
+}) {
+  const video_element = useRef(null)
+  const show_video = Boolean(stream && isCamOn && !isWaiting)
 
-    useEffect(() => {
-        if (!videoElement.current)
-            return
-        if (stream && isCamOn)
-            videoElement.current.srcObject = stream
-        else
-            videoElement.current.srcObject = null
-    }, [stream, isCamOn])
+  useEffect(() => {
+    const video = video_element.current
+    if (!video) return
+    video.srcObject = show_video ? stream : null
+  }, [stream, show_video])
 
-    const gradient = getGradient(id || 'default')
-    const showVideo = isCamOn && stream
+  return (
+    <section
+      className={[
+        'meet-person',
+        isLocal ? 'meet-person--host' : 'meet-person--guest',
+        isWaiting ? 'meet-person--waiting' : '',
+        show_video ? 'meet-person--video' : '',
+      ].join(' ')}
+      aria-label={`${name}${isLocal ? ', you' : ''}`}
+    >
+      {show_video && (
+        <video
+          ref={video_element}
+          autoPlay
+          playsInline
+          muted={isLocal}
+          className="meet-person__video"
+        />
+      )}
 
-    return (
-        <div className={`relative w-full h-full min-h-0 rounded-2xl overflow-hidden bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+      <div className="meet-person__shade" aria-hidden="true" />
 
-            {showVideo ? (
-                <video ref={videoElement} autoPlay muted playsInline className='absolute inset-0 w-full h-full object-cover' />
-            ) : (
-                <>
-                    <div className='absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.25),transparent_60%)]'></div>
-                    <div className='absolute inset-0 bg-black/30'></div>
-                    <span className='relative text-white text-xl font-bold'>
-                        {name}
-                    </span>
-                </>
-            )}
+      <div className="meet-person__top">
+        <span className="meet-person__name">{name}</span>
+        <span className="meet-person__live">
+          <span className="meet-person__live-dot" />
+          {isWaiting ? 'INVITE SENT' : isLocal ? 'YOU' : 'CONNECTED'}
+        </span>
+      </div>
 
-            {showVideo && <div className='absolute inset-0 bg-black/10'></div>}
-
-            <div className='absolute left-3 bottom-3 flex items-center gap-2'>
-                <span className='rounded-md bg-black/60 px-2 py-1 text-sm text-white'>
-                    {name}
-                </span>
-                {handRaised && (
-                    <span className='rounded-md bg-yellow-400/90 px-1.5 py-0.5 text-sm' title='Hand raised'>✋</span>
-                )}
-                {!isMicOn && (
-                    <span className='rounded-md bg-red-500/80 px-1.5 py-1'>
-                        {icons.micOffIcon(16, 16)}
-                    </span>
-                )}
+      {!show_video && (
+        <div className="meet-person__identity">
+          {isWaiting ? (
+            <div className="meet-person__waiting-mark" aria-hidden="true">
+              <span />
+              <span />
+              <span />
             </div>
+          ) : (
+            <div className="meet-person__avatar" aria-hidden="true">
+              {initials(name)}
+            </div>
+          )}
+          <p className="meet-person__identity-label">
+            {isWaiting ? 'Your guest will appear here' : isLocal ? 'Camera is off' : 'Camera unavailable'}
+          </p>
         </div>
-    )
+      )}
+
+      <div className="meet-person__footer">
+        <div className="meet-person__speaking">
+          <span className={`meet-person__audio-dot ${isMicOn ? 'is-on' : ''}`} />
+          <span>{isMicOn ? 'Microphone on' : 'Microphone off'}</span>
+        </div>
+        <div className="meet-person__indicators">
+          {handRaised && <span className="meet-person__hand" title="Hand raised">✋</span>}
+          {!isMicOn && (
+            <span className="meet-person__muted" title="Microphone muted">
+              {icons.micOffIcon(16, 16)}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  )
 }

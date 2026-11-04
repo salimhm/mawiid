@@ -86,7 +86,7 @@ async function request(path, { method = 'GET', body, token } = {}) {
         res = await fetch(`${API_BASE}${path}`, {
             method,
             headers,
-            credentials: 'same-origin',
+            credentials: 'include',
             body: body === undefined ? undefined : JSON.stringify(body),
         })
     } catch {
