@@ -1,0 +1,12 @@
+FROM oven/bun:1.4.4 AS frontend-build
+
+WORKDIR /app
+COPY frontend/package.json frontend/bun.lock frontend/bunfig.toml ./
+RUN bun install --frozen-lockfile
+COPY frontend/ ./
+RUN bun run build
+
+FROM caddy:2-alpine
+
+COPY infra/compose/Caddyfile /etc/caddy/Caddyfile
+COPY --from=frontend-build /app/dist /srv

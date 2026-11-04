@@ -28,7 +28,7 @@ Use the actual account and authorized sender configured with Google. Spaces copi
 
 ## Internal service contract
 
-There are no HTTP endpoints or public permissions in this module. Password registration, verification resend and password-reset requests call `service_email.create` after validating the auth operation and generating a token. The caller builds links from `PUBLIC_APP_URL`; request bodies do not control the sender or destination link.
+There are no HTTP endpoints or public permissions in this module. Password registration, verification resend and password-reset requests call `service_email.create` after validating the auth operation and generating a token. The caller builds links from a validated request `app_url`, with `PUBLIC_APP_URL` as the fallback; request bodies never control the sender or recipient.
 
 Example verification email:
 

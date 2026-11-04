@@ -2,7 +2,6 @@ import { dirname, join } from 'node:path'
 import type { create_database_client } from '@db/client.db'
 import { apply_migration } from '@db/utils.db'
 import { lib_error } from '@lib/error.lib'
-import { log } from 'node:console'
 
 const vault_owner_type = 'user'
 const vault_owner_action = ['room.create']
@@ -25,7 +24,7 @@ function provision_local(user_id: number): vault_location {
 }
 
 async function turso(path: string, init?: RequestInit) {
-  const token = process.env.TURSODB_TOKEN
+  const token = process.env.TURSODB_API_TOKEN
   if (!token) {
     console.error('[vault] TURSODB_API_TOKEN is not set: vault databases cannot be created')
     throw lib_error.vault_unavailable
