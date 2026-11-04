@@ -145,6 +145,24 @@ describe('POST /auth/register with email verification', () => {
     expect(await verified.json()).toEqual({ data: { email_verified: true } })
   })
 
+  test('uses a valid Cloudflare tunnel URL supplied by the frontend', async () => {
+    const { request, body, email_spy } = create_fixture()
+    const response = await request('/auth/register', { ...body, app_url: 'https://mawiid-test.trycloudflare.com' })
+
+    expect(response.status).toBe(200)
+    expect(new URL(email_spy.mock.calls[0]![0].link).origin).toBe('https://mawiid-test.trycloudflare.com')
+  })
+
+  test.each(['https://untrusted.example', 'https://mawiid-test.trycloudflare.com/auth', 'http://mawiid-test.trycloudflare.com'])('rejects an untrusted supplied application URL %j before account creation', async (app_url) => {
+    const { request, body, email_spy } = create_fixture()
+    const response = await request('/auth/register', { ...body, app_url })
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ code: 'email-unavailable' })
+    expect(email_spy).not.toHaveBeenCalled()
+    expect(await main_db.user.count({ where: { user_email: body.user_email } })).toBe(0)
+  })
+
   test.each(['username', 'email'])('rejects an existing %s without sending another email', async (field) => {
     const { request, body, email_spy } = create_fixture()
     await request()
@@ -212,12 +230,22 @@ describe('POST /auth/register with email verification', () => {
     expect(await main_db.user.count({ where: { user_email: body.user_email } })).toBe(0)
   })
 
-  test('supports a configured production HTTPS origin', async () => {
+  test('supports a configured production HTTPS origin supplied by the frontend', async () => {
     process.env.ENV = 'production'
     process.env.PUBLIC_APP_URL = 'https://mawiid.example'
-    const { request, email_spy } = create_fixture()
-    expect((await request()).status).toBe(200)
+    const { request, body, email_spy } = create_fixture()
+    expect((await request('/auth/register', { ...body, app_url: 'https://mawiid.example' })).status).toBe(200)
     expect(new URL(email_spy.mock.calls[0]![0].link).origin).toBe('https://mawiid.example')
+  })
+
+  test('rejects a supplied production URL that is not the configured origin', async () => {
+    process.env.ENV = 'production'
+    process.env.PUBLIC_APP_URL = 'https://mawiid.example'
+    const { request, body, email_spy } = create_fixture()
+    const response = await request('/auth/register', { ...body, app_url: 'https://other.example' })
+
+    expect(response.status).toBe(503)
+    expect(email_spy).not.toHaveBeenCalled()
   })
 
   test('rejects malformed input without creating an account or sending mail', async () => {
@@ -515,6 +543,17 @@ describe('POST /auth/password/forgot', () => {
     expect(await main_db.user.findFirstOrThrow({ where: { user_id: before.user_id } })).toEqual(before)
     expect((await refresh(cookie)).status).toBe(200)
     expect((await login()).status).toBe(200)
+  })
+
+  test('uses the supplied Cloudflare tunnel URL for the reset link', async () => {
+    const { request, body, email_spy } = await verified_fixture()
+    const response = await request('/auth/password/forgot', {
+      user_email: body.user_email,
+      app_url: 'https://mawiid-test.trycloudflare.com',
+    })
+
+    expect(response.status).toBe(200)
+    expect(new URL(email_spy.mock.calls[1]![0].link).origin).toBe('https://mawiid-test.trycloudflare.com')
   })
 
   test.each(['unknown', 'unverified', 'deleted', 'phone_only'])('returns the same confirmation and cooldown for a %s account without sending a reset email', async (state) => {

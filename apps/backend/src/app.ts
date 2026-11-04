@@ -16,6 +16,7 @@ import { controller_presence } from '@module/main/presence/presence.controller';
 import { service_presence } from '@module/main/presence/presence.service';
 import { controller_transcript } from '@module/main/transcript/transcript.controller';
 import { controller_room as controller_tenant_room } from '@module/tenant/room/room.controller';
+import { cors } from '@elysia/cors';
 
 if (import.meta.main) {
   try {
@@ -24,6 +25,7 @@ if (import.meta.main) {
     const port = Number(process.env.BACKEND_PORT) || 3000;
     const app = new Elysia()
       .use(openapi())
+      .use(cors({ origin: '*' }))
       .decorate('database', database)
       .decorate('redis', redis)
       .use(lib_middleware_error)
@@ -47,7 +49,11 @@ if (import.meta.main) {
       .get('/health', () => {
         return { message: 'hello world' };
       });
-    const stop_presence = await service_presence.start(app.server!, database, redis);
+    const stop_presence = await service_presence.start(
+      app.server!,
+      database,
+      redis,
+    );
 
     let stopping = false;
     const stop = () => {

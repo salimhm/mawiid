@@ -68,11 +68,32 @@ seed: ## Reset the local test data (backend must be stopped)
 	cd $(BACKEND) && bun run postman:seed
 
 backend: ## Run the local backend with the public LiveKit configuration
-	@. ./.env; \
+	@set -a; . $(BACKEND)/postman/.env.postman; set +a; \
+		postman_jwt_secret="$$JWT_SECRET_KEY"; \
+		postman_turso_url="$$TURSODB_URL"; \
+		postman_turso_token="$$TURSODB_TOKEN"; \
+		postman_turso_db="$$TURSODB_DB"; \
+		postman_turso_org="$$TURSODB_ORG"; \
+		postman_turso_group_name="$$TURSODB_GROUP_NAME"; \
+		postman_turso_group_token="$$TURSODB_GROUP_TOKEN"; \
+		postman_redis_url="$$REDIS_URL"; \
+		postman_internal_service_token="$$INTERNAL_SERVICE_TOKEN"; \
+		postman_translator_agent="$$LIVEKIT_TRANSLATOR_AGENT"; \
+		. ./.env; \
 		if [ -z "$$LIVEKIT_URL" ] || [ -z "$$LIVEKIT_API_KEY" ] || [ -z "$$LIVEKIT_API_SECRET" ]; then \
 			echo "Missing LIVEKIT_URL, LIVEKIT_API_KEY, or LIVEKIT_API_SECRET in .env"; exit 1; \
 		fi; \
 		cd $(BACKEND) && \
+		JWT_SECRET_KEY="$$postman_jwt_secret" \
+		TURSODB_URL="$$postman_turso_url" \
+		TURSODB_TOKEN="$$postman_turso_token" \
+		TURSODB_DB="$$postman_turso_db" \
+		TURSODB_ORG="$$postman_turso_org" \
+		TURSODB_GROUP_NAME="$$postman_turso_group_name" \
+		TURSODB_GROUP_TOKEN="$$postman_turso_group_token" \
+		REDIS_URL="$$postman_redis_url" \
+		INTERNAL_SERVICE_TOKEN="$$postman_internal_service_token" \
+		LIVEKIT_TRANSLATOR_AGENT="$$postman_translator_agent" \
 		LIVEKIT_URL="$$LIVEKIT_URL" \
 		LIVEKIT_PUBLIC_URL="$${LIVEKIT_PUBLIC_URL:-$$LIVEKIT_URL}" \
 		LIVEKIT_API_KEY="$$LIVEKIT_API_KEY" \

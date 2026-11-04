@@ -1,0 +1,89 @@
+services:
+  caddy:
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile.caddy
+    restart: unless-stopped
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_started
+      livekit:
+        condition: service_started
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile.backend
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      BACKEND_PORT: "3000"
+      REDIS_URL: redis://redis:6379
+      LIVEKIT_URL: http://livekit:7880
+      LIVEKIT_PUBLIC_URL: wss://rtc.mawiid.laedxdigitalstudio.com
+    depends_on:
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  livekit:
+    image: livekit/livekit-server:v1.13.10
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./runtime/livekit.yaml:/etc/livekit.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "7881:7881/tcp"
+      - "3478:3478/udp"
+      - "50000-60000:50000-60000/udp"
+
+  ai:
+    profiles: ["ai"]
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile.ai
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      MAWIID_BACKEND_URL: http://backend:3000
+    volumes:
+      - ai_cache:/root/.cache
+      - ai_models:/models
+    depends_on:
+      backend:
+        condition: service_started
+      livekit:
+        condition: service_started
+
+volumes:
+  ai_cache:
+  ai_models:
+  caddy_config:
+  caddy_data:
+  redis_data:
