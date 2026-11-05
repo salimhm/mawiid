@@ -10,6 +10,7 @@ const dto_auth_password = t.String({ minLength: 8, maxLength: 128, error: 'Passw
 const dto_auth_first_name = t.String({ minLength: 1, maxLength: 64, error: 'First name must contain 1–64 characters.' })
 const dto_auth_last_name = t.String({ minLength: 1, maxLength: 64, error: 'Last name must contain 1–64 characters.' })
 const dto_auth_language = t.String({ minLength: 2, maxLength: 16, error: 'Choose a valid language.' })
+const dto_auth_app_url = t.String({ format: 'uri', maxLength: 2048, error: 'Enter a valid application URL.' })
 const dto_auth_cookie = t.Cookie({
   [dto_auth_refresh_cookie]: t.Optional(t.String({ maxLength: 128 })),
 })
@@ -51,21 +52,21 @@ export const dto_auth = {
     },
   },
   forgot_password: {
-    body: t.Object({ user_email: dto_auth_email }),
+    body: t.Object({ user_email: dto_auth_email, app_url: t.Optional(dto_auth_app_url) }),
     response: t.Object({ data: t.Object({ message: t.String() }) }),
     detail: {
       tags: ['auth'],
       summary: 'Request a password reset',
-      description: 'Emails a 30-minute single-use reset link for an active, verified password account. No login required. Returns the same confirmation for ineligible accounts. Limited to one request per address per minute; a new link replaces previous reset links.',
+      description: 'Emails a 30-minute single-use reset link for an active, verified password account. app_url may provide the trusted frontend origin for the email link. No login required. Returns the same confirmation for ineligible accounts. Limited to one request per address per minute; a new link replaces previous reset links.',
     },
   },
   resend_email: {
-    body: t.Object({ user_email: dto_auth_email }),
+    body: t.Object({ user_email: dto_auth_email, app_url: t.Optional(dto_auth_app_url) }),
     response: t.Object({ data: t.Object({ message: t.String() }) }),
     detail: {
       tags: ['auth'],
       summary: 'Resend my verification email',
-      description: 'Sends a new 24-hour link for an unverified account and replaces previous links. No login required. Uses the same response for unknown or already verified addresses. Limited to one email request per address per minute, shared with registration.',
+      description: 'Sends a new 24-hour link for an unverified account and replaces previous links. app_url may provide the trusted frontend origin for the email link. No login required. Uses the same response for unknown or already verified addresses. Limited to one email request per address per minute, shared with registration.',
     },
   },
   verify_email: {
@@ -89,6 +90,7 @@ export const dto_auth = {
       user_first_name: dto_auth_first_name,
       user_last_name: dto_auth_last_name,
       user_language: t.Optional(dto_auth_language),
+      app_url: t.Optional(dto_auth_app_url),
     }),
     response: t.Object({
       data: t.Object({
@@ -99,7 +101,7 @@ export const dto_auth = {
     detail: {
       tags: ['auth'],
       summary: 'Create an account and send a verification email',
-      description: 'Creates an unverified account and emails a single-use verification link. Does not issue a session. Email requests are limited to one per address per minute.',
+      description: 'Creates an unverified account and emails a single-use verification link. app_url may provide the trusted frontend origin for the email link. Does not issue a session. Email requests are limited to one per address per minute.',
     },
   },
   login: {

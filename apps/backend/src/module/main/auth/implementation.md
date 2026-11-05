@@ -223,6 +223,13 @@ POST /auth/refresh
 Cookie: __Host-mawiid_refresh=<current-refresh-token>
 ```
 
+In development or plain HTTP environments (`ENV=dev`), the server accepts either `__Host-mawiid_refresh` or `mawiid_refresh` to support browsers and local network IP addresses where `__Host-` prefixes and `Secure` attributes are dropped over HTTP:
+
+```http
+POST /auth/refresh
+Cookie: mawiid_refresh=<current-refresh-token>
+```
+
 For a verified password account with a valid refresh cookie, expect `200` with a new session and a rotated refresh cookie. A previously issued refresh cookie for an unverified password account returns the same `403 email-not-verified` response above. Its refresh-token family is revoked, the token is consumed, and the response clears the browser's refresh cookie. After verifying the email, the user must log in again; the revoked cookie cannot be revived by verification.
 
 Missing, expired or invalid refresh cookies return `401` with `{ "code": "invalid-token" }` and clear the cookie. Current verification status is read from the database on every refresh.

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import ParticipantTile from './ParticipantTile'
 import './meet-room-refresh.css'
 
@@ -13,6 +14,13 @@ export default function MeetMain({ localUser = {}, participants = [], fullScreen
     : people
 
   const is_featured_call = users.length <= 2
+
+  useEffect(() => {
+    console.log("users : ", users)
+    console.log("localUser : ", localUser)
+    console.log("participants : ", participants)
+    console.log("fullScreen : ", fullScreen)
+  }, [users])
 
   return (
     <main className={`meet-stage ${fullScreen ? 'meet-stage--fullscreen' : ''}`}>
