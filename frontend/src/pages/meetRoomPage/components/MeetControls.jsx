@@ -15,7 +15,7 @@ const LANGUAGE_CODES = {
 };
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮'];
 
-export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, language = '', spokenLanguage = '', onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, onLanguageChange, onSpokenLanguageChange, onReaction, onLeave, roomCode = '' })
+export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, language = '', spokenLanguage = '', onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, translationEnabled = false, onTranslationToggle, onLanguageChange, onSpokenLanguageChange, onReaction, onLeave, roomCode = '' })
 {
     const [translating, setTranslating] = useState(false);
     const [reacting, setReacting] = useState(false);
@@ -161,6 +161,10 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
                         transform: 'translate(-50%, -100%)',
                     }}
                 >
+                    <button aria-pressed={translationEnabled} className='w-full flex items-center justify-between px-4 py-2.5 border-b border-white/24 text-sm sm:text-base font-medium hover:bg-white/10 cursor-pointer' onClick={() => onTranslationToggle?.()}>
+                        Live translation
+                        <span className={translationEnabled ? 'rounded-full bg-blue-600 px-2.5 py-0.5 text-xs' : 'rounded-full bg-white/20 px-2.5 py-0.5 text-xs'}>{translationEnabled ? 'On' : 'Off'}</span>
+                    </button>
                     {languageSection('I speak', currSpokenLanguage, handleSpokenLanguageChange)}
                     {languageSection('Show captions in', currLanguage, handleLanguageChange)}
                 </div>

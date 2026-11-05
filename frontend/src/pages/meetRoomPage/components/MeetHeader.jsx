@@ -366,7 +366,6 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
                                         <div className='mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2'>
                                             <SettingToggle label='Lock' description='Only the host can join' checked={settings.locked} onChange={(locked) => onUpdateSettings?.({ room_locked: locked })} />
                                             <SettingToggle label='Lobby' description='Guests wait to be admitted' checked={settings.lobby} onChange={(lobby) => onUpdateSettings?.({ room_lobby_enabled: lobby })} />
-                                            <SettingToggle label='Live translation' description='Subtitles in each person’s language' checked={settings.translation} onChange={(translation) => onUpdateSettings?.({ room_translation_enabled: translation })} />
                                         </div>
                                     )}
                                     <div className='flex items-center gap-3 text-primary-white/80 text-base mb-4'>

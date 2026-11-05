@@ -28,6 +28,7 @@ SEGMENT_ATTRIBUTE = "lk.segment_id"
 TRACK_ATTRIBUTE = "lk.transcribed_track_id"
 FINAL_ATTRIBUTE = "lk.transcription_final"
 LANGUAGE_ATTRIBUTE = "mawiid.language"  # the language someone reads captions in
+TRANSLATION_ATTRIBUTE = "mawiid.translation_enabled"  # "true" when someone wants captions
 SPOKEN_LANGUAGE_ATTRIBUTE = "mawiid.spoken_language"  # the language someone speaks; defaults to the above
 
 DEFAULT_LANGUAGE = "en-US"  # backend default for accounts without user_language
@@ -98,6 +99,8 @@ class RoomPipeline:
         self._languages: dict[str, str | None] = {}
         # The language they speak, when they picked one; otherwise the one they read.
         self._spoken_languages: dict[str, str | None] = {}
+        # Who switched captions on. Nobody: nothing is transcribed, sent or saved.
+        self._captions: set[str] = set()
 
     def set_language(self, identity: str, code: str | None, spoken_code: str | None = None) -> None:
         """Record a participant's language attributes; a speaker's stream follows the spoken one."""
@@ -110,15 +113,23 @@ class RoomPipeline:
         self._languages[identity] = language
         self._spoken_languages[identity] = spoken
 
+    def set_captions(self, identity: str, enabled: bool) -> None:
+        """Record a participant's own captions switch."""
+        if enabled:
+            self._captions.add(identity)
+        else:
+            self._captions.discard(identity)
+
     def remove(self, identity: str) -> None:
+        self._captions.discard(identity)
         self._languages.pop(identity, None)
         self._spoken_languages.pop(identity, None)
 
     def listeners(self) -> dict[str, list[str]]:
-        """Identities per Mawiid language."""
+        """Identities with captions on, per Mawiid language."""
         groups: dict[str, list[str]] = {}
         for identity, language in self._languages.items():
-            if language is not None:
+            if language is not None and identity in self._captions:
                 groups.setdefault(language, []).append(identity)
         return groups
 
@@ -127,6 +138,9 @@ class RoomPipeline:
         speaker = _Speaker(identity, track_sid)
         try:
             async for chunk in audio:
+                if not self._captions:
+                    await self._close(speaker)
+                    continue
                 language = self._spoken_languages.get(identity) or self._languages.get(identity) or DEFAULT_LANGUAGE
                 if speaker.stream is not None and speaker.language != language:
                     await self._close(speaker)  # finish the current phrase in the old language
@@ -177,6 +191,8 @@ class RoomPipeline:
             await self._emit(speaker, result)
 
     async def _emit(self, speaker: _Speaker, result: Transcript) -> None:
+        if not self._captions:
+            return
         if speaker.segment_id is None:
             speaker.segment_id = f"SG_{uuid.uuid4().hex[:12]}"
         segment_id = speaker.segment_id
@@ -189,7 +205,7 @@ class RoomPipeline:
             FINAL_ATTRIBUTE: "true" if final else "false",
             LANGUAGE_ATTRIBUTE: result.language,
         }
-        await self._send(result.text, TRANSCRIPTION_TOPIC, attributes, None)
+        await self._send(result.text, TRANSCRIPTION_TOPIC, attributes, sorted(self._captions))
         translate_partials = self._translator is not None and self._translator.settings.partials
         if final or translate_partials:
             # Translation runs beside speech-to-text, chained so a speaker's subtitles stay in order.

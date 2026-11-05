@@ -1,6 +1,6 @@
 """LiveKit worker for live captions. It joins only the rooms the backend dispatches to it
-(agent name mawiid-translator, when a host turns translation on) and leaves when the host
-turns translation off again.
+(agent name mawiid-translator, when a participant turns captions on) and stays until the
+room ends, working only while someone has captions on.
 
     python -m mawiid_ai.agent dev     # development: reloads on code changes
     python -m mawiid_ai.agent start   # production
@@ -13,7 +13,6 @@ to save the transcript (captions work without them); MAWIID_STT_* and MAWIID_MT_
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import re
@@ -25,7 +24,13 @@ import numpy as np
 from livekit import rtc
 from livekit.agents import AgentServer, AutoSubscribe, JobContext, JobExecutorType
 
-from mawiid_ai.agent.pipeline import LANGUAGE_ATTRIBUTE, SPOKEN_LANGUAGE_ATTRIBUTE, RoomPipeline, Segment
+from mawiid_ai.agent.pipeline import (
+    LANGUAGE_ATTRIBUTE,
+    SPOKEN_LANGUAGE_ATTRIBUTE,
+    TRANSLATION_ATTRIBUTE,
+    RoomPipeline,
+    Segment,
+)
 from mawiid_ai.agent.uploader import TranscriptUploader, http_post
 from mawiid_ai.stt import SAMPLE_RATE, SttRouter, build_router
 from mawiid_ai.translation import SubtitleTranslator, build_translator
@@ -54,14 +59,6 @@ def load_models() -> tuple[SttRouter, SubtitleTranslator | None]:
                 translator = None
             _models = router, translator
         return _models
-
-
-def translation_enabled(metadata: str | None) -> bool:
-    """The room metadata the backend writes (service_room.metadata)."""
-    try:
-        return json.loads(metadata or "{}").get("room_translation_enabled") is True
-    except (ValueError, AttributeError):
-        return False
 
 
 def user_id_of(identity: str, attributes: dict[str, str]) -> int | None:
@@ -149,6 +146,7 @@ async def entrypoint(ctx: JobContext) -> None:
     def follow(participant: rtc.RemoteParticipant) -> None:
         if is_person(participant):
             attributes = participant.attributes
+            pipeline.set_captions(participant.identity, attributes.get(TRANSLATION_ATTRIBUTE) == "true")
             pipeline.set_language(
                 participant.identity, attributes.get(LANGUAGE_ATTRIBUTE), attributes.get(SPOKEN_LANGUAGE_ATTRIBUTE)
             )
@@ -167,18 +165,13 @@ async def entrypoint(ctx: JobContext) -> None:
 
     @room.on("participant_attributes_changed")
     def _on_attributes_changed(changed: dict[str, str], participant: rtc.Participant) -> None:
-        languages_changed = LANGUAGE_ATTRIBUTE in changed or SPOKEN_LANGUAGE_ATTRIBUTE in changed
-        if languages_changed and isinstance(participant, rtc.RemoteParticipant):
+        followed = {LANGUAGE_ATTRIBUTE, SPOKEN_LANGUAGE_ATTRIBUTE, TRANSLATION_ATTRIBUTE}
+        if followed & changed.keys() and isinstance(participant, rtc.RemoteParticipant):
             follow(participant)
 
     @room.on("participant_disconnected")
     def _on_participant_disconnected(participant: rtc.RemoteParticipant) -> None:
         pipeline.remove(participant.identity)
-
-    @room.on("room_metadata_changed")
-    def _on_metadata_changed(old_metadata: str, metadata: str) -> None:
-        if not translation_enabled(metadata):
-            ctx.shutdown("translation turned off")
 
     async def cleanup(reason: str) -> None:
         log.info("leaving %s: %s", room.name, reason)
@@ -196,9 +189,6 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.add_shutdown_callback(cleanup)
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    if not translation_enabled(room.metadata):
-        ctx.shutdown("translation is off in this room")
-        return
     log.info("captioning %s (translation %s)", room.name, "on" if translator else "unavailable")
     for participant in room.remote_participants.values():
         follow(participant)

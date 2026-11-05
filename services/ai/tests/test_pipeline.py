@@ -101,6 +101,15 @@ class Room:
         self.segments: list[Segment] = []
         self.pipeline = RoomPipeline(self.router, self.translator, self.publish, self.segments.append, clock=lambda: 0.0)
 
+        # Everyone has captions on unless a test says otherwise.
+        set_language = self.pipeline.set_language
+
+        def set_language_with_captions(identity, *codes):
+            set_language(identity, *codes)
+            self.pipeline.set_captions(identity, True)
+
+        self.pipeline.set_language = set_language_with_captions
+
     async def publish(self, text, topic, attributes, identities):
         self.sent.append(Sent(text, topic, attributes, identities))
 
@@ -128,7 +137,7 @@ def test_app_language_codes_map_to_model_languages():
     assert mawiid_language(None) is None
 
 
-def test_original_goes_to_everyone_and_partial_and_final_share_a_segment():
+def test_original_goes_to_everyone_with_captions_on_and_partial_and_final_share_a_segment():
     room = Room()
     room.pipeline.set_language("user_1", "fr")
     room.pipeline.set_language("user_2", "en")
@@ -136,7 +145,7 @@ def test_original_goes_to_everyone_and_partial_and_final_share_a_segment():
     room.speak("user_1", PHRASE_CHUNKS, track="TR_abc")
 
     partial, final = room.topic(TRANSCRIPTION_TOPIC)
-    assert partial.identities is None and final.identities is None
+    assert partial.identities == final.identities == ["user_1", "user_2"]
     assert partial.attributes[FINAL_ATTRIBUTE] == "false"
     assert final.attributes[FINAL_ATTRIBUTE] == "true"
     assert partial.attributes[SEGMENT_ATTRIBUTE] == final.attributes[SEGMENT_ATTRIBUTE]
@@ -195,6 +204,47 @@ def test_final_segments_are_saved_with_their_translations():
     assert first.translations == {"en-US": "<en-US>fr-FR final 1"}
     assert (first.started_ms, first.ended_ms) == (400, 800)
     assert first.segment_id != second.segment_id
+
+
+def test_nothing_is_transcribed_sent_or_saved_while_nobody_has_captions_on():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_captions("user_1", False)
+
+    room.speak("user_1", 3)
+
+    assert room.router.streams == []
+    assert room.sent == []
+    assert room.segments == []
+
+
+def test_captions_reach_only_the_people_who_switched_them_on():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "en")
+    room.pipeline.set_language("user_3", "ar")
+    room.pipeline.set_captions("user_1", False)
+    room.pipeline.set_captions("user_3", False)
+
+    room.speak("user_1", 3)
+
+    assert {tuple(sent.identities) for sent in room.topic(TRANSCRIPTION_TOPIC)} == {("user_2",)}
+    assert {tuple(sent.identities) for sent in room.topic(TRANSLATION_TOPIC)} == {("user_2",)}
+    assert {sent.attributes["mawiid.language"] for sent in room.topic(TRANSLATION_TOPIC)} == {"en-US"}
+
+
+def test_turning_captions_off_finishes_the_phrase_and_stops_transcribing():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+
+    def switch(chunk: int) -> None:
+        if chunk == 2:
+            room.pipeline.set_captions("user_1", False)
+
+    room.speak("user_1", 4, between=switch)
+
+    [stream] = room.router.streams
+    assert stream.closed
 
 
 def test_speech_uses_the_spoken_language_and_captions_the_read_language():

@@ -6,12 +6,15 @@ import { createEventSocket } from '../services/eventSocket'
 import { createRoomSignal } from '../services/roomSignal'
 import { createRoomCaptions } from '../services/roomCaption'
 
+const CAPTIONS_KEY = 'mawiid.captions'
+
 // Keep in sync with packages/contracts/src/room.ts
 const ATTRIBUTE = {
     userId: 'mawiid.user_id',
     role: 'mawiid.role',
     language: 'mawiid.language',
     spokenLanguage: 'mawiid.spoken_language',
+    translationEnabled: 'mawiid.translation_enabled',
     handRaised: 'mawiid.hand_raised',
 }
 const KNOCK_RETRY_MS = 10000
@@ -64,7 +67,6 @@ const lastSavedId = (messages) => messages.reduce((max, message) => Math.max(max
 const toSettings = (room) => ({
     locked: Boolean(room.room_locked),
     lobby: Boolean(room.room_lobby_enabled),
-    translation: Boolean(room.room_translation_enabled),
 })
 
 function readSettings(metadata) {
@@ -113,7 +115,7 @@ export function useRoom(roomUid, {
     const [knocks, setKnocks] = useState([])
     const [typing, setTyping] = useState([])
     const [reactions, setReactions] = useState([])
-    const [settings, setSettings] = useState({ locked: false, lobby: false, translation: false })
+    const [settings, setSettings] = useState({ locked: false, lobby: false })
     const [captions, setCaptions] = useState([])
     const [messages, setMessages] = useState([])
     const [hasOlderMessages, setHasOlderMessages] = useState(false)
@@ -171,6 +173,7 @@ export function useRoom(roomUid, {
             role: attributes[ATTRIBUTE.role] || '',
             language: attributes[ATTRIBUTE.language] || '',
             spokenLanguage: attributes[ATTRIBUTE.spokenLanguage] || '',
+            translationEnabled: attributes[ATTRIBUTE.translationEnabled] === 'true',
             handRaised: attributes[ATTRIBUTE.handRaised] === 'true',
             stream: streamFor(video?.track),
             isCamOn: Boolean(video?.track && !video.isMuted),
@@ -301,8 +304,6 @@ export function useRoom(roomUid, {
             if (!next)
                 return
             setSettings(next)
-            if (!next.translation)
-                setCaptions([])
         }
 
         const onDisconnected = (reason) => {
@@ -373,6 +374,9 @@ export function useRoom(roomUid, {
                         setNotice('Unable to load the chat history')
                 })
             setSettings(readSettings(room.metadata) || toSettings(joined.room || {}))
+            // A new connection starts with captions off: bring back this person's own choice.
+            if (localStorage.getItem(CAPTIONS_KEY) === 'true')
+                api.updateParticipant(roomUid, { participant_translation_enabled: true }).catch(() => {})
             refresh()
 
             if (room.localParticipant.permissions?.canPublish === false)
@@ -470,6 +474,14 @@ export function useRoom(roomUid, {
         }),
         [updateSelf, localUser.spokenLanguage, localUser.language],
     )
+
+    const toggleTranslation = useCallback(() => {
+        const enabled = !localUser.translationEnabled
+        localStorage.setItem(CAPTIONS_KEY, String(enabled))
+        if (!enabled)
+            setCaptions([])
+        return updateSelf({ participant_translation_enabled: enabled })
+    }, [updateSelf, localUser.translationEnabled])
 
     const setSpokenLanguage = useCallback(
         (language) => updateSelf({ participant_spoken_language: language }),
@@ -570,8 +582,6 @@ export function useRoom(roomUid, {
     const updateSettings = useCallback((changes) => moderate(async () => {
         const data = await api.updateRoom(roomUid, changes)
         setSettings(toSettings(data))
-        if (!data.room_translation_enabled)
-            setCaptions([])
     }), [moderate, roomUid])
 
     const leave = useCallback(() => {
@@ -611,6 +621,7 @@ export function useRoom(roomUid, {
         toggleHand,
         setLanguage,
         setSpokenLanguage,
+        toggleTranslation,
         admit: (userId) => answerKnock(userId, true),
         deny: (userId) => answerKnock(userId, false),
         leave,

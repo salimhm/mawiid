@@ -101,12 +101,12 @@ Measured on an RTX 4060 laptop GPU with Whisper `small` and MADLAD on the same G
 
 ## Live worker (`mawiid_ai.agent`)
 
-Links the two modules above to the app's calls. It is a LiveKit agent (`livekit-agents`) named `mawiid-translator`: LiveKit sends it only the rooms the backend dispatches it to, which happens when a host turns on live translation (`PATCH /room` with `room_translation_enabled: true`, or the room is created with it on). It leaves when translation is turned off or the room closes.
+Links the two modules above to the app's calls. It is a LiveKit agent (`livekit-agents`) named `mawiid-translator`: LiveKit sends it only the rooms the backend dispatches it to, which happens when a participant turns on their own captions (`PATCH /participant` with `participant_translation_enabled: true`). It stays until the room closes, and transcribes, sends and saves nothing while nobody has captions on.
 
 In each room it:
 
 1. Subscribes to every person's microphone (16 kHz mono) and runs one speech-to-text stream per speaker, in the language of the speaker's `mawiid.spoken_language` attribute, or `mawiid.language` until one is set (`en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`; other codes fall back to the language without region, then to `en-US`).
-2. Sends each partial and final result to everyone on the `lk.transcription` text-stream topic.
+2. Sends each partial and final result to the participants with captions on, on the `lk.transcription` text-stream topic.
 3. Translates each final once per language that listeners picked (the same `mawiid.language` attribute) and sends it on `mawiid.translation.v1`, only to the listeners of that language. Listeners of the spoken language only get the original.
 4. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s).
 

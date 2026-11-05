@@ -82,6 +82,8 @@ export default function MeetRoomPage() {
                 onCamToggle={room.toggleCam}
                 onScreenShareToggle={room.toggleScreenShare}
                 onHandToggle={room.toggleHand}
+                translationEnabled={room.localUser.translationEnabled}
+                onTranslationToggle={room.toggleTranslation}
                 onLanguageChange={room.setLanguage}
                 onSpokenLanguageChange={room.setSpokenLanguage}
                 onReaction={room.sendReaction}
@@ -89,7 +91,7 @@ export default function MeetRoomPage() {
                 roomCode={room.roomCode}
             />
 
-            {room.settings.translation && <MeetCaptions captions={room.captions} />}
+            {room.localUser.translationEnabled && <MeetCaptions captions={room.captions} />}
 
             {overlayMessage && (
                 <div className='fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-black/85 backdrop-blur-sm px-6 text-center'>
