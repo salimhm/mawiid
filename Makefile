@@ -11,8 +11,7 @@ PYTHON   ?= python3
 
 BACKEND_URL   ?= http://localhost:3000
 FRONTEND_PORT ?= 3100
-FRONTEND_HTTPS_PORT ?= 3443
-FRONTEND_URL  ?= https://localhost:$(FRONTEND_HTTPS_PORT)
+FRONTEND_URL  ?= https://localhost:$(FRONTEND_PORT)
 DEV_TLS_DIR   := $(CURDIR)/.secrets/dev-tls
 
 REDIS_CONTAINER   := mawiid-redis
@@ -100,7 +99,7 @@ backend: ## Run the local backend with the public LiveKit configuration
 		LIVEKIT_PUBLIC_URL="$${LIVEKIT_PUBLIC_URL:-$$LIVEKIT_URL}" \
 		LIVEKIT_API_KEY="$$LIVEKIT_API_KEY" \
 		LIVEKIT_API_SECRET="$$LIVEKIT_API_SECRET" \
-		PUBLIC_APP_URL="$${PUBLIC_APP_URL:-https://localhost:$(FRONTEND_HTTPS_PORT)}" \
+		PUBLIC_APP_URL="$${PUBLIC_APP_URL:-https://localhost:$(FRONTEND_PORT)}" \
 		SMTP_HOST="$$SMTP_HOST" \
 		SMTP_PORT="$$SMTP_PORT" \
 		SMTP_USER="$$SMTP_USER" \
@@ -127,8 +126,8 @@ ai: ## Run the AI translation worker (live captions; make ai-install first)
 certs: ## Create the self-signed development HTTPS certificate if needed
 	@sh infra/dev-tls.sh $(DEV_TLS_DIR)
 
-frontend: certs ## Build and run the frontend on https://:3443, with :3100 redirecting to it
-	cd $(FRONTEND) && bun run build && PORT=$(FRONTEND_PORT) HTTPS_PORT=$(FRONTEND_HTTPS_PORT) TLS_CERT_FILE=$(DEV_TLS_DIR)/cert.pem TLS_KEY_FILE=$(DEV_TLS_DIR)/key.pem BACKEND_URL=$(BACKEND_URL) bun run start
+frontend: certs ## Build and run the frontend on https://:3100, or FRONTEND_PORT; http redirects to https
+	cd $(FRONTEND) && bun run build && PORT=$(FRONTEND_PORT) TLS_CERT_FILE=$(DEV_TLS_DIR)/cert.pem TLS_KEY_FILE=$(DEV_TLS_DIR)/key.pem BACKEND_URL=$(BACKEND_URL) bun run start
 
 dev: redis ## Start Redis, backend, and frontend together (Ctrl+C stops both servers)
 	@trap 'kill 0' INT TERM EXIT; \

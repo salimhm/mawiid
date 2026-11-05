@@ -153,7 +153,7 @@ describe('POST /auth/register with email verification', () => {
     expect(new URL(email_spy.mock.calls[0]![0].link).origin).toBe('https://mawiid-test.trycloudflare.com')
   })
 
-  test.each(['https://192.168.100.33:3443', 'https://10.0.0.5:3443', 'https://172.16.0.5:3443', 'http://127.0.0.1:3100'])('accepts the development network origin %s', async (app_url) => {
+  test.each(['https://192.168.100.33:3100', 'https://10.0.0.5:3100', 'https://172.16.0.5:3100', 'http://127.0.0.1:3100'])('accepts the development network origin %s', async (app_url) => {
     const { request, body, email_spy } = create_fixture()
     const response = await request('/auth/register', { ...body, app_url })
 
@@ -165,13 +165,13 @@ describe('POST /auth/register with email verification', () => {
     process.env.ENV = 'production'
     process.env.PUBLIC_APP_URL = 'https://mawiid.example'
     const { request, body, email_spy } = create_fixture()
-    const response = await request('/auth/register', { ...body, app_url: 'https://192.168.100.33:3443' })
+    const response = await request('/auth/register', { ...body, app_url: 'https://192.168.100.33:3100' })
 
     expect(response.status).toBe(503)
     expect(email_spy).not.toHaveBeenCalled()
   })
 
-  test.each(['https://untrusted.example', 'https://192.168.100.33.untrusted.example', 'https://172.32.0.5:3443', 'http://192.168.100.33:3100', 'https://mawiid-test.trycloudflare.com/auth', 'http://mawiid-test.trycloudflare.com'])('rejects an untrusted supplied application URL %j before account creation', async (app_url) => {
+  test.each(['https://untrusted.example', 'https://192.168.100.33.untrusted.example', 'https://172.32.0.5:3100', 'http://192.168.100.33:3100', 'https://mawiid-test.trycloudflare.com/auth', 'http://mawiid-test.trycloudflare.com'])('rejects an untrusted supplied application URL %j before account creation', async (app_url) => {
     const { request, body, email_spy } = create_fixture()
     const response = await request('/auth/register', { ...body, app_url })
 

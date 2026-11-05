@@ -1,4 +1,5 @@
 import { serve, type BunRequest, type Server, type ServerWebSocket } from "bun";
+import { connect, createServer } from "node:net";
 import index from "./index.html";
 
 // Requests to /api/* are forwarded to the Mawiid backend, so the browser
@@ -7,9 +8,8 @@ const backendUrl = new URL(process.env.BACKEND_URL || "http://localhost:3000");
 // /livekit/* does the same for LiveKit, so signaling can use wss:// with this server's certificate.
 const livekitUrl = new URL(process.env.LIVEKIT_PROXY_URL || "http://localhost:7880");
 
-// With a certificate, this server is HTTPS on HTTPS_PORT and PORT only redirects to it.
-const httpPort = Number(process.env.PORT) || 3100;
-const httpsPort = Number(process.env.HTTPS_PORT) || 3443;
+// With a certificate, PORT serves HTTPS and redirects plain HTTP to it.
+const port = Number(process.env.PORT) || 3100;
 const tls = process.env.TLS_CERT_FILE && process.env.TLS_KEY_FILE
   ? { cert: Bun.file(process.env.TLS_CERT_FILE), key: Bun.file(process.env.TLS_KEY_FILE) }
   : undefined;
@@ -42,8 +42,8 @@ const proxy = (prefix: string, upstream: URL) => async (req: BunRequest, server:
 
 const server = serve<ProxySocket>({
   // The backend uses 3000 by default.
-  port: tls ? httpsPort : httpPort,
-  tls,
+  // With a certificate this server is internal: the listener below accepts connections on PORT.
+  ...(tls ? { tls, hostname: "127.0.0.1", port: 0 } : { port }),
 
   routes: {
     // Serve index.html for all unmatched routes.
@@ -86,18 +86,30 @@ const server = serve<ProxySocket>({
 });
 
 if (tls) {
-  // 308 keeps the method and body. Browsers do not follow redirects on WebSocket
-  // handshakes, so the frontend itself picks wss:// on an HTTPS page.
-  serve({
-    port: httpPort,
-    fetch(req) {
-      const url = new URL(req.url);
-      url.protocol = "https:";
-      url.port = String(httpsPort);
-      return Response.redirect(url.href, 308);
-    },
-  });
-  console.log(`↪️  http://localhost:${httpPort} redirects to HTTPS`);
+  // One port serves both protocols, told apart by the first byte: 0x16 starts a TLS
+  // handshake. 308 keeps the method and body. Browsers do not follow redirects on
+  // WebSocket handshakes, so the frontend itself picks wss:// on an HTTPS page.
+  createServer((client) => {
+    client.on("error", () => client.destroy());
+    client.once("data", (first) => {
+      if (first[0] === 0x16) {
+        const upstream = connect(server.port!, "127.0.0.1");
+        upstream.on("error", () => client.destroy());
+        client.on("close", () => upstream.destroy());
+        upstream.write(first);
+        client.pipe(upstream).pipe(client);
+        return;
+      }
+      const lines = first.toString("latin1").split("\r\n");
+      const path = lines[0]?.split(" ")[1];
+      const host = lines.find((line) => /^host:/i.test(line))?.slice(5).trim();
+      client.end(
+        path?.startsWith("/") && host
+          ? `HTTP/1.1 308 Permanent Redirect\r\nLocation: https://${host}${path}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n`
+          : "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+      );
+    });
+  }).listen(port);
 }
 
-console.log(`🚀 Server running at ${server.url} (backend: ${backendUrl.origin})`);
+console.log(`🚀 Server running at ${tls ? `https://localhost:${port}/ (http redirects to https)` : server.url} (backend: ${backendUrl.origin})`);
