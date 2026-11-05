@@ -143,22 +143,22 @@ await check('event socket rejects an invalid ticket with 4401', async () => {
   if (result.code !== 4401) throw new Error(`closed with ${result.code} ${result.reason}`)
 })
 
-const refresh_cookie = '__Host-mawiid_refresh'
+const refresh_cookie_names = ['mawiid_refresh', '__Host-mawiid_refresh']
 
 async function auth_post(path: string, body?: unknown, refresh_token?: string) {
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['content-type'] = 'application/json'
-  if (refresh_token) headers.cookie = `${refresh_cookie}=${refresh_token}`
+  if (refresh_token) headers.cookie = refresh_cookie_names.map((name) => `${name}=${refresh_token}`).join('; ')
   const res = await fetch(`${api_url}${path}`, { method: 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body) })
-  const set_cookie = res.headers.getSetCookie().find((value) => value.startsWith(`${refresh_cookie}=`)) ?? ''
-  return { status: res.status, body: (await res.json().catch(() => null)) as any, set_cookie, refresh_token: set_cookie.split(';')[0]!.slice(refresh_cookie.length + 1) }
+  const set_cookie = res.headers.getSetCookie().find((value) => refresh_cookie_names.some((name) => value.startsWith(`${name}=`))) ?? ''
+  return { status: res.status, body: (await res.json().catch(() => null)) as any, set_cookie, refresh_token: set_cookie.split(';')[0]!.split('=').slice(1).join('=') }
 }
 
-await check('password login by email sets a secure HttpOnly refresh cookie', async () => {
+await check('password login by email sets an HttpOnly refresh cookie, Secure outside dev', async () => {
   const res = await auth_post('/auth/login', { user_identifier: 'host@mawiid.test', user_password: 'mawiid-password' })
   if (res.status !== 200 || !res.body.data.access_token) throw new Error(`got ${res.status} ${JSON.stringify(res.body)}`)
   if ('refresh_token' in res.body.data) throw new Error('refresh token leaked in the body')
-  if (!/HttpOnly/i.test(res.set_cookie) || !/Secure/i.test(res.set_cookie) || !/SameSite=Strict/i.test(res.set_cookie)) throw new Error(`cookie is ${res.set_cookie}`)
+  if (!/HttpOnly/i.test(res.set_cookie) || (res.set_cookie.startsWith('__Host-') && !/Secure/i.test(res.set_cookie)) || !/SameSite=Strict/i.test(res.set_cookie)) throw new Error(`cookie is ${res.set_cookie}`)
 })
 
 await check('password login with a wrong password is rejected', async () => {

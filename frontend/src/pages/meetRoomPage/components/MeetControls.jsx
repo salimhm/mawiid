@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react';
 import { useNavigate } from 'react-router-dom';
 import ControlsButtons from '../../../components/controlButtons';
+import { copyText } from '../../../lib/utils';
 import * as icons from '../../../assets/icons';
 
 // The languages the AI translation worker handles (services/ai/README.md).
@@ -84,7 +85,7 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
 
     const handleCopyClick = async () => {
         try {
-            await navigator.clipboard.writeText(roomID);
+            await copyText(roomID);
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
         } catch (error) {

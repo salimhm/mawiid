@@ -63,6 +63,10 @@ function is_loopback_host(host: string) {
   return host === 'localhost' || host === '127.0.0.1' || host === '[::1]'
 }
 
+function is_private_network_host(host: string) {
+  return /^(?:10\.\d+|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+$/.test(host)
+}
+
 function is_cloudflare_tunnel(host: string) {
   return host.endsWith('.trycloudflare.com') && host.length > '.trycloudflare.com'.length
 }
@@ -77,7 +81,7 @@ function auth_url(path: string, app_url?: string) {
     const base = new URL(app_url ?? process.env.PUBLIC_APP_URL ?? '')
     if (!is_origin(base)) throw lib_error.email_unavailable
 
-    const is_local_development = process.env.ENV === 'dev' && is_loopback_host(base.hostname)
+    const is_local_development = process.env.ENV === 'dev' && (is_loopback_host(base.hostname) || is_private_network_host(base.hostname))
     const is_tunnel_development = process.env.ENV === 'dev' && base.protocol === 'https:' && is_cloudflare_tunnel(base.hostname)
     if (is_local_development || is_tunnel_development) {
       if (base.protocol !== 'https:' && !(is_local_development && base.protocol === 'http:')) throw lib_error.email_unavailable

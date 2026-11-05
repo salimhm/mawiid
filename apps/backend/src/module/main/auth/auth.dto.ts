@@ -1,6 +1,9 @@
 import { t } from 'elysia'
 
 export const dto_auth_refresh_cookie = '__Host-mawiid_refresh'
+// Browsers reject __Host- and Secure cookies over plain HTTP on anything but localhost,
+// so ENV=dev uses this name to work from any host on the network.
+export const dto_auth_refresh_cookie_dev = 'mawiid_refresh'
 
 const dto_auth_phone = t.String({ pattern: '^\\+[1-9][0-9]{7,14}$', error: 'Enter a valid phone number including the country code.' })
 const dto_auth_otp_code = t.String({ pattern: '^[0-9]{6}$', error: 'Enter the 6-digit verification code.' })
@@ -13,6 +16,7 @@ const dto_auth_language = t.String({ minLength: 2, maxLength: 16, error: 'Choose
 const dto_auth_app_url = t.String({ format: 'uri', maxLength: 2048, error: 'Enter a valid application URL.' })
 const dto_auth_cookie = t.Cookie({
   [dto_auth_refresh_cookie]: t.Optional(t.String({ maxLength: 128 })),
+  [dto_auth_refresh_cookie_dev]: t.Optional(t.String({ maxLength: 128 })),
 })
 
 export const dto_schema_auth_user = t.Object({
