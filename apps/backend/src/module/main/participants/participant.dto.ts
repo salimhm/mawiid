@@ -15,6 +15,7 @@ export const dto_participant = {
       ...lib_dto_room_body,
       participant_hand_raised: t.Optional(t.Boolean()),
       participant_language: t.Optional(t.String({ pattern: '^[a-z]{2,3}(-[A-Z]{2})?$' })),
+      participant_spoken_language: t.Optional(t.String({ pattern: '^[a-z]{2,3}(-[A-Z]{2})?$' })),
     }),
     response: t.Object({
       data: dto_schema_participant,

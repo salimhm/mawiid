@@ -25,7 +25,7 @@ import numpy as np
 from livekit import rtc
 from livekit.agents import AgentServer, AutoSubscribe, JobContext, JobExecutorType
 
-from mawiid_ai.agent.pipeline import LANGUAGE_ATTRIBUTE, RoomPipeline, Segment
+from mawiid_ai.agent.pipeline import LANGUAGE_ATTRIBUTE, SPOKEN_LANGUAGE_ATTRIBUTE, RoomPipeline, Segment
 from mawiid_ai.agent.uploader import TranscriptUploader, http_post
 from mawiid_ai.stt import SAMPLE_RATE, SttRouter, build_router
 from mawiid_ai.translation import SubtitleTranslator, build_translator
@@ -148,7 +148,10 @@ async def entrypoint(ctx: JobContext) -> None:
 
     def follow(participant: rtc.RemoteParticipant) -> None:
         if is_person(participant):
-            pipeline.set_language(participant.identity, participant.attributes.get(LANGUAGE_ATTRIBUTE))
+            attributes = participant.attributes
+            pipeline.set_language(
+                participant.identity, attributes.get(LANGUAGE_ATTRIBUTE), attributes.get(SPOKEN_LANGUAGE_ATTRIBUTE)
+            )
 
     @room.on("track_subscribed")
     def _on_track_subscribed(track: rtc.Track, publication: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant) -> None:
@@ -164,7 +167,8 @@ async def entrypoint(ctx: JobContext) -> None:
 
     @room.on("participant_attributes_changed")
     def _on_attributes_changed(changed: dict[str, str], participant: rtc.Participant) -> None:
-        if LANGUAGE_ATTRIBUTE in changed and isinstance(participant, rtc.RemoteParticipant):
+        languages_changed = LANGUAGE_ATTRIBUTE in changed or SPOKEN_LANGUAGE_ATTRIBUTE in changed
+        if languages_changed and isinstance(participant, rtc.RemoteParticipant):
             follow(participant)
 
     @room.on("participant_disconnected")

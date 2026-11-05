@@ -197,6 +197,26 @@ def test_final_segments_are_saved_with_their_translations():
     assert first.segment_id != second.segment_id
 
 
+def test_speech_uses_the_spoken_language_and_captions_the_read_language():
+    room = Room()
+    room.pipeline.set_language("user_1", "en", "ar-MA")
+    room.pipeline.set_language("user_2", "fr")
+
+    room.speak("user_1", 1)
+
+    assert [stream.language for stream in room.router.streams] == ["ar-MA"]
+    assert room.pipeline.listeners() == {"en-US": ["user_1"], "fr-FR": ["user_2"]}
+
+
+def test_speech_follows_the_read_language_until_a_spoken_language_is_set():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+
+    room.speak("user_1", 1)
+
+    assert [stream.language for stream in room.router.streams] == ["fr-FR"]
+
+
 def test_changing_language_finishes_the_phrase_then_reopens_the_stream():
     room = Room()
     room.pipeline.set_language("user_1", "fr")

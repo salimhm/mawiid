@@ -89,6 +89,15 @@ def test_simplified_and_traditional_listeners_share_one_chinese_translation():
     assert subs["zh-TW"].text == "這是簡體"
 
 
+def test_darija_and_arabic_listeners_read_the_original():
+    engine = FakeEngine("a")
+    subs = by_language(make(engine).translate(transcript("text", "ar-MA"), ["ar-SA", "ar-MA", "fr-FR"]))
+
+    assert engine.calls[0].targets == ["fr-FR"]
+    assert subs["ar-SA"].text == "text"
+    assert subs["ar-MA"].text == "text"
+
+
 def test_same_spoken_language_is_only_converted_to_the_listeners_script():
     engine = FakeEngine("madlad")
     [sub] = make(engine).translate(transcript("这是简体", "zh-CN"), ["zh-TW"])

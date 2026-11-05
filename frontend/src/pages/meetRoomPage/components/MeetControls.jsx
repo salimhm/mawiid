@@ -15,7 +15,7 @@ const LANGUAGE_CODES = {
 };
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮'];
 
-export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, language = '', onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, onLanguageChange, onReaction, onLeave, roomCode = '' })
+export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, language = '', spokenLanguage = '', onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, onLanguageChange, onSpokenLanguageChange, onReaction, onLeave, roomCode = '' })
 {
     const [translating, setTranslating] = useState(false);
     const [reacting, setReacting] = useState(false);
@@ -23,13 +23,15 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
     const [copied, setCopied] = useState(false);
     const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
     const [pickedLanguage, setPickedLanguage] = useState('');
+    const [pickedSpokenLanguage, setPickedSpokenLanguage] = useState('');
 
     const navigate = useNavigate();
     const languages = Object.keys(LANGUAGE_CODES);
-    const currLanguage = pickedLanguage
-        || languages.find((name) => LANGUAGE_CODES[name] === language)
-        || languages.find((name) => LANGUAGE_CODES[name] === language.split('-')[0])
+    const languageName = (code) => languages.find((name) => LANGUAGE_CODES[name] === code)
+        || languages.find((name) => LANGUAGE_CODES[name] === code.split('-')[0])
         || 'English';
+    const currLanguage = pickedLanguage || languageName(language);
+    const currSpokenLanguage = pickedSpokenLanguage || languageName(spokenLanguage || language);
     const roomID = roomCode;
 
     useEffect(() => {
@@ -83,6 +85,24 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
         onLanguageChange?.(LANGUAGE_CODES[name]);
     };
 
+    const handleSpokenLanguageChange = (name) => {
+        setPickedSpokenLanguage(name);
+        onSpokenLanguageChange?.(LANGUAGE_CODES[name]);
+    };
+
+    const languageSection = (title, current, onPick) => (
+        <>
+            <div className='px-4 py-2 border-b border-white/24 text-sm sm:text-base text-white bg-white/20 flex items-center gap-2 font-medium'>
+                {icons.translateIcon(24, 24, 1)} {title}
+            </div>
+            {languages.map((name) => (
+                <button key={name} className={name === current ? 'w-full py-2 hover:bg-white/40 border-white/20 border-b text-white font-semibold text-sm sm:text-base bg-blue-600/50 cursor-default' : 'w-full py-2 hover:bg-white/10 border-white/20 border-b text-sm sm:text-base cursor-pointer'} onClick={() => {onPick(name)}}>
+                    {name}
+                </button>
+            ))}
+        </>
+    );
+
     const handleCopyClick = async () => {
         try {
             await copyText(roomID);
@@ -134,21 +154,15 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
 
             {translating && (
                 <div
-                    className='fixed w-56 sm:w-60 rounded-3xl bg-black/60 backdrop-blur-xl border border-white/24 text-white font-inter overflow-hidden z-50 shadow-2xl'
+                    className='fixed w-56 sm:w-60 max-h-[70vh] overflow-y-auto rounded-3xl bg-black/60 backdrop-blur-xl border border-white/24 text-white font-inter z-50 shadow-2xl'
                     style={{
                         left: popupX,
                         top: menuPos.y - 12,
                         transform: 'translate(-50%, -100%)',
                     }}
                 >
-                    <div className='px-4 py-2 border-b border-white/24 text-sm sm:text-base text-white bg-white/20 flex items-center gap-2 font-medium'>
-                        {icons.translateIcon(24, 24, 1)} Your language
-                    </div>
-                    {languages.map((language) => (
-                        <button key={language} className={language === currLanguage ? 'w-full py-2 hover:bg-white/40 border-white/20 border-b last:border-b-0 text-white font-semibold text-sm sm:text-base bg-blue-600/50 cursor-default' : 'w-full py-2 hover:bg-white/10 border-white/20 border-b last:border-b-0 text-sm sm:text-base cursor-pointer'} onClick={() => {handleLanguageChange(language)}}>
-                            {language}
-                        </button>
-                    ))}
+                    {languageSection('I speak', currSpokenLanguage, handleSpokenLanguageChange)}
+                    {languageSection('Show captions in', currLanguage, handleLanguageChange)}
                 </div>
             )}
 

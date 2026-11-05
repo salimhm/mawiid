@@ -11,6 +11,7 @@ export const room_attribute = {
   user_id: 'mawiid.user_id',
   role: 'mawiid.role',
   language: 'mawiid.language',
+  spoken_language: 'mawiid.spoken_language',
   hand_raised: 'mawiid.hand_raised',
 } as const
 

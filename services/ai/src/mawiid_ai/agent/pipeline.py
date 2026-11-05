@@ -27,7 +27,8 @@ TRANSLATION_TOPIC = "mawiid.translation.v1"
 SEGMENT_ATTRIBUTE = "lk.segment_id"
 TRACK_ATTRIBUTE = "lk.transcribed_track_id"
 FINAL_ATTRIBUTE = "lk.transcription_final"
-LANGUAGE_ATTRIBUTE = "mawiid.language"
+LANGUAGE_ATTRIBUTE = "mawiid.language"  # the language someone reads captions in
+SPOKEN_LANGUAGE_ATTRIBUTE = "mawiid.spoken_language"  # the language someone speaks; defaults to the above
 
 DEFAULT_LANGUAGE = "en-US"  # backend default for accounts without user_language
 OPEN_RETRY_S = 5.0
@@ -92,19 +93,26 @@ class RoomPipeline:
         self._on_segment = on_segment
         self._clock = clock
         self._started = clock()
-        # Everyone in the room, by identity: the language they speak is the one they read.
+        # Everyone in the room, by identity: the language they read.
         # None: a language no model handles, so they only get the originals.
         self._languages: dict[str, str | None] = {}
+        # The language they speak, when they picked one; otherwise the one they read.
+        self._spoken_languages: dict[str, str | None] = {}
 
-    def set_language(self, identity: str, code: str | None) -> None:
-        """Record a participant's mawiid.language attribute; a speaker's stream follows it."""
+    def set_language(self, identity: str, code: str | None, spoken_code: str | None = None) -> None:
+        """Record a participant's language attributes; a speaker's stream follows the spoken one."""
         language = mawiid_language(code)
         if language is None and code:
             log.warning("%s picked %r, which no model handles: originals only", identity, code)
+        spoken = mawiid_language(spoken_code)
+        if spoken is None and spoken_code:
+            log.warning("%s speaks %r, which no model handles", identity, spoken_code)
         self._languages[identity] = language
+        self._spoken_languages[identity] = spoken
 
     def remove(self, identity: str) -> None:
         self._languages.pop(identity, None)
+        self._spoken_languages.pop(identity, None)
 
     def listeners(self) -> dict[str, list[str]]:
         """Identities per Mawiid language."""
@@ -119,7 +127,7 @@ class RoomPipeline:
         speaker = _Speaker(identity, track_sid)
         try:
             async for chunk in audio:
-                language = self._languages.get(identity) or DEFAULT_LANGUAGE
+                language = self._spoken_languages.get(identity) or self._languages.get(identity) or DEFAULT_LANGUAGE
                 if speaker.stream is not None and speaker.language != language:
                     await self._close(speaker)  # finish the current phrase in the old language
                 if speaker.stream is None and not await self._open(speaker, language):

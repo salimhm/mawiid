@@ -11,6 +11,7 @@ const ATTRIBUTE = {
     userId: 'mawiid.user_id',
     role: 'mawiid.role',
     language: 'mawiid.language',
+    spokenLanguage: 'mawiid.spoken_language',
     handRaised: 'mawiid.hand_raised',
 }
 const KNOCK_RETRY_MS = 10000
@@ -169,6 +170,7 @@ export function useRoom(roomUid, {
             name: isLocal ? `${participant.name || 'You'} (You)` : participant.name || participant.identity,
             role: attributes[ATTRIBUTE.role] || '',
             language: attributes[ATTRIBUTE.language] || '',
+            spokenLanguage: attributes[ATTRIBUTE.spokenLanguage] || '',
             handRaised: attributes[ATTRIBUTE.handRaised] === 'true',
             stream: streamFor(video?.track),
             isCamOn: Boolean(video?.track && !video.isMuted),
@@ -459,8 +461,18 @@ export function useRoom(roomUid, {
         [updateSelf, localUser.handRaised],
     )
 
+    // Speech follows the caption language until a spoken language is set, so
+    // pin it first: changing what you read must not change what you are heard as.
     const setLanguage = useCallback(
-        (language) => updateSelf({ participant_language: language }),
+        (language) => updateSelf({
+            participant_language: language,
+            ...(!localUser.spokenLanguage && localUser.language ? { participant_spoken_language: localUser.language } : {}),
+        }),
+        [updateSelf, localUser.spokenLanguage, localUser.language],
+    )
+
+    const setSpokenLanguage = useCallback(
+        (language) => updateSelf({ participant_spoken_language: language }),
         [updateSelf],
     )
 
@@ -598,6 +610,7 @@ export function useRoom(roomUid, {
         toggleScreenShare,
         toggleHand,
         setLanguage,
+        setSpokenLanguage,
         admit: (userId) => answerKnock(userId, true),
         deny: (userId) => answerKnock(userId, false),
         leave,

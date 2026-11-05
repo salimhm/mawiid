@@ -19,13 +19,27 @@ REDIS_IMAGE       := redis:7
 LIVEKIT_CONTAINER := mawiid-livekit
 LIVEKIT_IMAGE     := livekit/livekit-server
 
-.PHONY: certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
+# make dev AI_MODELS=0 skips the model conversion on machines without the disk or RAM for it.
+AI_MODELS ?= 1
+AI_MODEL_FILES := $(AI)/data/models/madlad400-3b-mt-ct2/model.bin $(AI)/data/models/whisper-darija-ct2/model.bin
+
+.PHONY: setup seed-if-missing ai-models certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
         tokens typecheck build test-unit test-ai check smoke test clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # ---------------------------------------------------------------- setup
+
+setup: ## Check the tools and install what make dev needs (safe to repeat)
+	@for tool in bun docker openssl curl $(PYTHON); do \
+		command -v $$tool >/dev/null || { echo "Missing $$tool: install it first."; exit 1; }; done
+	@docker info >/dev/null 2>&1 || { echo "Docker is not running: start it first."; exit 1; }
+	@[ -f .env ] || { printf "ENV=dev\nLIVEKIT_URL=ws://localhost:7880\nLIVEKIT_API_KEY=devkey\nLIVEKIT_API_SECRET=secret\n" > .env; \
+		echo "Created .env with the local LiveKit settings. Email needs the SMTP_* values from .env.example."; }
+	@$(MAKE) --no-print-directory install
+	@$(MAKE) --no-print-directory $(AI)/.venv/.installed
+	@$(MAKE) --no-print-directory certs
 
 install: ## Install dependencies and generate the Prisma clients
 	bun install
@@ -34,10 +48,25 @@ install: ## Install dependencies and generate the Prisma clients
 
 ai-install: ## Create the AI worker's Python environment (Python 3.11+: make ai-install PYTHON=python3.12)
 	cd $(AI) && $(PYTHON) -m venv .venv && .venv/bin/pip install -e ".[dev]"
+	touch $(AI)/.venv/.installed
+
+$(AI)/.venv/.installed: $(AI)/pyproject.toml
+	@$(MAKE) --no-print-directory ai-install
+
+ai-models: ## Convert the translation and Darija models if missing (~12 GB downloads, ~9 GB of RAM)
+	@if ls $(AI_MODEL_FILES) >/dev/null 2>&1; then echo "AI models are ready"; exit 0; fi; \
+		echo "Converting the AI models. This runs once and takes a while; captions start when it finishes."; \
+		cd $(AI) && .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu && \
+		.venv/bin/pip install -e ".[convert]" && \
+		.venv/bin/python scripts/convert_translation_model.py && \
+		.venv/bin/python scripts/convert_darija_model.py --model turbo
 
 # ---------------------------------------------------------------- infrastructure
 
-infra: redis livekit ## Start Redis and LiveKit (Docker)
+infra: redis livekit ## Start Redis and LiveKit (Docker) and wait until they answer
+	@for i in $$(seq 1 30); do \
+		docker exec $(REDIS_CONTAINER) redis-cli ping >/dev/null 2>&1 && curl -sf -o /dev/null http://localhost:7880 && exit 0; \
+		sleep 1; done; echo "Redis or LiveKit did not start: see docker logs $(LIVEKIT_CONTAINER)"; exit 1
 
 redis:
 	@docker start $(REDIS_CONTAINER) >/dev/null 2>&1 || \
@@ -67,6 +96,9 @@ seed: ## Reset the local test data (backend must be stopped)
 	@if curl -sf $(BACKEND_URL)/health >/dev/null; then \
 		echo "The backend is running: stop it first (make stop), the seed replaces its database files."; exit 1; fi
 	cd $(BACKEND) && bun run postman:seed
+
+seed-if-missing:
+	@[ -f $(BACKEND)/postman/data/main.db ] || $(MAKE) --no-print-directory seed
 
 backend: ## Run the local backend with the public LiveKit configuration
 	@set -a; . $(BACKEND)/postman/.env.postman; set +a; \
@@ -109,7 +141,7 @@ backend: ## Run the local backend with the public LiveKit configuration
 
 # Same LiveKit server as `make backend`, and the backend's internal token from postman/.env.postman.
 # Model settings (MAWIID_STT_*, MAWIID_MT_*) come from .env. The first run downloads Whisper.
-ai: ## Run the AI translation worker (live captions; make ai-install first)
+ai: ## Run the AI translation worker on its own (make ai-install first)
 	@set -a; . ./.env; set +a; \
 		if [ -z "$$LIVEKIT_URL" ] || [ -z "$$LIVEKIT_API_KEY" ] || [ -z "$$LIVEKIT_API_SECRET" ]; then \
 			echo "Missing LIVEKIT_URL, LIVEKIT_API_KEY, or LIVEKIT_API_SECRET in .env"; exit 1; \
@@ -129,16 +161,22 @@ certs: ## Create the self-signed development HTTPS certificate if needed
 frontend: certs ## Build and run the frontend on https://:3100, or FRONTEND_PORT; http redirects to https
 	cd $(FRONTEND) && bun run build && PORT=$(FRONTEND_PORT) TLS_CERT_FILE=$(DEV_TLS_DIR)/cert.pem TLS_KEY_FILE=$(DEV_TLS_DIR)/key.pem BACKEND_URL=$(BACKEND_URL) bun run start
 
-dev: redis ## Start Redis, backend, and frontend together (Ctrl+C stops both servers)
+dev: stop setup infra seed-if-missing ## Set up and run everything: Redis, LiveKit, backend, frontend, AI worker (Ctrl+C stops the servers)
+	@echo "Mawiid   https://localhost:$(FRONTEND_PORT) and https://$$(hostname -I | cut -d' ' -f1):$(FRONTEND_PORT)"
 	@trap 'kill 0' INT TERM EXIT; \
 		$(MAKE) --no-print-directory backend & \
 		$(MAKE) --no-print-directory frontend & \
+		{ [ "$(AI_MODELS)" != 1 ] || $(MAKE) --no-print-directory ai-models; $(MAKE) --no-print-directory ai; } & \
 		wait
 
-stop: ## Stop backend and frontend servers started elsewhere
-	-pkill -f 'bun run --env-file=postman/.env.postman --watch src/app.ts'
-	-pkill -f 'bun --hot src/index.ts'
-	-pkill -f 'bun src/index.ts'
+# The [x] keeps each pattern from matching this shell's own command line.
+stop: ## Stop the backend, frontend and AI worker
+	@pkill -f '[b]un run --env-file=postman/.env.postman --watch src/app.ts' || true
+	@pkill -f '[b]un --hot src/index.ts' || true
+	@pkill -f '[b]un src/index.ts' || true
+	@pkill -f '[m]awiid_ai.agent' || true
+	@for i in $$(seq 1 28); do pgrep -f '[b]un .*src/(app|index).ts|[m]awiid_ai.agent' >/dev/null || exit 0; sleep 0.25; done; \
+		pkill -9 -f '[b]un .*src/(app|index).ts|[m]awiid_ai.agent' || true
 
 tokens: ## Print login links for the seeded users and the room code
 	@cd $(BACKEND) && bun -e " \

@@ -32,7 +32,7 @@ def load_engines(settings: SttSettings) -> dict[str, SttEngine]:
         except Exception:
             log.exception("darija engine failed to load")
     else:
-        log.info("no darija model at %s (run scripts/convert_darija_model.py)", settings.darija.model)
+        log.warning("no darija model at %s: Darija falls back to stock Whisper (run make ai-models)", settings.darija.model)
 
     # Voxtral Realtime needs a GPU; its engine is added once we test on GPU hardware.
     # Until then routes that list "voxtral" fall through to the next engine.

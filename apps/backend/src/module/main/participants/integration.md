@@ -317,11 +317,12 @@ Returns `404 participant-not-found` if the target isn't connected and no `block_
 {
   "room_uid": "7d0f6c1e-...",
   "participant_hand_raised": true, // optional
-  "participant_language": "fr" // optional, e.g. "ar", "en-US"
+  "participant_language": "fr", // optional, the language captions are shown in, e.g. "ar", "en-US"
+  "participant_spoken_language": "ar-MA" // optional, the language speech is transcribed in; defaults to participant_language
 }
 ```
 
-Updates the caller's own LiveKit attributes `mawiid.hand_raised` (`"true"` or empty) and `mawiid.language`. Other clients see the change through `RoomEvent.ParticipantAttributesChanged`. At least one field is required (`400` otherwise).
+Updates the caller's own LiveKit attributes `mawiid.hand_raised` (`"true"` or empty), `mawiid.language` and `mawiid.spoken_language`. Other clients see the change through `RoomEvent.ParticipantAttributesChanged`. At least one field is required (`400` otherwise).
 
 All participant endpoints return:
 
