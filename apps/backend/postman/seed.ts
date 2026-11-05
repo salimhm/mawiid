@@ -53,6 +53,7 @@ for (const [index, user] of seed_user.entries()) {
       user_first_name: user.first_name,
       user_last_name: 'Test',
       user_language: 'en',
+      user_email_verified_at: new Date(),
     },
   })
   user_id[user.key] = row.user_id

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { DisconnectReason, Room, RoomEvent, Track } from 'livekit-client'
 import { api, ApiError, errorMessage } from '../services/api'
+import { randomId, reachableUrl } from '../lib/utils'
 import { createEventSocket } from '../services/eventSocket'
 import { createRoomSignal } from '../services/roomSignal'
 import { createRoomCaptions } from '../services/roomCaption'
@@ -349,7 +350,7 @@ export function useRoom(roomUid, {
                 return
 
             try {
-                await room.connect(joined.server_url, joined.participant_token)
+                await room.connect(reachableUrl(joined.server_url), joined.participant_token)
             } catch {
                 throw new ApiError('livekit-unavailable', 503)
             }
@@ -493,7 +494,7 @@ export function useRoom(roomUid, {
         if (!room || room.state !== 'connected' || !trimmed)
             return
         const userId = userIdOf(room.localParticipant.identity, room.localParticipant.attributes || {})
-        const clientId = crypto.randomUUID()
+        const clientId = randomId()
         deliverMessage({
             key: messageKey(userId, clientId),
             id: null,

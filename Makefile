@@ -11,14 +11,15 @@ PYTHON   ?= python3
 
 BACKEND_URL   ?= http://localhost:3000
 FRONTEND_PORT ?= 3100
-FRONTEND_URL  ?= http://localhost:$(FRONTEND_PORT)
+FRONTEND_URL  ?= https://localhost:$(FRONTEND_PORT)
+DEV_TLS_DIR   := $(CURDIR)/.secrets/dev-tls
 
 REDIS_CONTAINER   := mawiid-redis
 REDIS_IMAGE       := redis:7
 LIVEKIT_CONTAINER := mawiid-livekit
 LIVEKIT_IMAGE     := livekit/livekit-server
 
-.PHONY: help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
+.PHONY: certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
         tokens typecheck build test-unit test-ai check smoke test clean
 
 help: ## Show this help
@@ -68,16 +69,37 @@ seed: ## Reset the local test data (backend must be stopped)
 	cd $(BACKEND) && bun run postman:seed
 
 backend: ## Run the local backend with the public LiveKit configuration
-	@. ./.env; \
+	@set -a; . $(BACKEND)/postman/.env.postman; set +a; \
+		postman_jwt_secret="$$JWT_SECRET_KEY"; \
+		postman_turso_url="$$TURSODB_URL"; \
+		postman_turso_token="$$TURSODB_TOKEN"; \
+		postman_turso_db="$$TURSODB_DB"; \
+		postman_turso_org="$$TURSODB_ORG"; \
+		postman_turso_group_name="$$TURSODB_GROUP_NAME"; \
+		postman_turso_group_token="$$TURSODB_GROUP_TOKEN"; \
+		postman_redis_url="$$REDIS_URL"; \
+		postman_internal_service_token="$$INTERNAL_SERVICE_TOKEN"; \
+		postman_translator_agent="$$LIVEKIT_TRANSLATOR_AGENT"; \
+		. ./.env; \
 		if [ -z "$$LIVEKIT_URL" ] || [ -z "$$LIVEKIT_API_KEY" ] || [ -z "$$LIVEKIT_API_SECRET" ]; then \
 			echo "Missing LIVEKIT_URL, LIVEKIT_API_KEY, or LIVEKIT_API_SECRET in .env"; exit 1; \
 		fi; \
 		cd $(BACKEND) && \
+		JWT_SECRET_KEY="$$postman_jwt_secret" \
+		TURSODB_URL="$$postman_turso_url" \
+		TURSODB_TOKEN="$$postman_turso_token" \
+		TURSODB_DB="$$postman_turso_db" \
+		TURSODB_ORG="$$postman_turso_org" \
+		TURSODB_GROUP_NAME="$$postman_turso_group_name" \
+		TURSODB_GROUP_TOKEN="$$postman_turso_group_token" \
+		REDIS_URL="$$postman_redis_url" \
+		INTERNAL_SERVICE_TOKEN="$$postman_internal_service_token" \
+		LIVEKIT_TRANSLATOR_AGENT="$$postman_translator_agent" \
 		LIVEKIT_URL="$$LIVEKIT_URL" \
 		LIVEKIT_PUBLIC_URL="$${LIVEKIT_PUBLIC_URL:-$$LIVEKIT_URL}" \
 		LIVEKIT_API_KEY="$$LIVEKIT_API_KEY" \
 		LIVEKIT_API_SECRET="$$LIVEKIT_API_SECRET" \
-		PUBLIC_APP_URL="$${PUBLIC_APP_URL:-http://localhost:$(FRONTEND_PORT)}" \
+		PUBLIC_APP_URL="$${PUBLIC_APP_URL:-https://localhost:$(FRONTEND_PORT)}" \
 		SMTP_HOST="$$SMTP_HOST" \
 		SMTP_PORT="$$SMTP_PORT" \
 		SMTP_USER="$$SMTP_USER" \
@@ -101,8 +123,11 @@ ai: ## Run the AI translation worker (live captions; make ai-install first)
 		LIVEKIT_API_SECRET="$$livekit_secret" \
 		.venv/bin/python -m mawiid_ai.agent dev
 
-frontend: ## Build and run the frontend in production on :3100, or FRONTEND_PORT
-	cd $(FRONTEND) && PORT=$(FRONTEND_PORT) BACKEND_URL=$(BACKEND_URL) bun run build && PORT=$(FRONTEND_PORT) BACKEND_URL=$(BACKEND_URL) bun run start
+certs: ## Create the self-signed development HTTPS certificate if needed
+	@sh infra/dev-tls.sh $(DEV_TLS_DIR)
+
+frontend: certs ## Build and run the frontend on https://:3100, or FRONTEND_PORT; http redirects to https
+	cd $(FRONTEND) && bun run build && PORT=$(FRONTEND_PORT) TLS_CERT_FILE=$(DEV_TLS_DIR)/cert.pem TLS_KEY_FILE=$(DEV_TLS_DIR)/key.pem BACKEND_URL=$(BACKEND_URL) bun run start
 
 dev: redis ## Start Redis, backend, and frontend together (Ctrl+C stops both servers)
 	@trap 'kill 0' INT TERM EXIT; \
@@ -149,7 +174,7 @@ test-ai: ## Run the AI worker's tests (make ai-install first; model tests skip w
 check: typecheck test-unit build ## Static checks, no services needed
 
 smoke: ## End-to-end endpoint checks against the running stack (make dev first)
-	cd $(BACKEND) && FRONTEND_URL=$(FRONTEND_URL) bun postman/smoke.ts
+	cd $(BACKEND) && NODE_TLS_REJECT_UNAUTHORIZED=0 FRONTEND_URL=$(FRONTEND_URL) bun postman/smoke.ts
 
 test: check smoke ## Everything: static checks, then smoke tests
 

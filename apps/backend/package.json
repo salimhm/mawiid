@@ -17,6 +17,7 @@
         "postman:dev": "bun run --env-file=postman/.env.postman --watch src/app.ts"
     },
     "dependencies": {
+        "@elysia/cors": "^1.4.2",
         "@elysiajs/jwt": "^1.4.2",
         "@elysiajs/openapi": "^1.4.16",
         "@libsql/client": "^0.18.0",

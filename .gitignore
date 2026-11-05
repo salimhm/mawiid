@@ -43,3 +43,6 @@ models/
 Thumbs.db
 
 apps/backend/src/db/generated
+
+# Rendered from infra/compose/livekit.yaml.template with production secrets.
+infra/compose/runtime/

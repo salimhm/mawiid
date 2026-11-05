@@ -59,12 +59,39 @@ function normalize(value: string) {
   return value.trim().toLowerCase()
 }
 
-function auth_url(path: string) {
+function is_loopback_host(host: string) {
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]'
+}
+
+function is_private_network_host(host: string) {
+  return /^(?:10\.\d+|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+$/.test(host)
+}
+
+function is_cloudflare_tunnel(host: string) {
+  return host.endsWith('.trycloudflare.com') && host.length > '.trycloudflare.com'.length
+}
+
+function is_origin(url: URL) {
+  return !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash
+}
+
+function auth_url(path: string, app_url?: string) {
   try {
+    const supplied = app_url !== undefined
+    const base = new URL(app_url ?? process.env.PUBLIC_APP_URL ?? '')
+    if (!is_origin(base)) throw lib_error.email_unavailable
+
+    const is_local_development = process.env.ENV === 'dev' && is_loopback_host(base.hostname)
+    const is_tunnel_development = process.env.ENV === 'dev' && base.protocol === 'https:' && (is_cloudflare_tunnel(base.hostname) || is_private_network_host(base.hostname))
+    if (is_local_development || is_tunnel_development) {
+      if (base.protocol !== 'https:' && !(is_local_development && base.protocol === 'http:')) throw lib_error.email_unavailable
+      return new URL(path, base)
+    }
+
     if (!process.env.PUBLIC_APP_URL) throw lib_error.email_unavailable
-    const url = new URL(path, process.env.PUBLIC_APP_URL)
-    if (url.protocol !== 'https:' && !(process.env.ENV === 'dev' && url.protocol === 'http:')) throw lib_error.email_unavailable
-    return url
+    const configured = new URL(process.env.PUBLIC_APP_URL)
+    if (!is_origin(configured) || configured.protocol !== 'https:' || (supplied && base.origin !== configured.origin)) throw lib_error.email_unavailable
+    return new URL(path, configured)
   } catch {
     throw lib_error.email_unavailable
   }
@@ -151,7 +178,7 @@ export const service_auth = {
     database: auth_database,
     redis: RedisClient,
   ): Promise<Static<typeof dto_auth.forgot_password.response>> {
-    const link = auth_url('/auth/reset-password')
+    const link = auth_url('/auth/reset-password', body.app_url)
     const user_email = normalize(body.user_email)
     const allowed = await redis.set(`auth_password_reset_cooldown:${hash(user_email)}`, '1', 'EX', '60', 'NX')
     if (!allowed) throw lib_error.too_many_requests
@@ -176,7 +203,7 @@ export const service_auth = {
     database: auth_database,
     redis: RedisClient,
   ): Promise<Static<typeof dto_auth.resend_email.response>> {
-    const link = auth_url('/auth/verify-email')
+    const link = auth_url('/auth/verify-email', body.app_url)
     const user_email = normalize(body.user_email)
     const allowed = await redis.set(`auth_email_cooldown:${hash(user_email)}`, '1', 'EX', '60', 'NX')
     if (!allowed) throw lib_error.too_many_requests
@@ -234,7 +261,7 @@ export const service_auth = {
     database: auth_database,
     redis: RedisClient,
   ): Promise<Static<typeof dto_auth.register.response>> {
-    const link = auth_url('/auth/verify-email')
+    const link = auth_url('/auth/verify-email', body.app_url)
     const user_username = normalize(body.user_username)
     const user_email = normalize(body.user_email)
     await ensure_available(user_username, user_email, database)
