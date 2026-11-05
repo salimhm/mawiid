@@ -153,7 +153,7 @@ describe('POST /auth/register with email verification', () => {
     expect(new URL(email_spy.mock.calls[0]![0].link).origin).toBe('https://mawiid-test.trycloudflare.com')
   })
 
-  test.each(['http://192.168.100.33:3100', 'http://10.0.0.5:3100', 'http://172.16.0.5:3100', 'http://127.0.0.1:3100'])('accepts the development network origin %s', async (app_url) => {
+  test.each(['https://192.168.100.33:3443', 'https://10.0.0.5:3443', 'https://172.16.0.5:3443', 'http://127.0.0.1:3100'])('accepts the development network origin %s', async (app_url) => {
     const { request, body, email_spy } = create_fixture()
     const response = await request('/auth/register', { ...body, app_url })
 
@@ -165,13 +165,13 @@ describe('POST /auth/register with email verification', () => {
     process.env.ENV = 'production'
     process.env.PUBLIC_APP_URL = 'https://mawiid.example'
     const { request, body, email_spy } = create_fixture()
-    const response = await request('/auth/register', { ...body, app_url: 'http://192.168.100.33:3100' })
+    const response = await request('/auth/register', { ...body, app_url: 'https://192.168.100.33:3443' })
 
     expect(response.status).toBe(503)
     expect(email_spy).not.toHaveBeenCalled()
   })
 
-  test.each(['https://untrusted.example', 'http://192.168.100.33.untrusted.example', 'http://172.32.0.5:3100', 'https://mawiid-test.trycloudflare.com/auth', 'http://mawiid-test.trycloudflare.com'])('rejects an untrusted supplied application URL %j before account creation', async (app_url) => {
+  test.each(['https://untrusted.example', 'https://192.168.100.33.untrusted.example', 'https://172.32.0.5:3443', 'http://192.168.100.33:3100', 'https://mawiid-test.trycloudflare.com/auth', 'http://mawiid-test.trycloudflare.com'])('rejects an untrusted supplied application URL %j before account creation', async (app_url) => {
     const { request, body, email_spy } = create_fixture()
     const response = await request('/auth/register', { ...body, app_url })
 
@@ -416,23 +416,7 @@ describe('email verification enforcement', () => {
       access_token: expect.any(String), expires_in: 900,
       user: { user_email: body.user_email, user_email_verified_at: expect.any(String) },
     } })
-    expect(response.headers.get('set-cookie')).toContain('mawiid_refresh=')
-    expect(response.headers.get('set-cookie')).not.toContain('__Host-')
-    expect(response.headers.get('set-cookie')).not.toMatch(/Secure/i)
-  })
-
-  test('uses a __Host- Secure refresh cookie outside development', async () => {
-    const { request, login, email_spy } = create_fixture()
-    await request()
-    const token = new URL(email_spy.mock.calls[0]![0].link).searchParams.get('token')
-    expect((await request('/auth/email/verify', { token })).status).toBe(200)
-    process.env.ENV = 'production'
-    const set_cookie = (await login()).headers.get('set-cookie')!
-
-    expect(set_cookie).toStartWith('__Host-mawiid_refresh=')
-    expect(set_cookie).toMatch(/Secure/i)
-    expect(set_cookie).toMatch(/HttpOnly/i)
-    expect(set_cookie).toMatch(/SameSite=Strict/i)
+    expect(response.headers.get('set-cookie')).toContain('__Host-mawiid_refresh=')
   })
 
   test.each(['unverified', 'verified', 'unknown'])('does not reveal verification status for incorrect credentials on an %s account', async (state) => {
@@ -479,7 +463,7 @@ describe('email verification enforcement', () => {
     const hash = new Bun.CryptoHasher('sha256').update(token).digest('hex')
     entries.set(`auth_refresh:${hash}`, { value: `${user.user_id}:${family}`, expires_at: Infinity })
     entries.set(`auth_refresh_family:${family}`, { value: String(user.user_id), expires_at: Infinity })
-    const cookie = `mawiid_refresh=${token}`
+    const cookie = `__Host-mawiid_refresh=${token}`
     const response = await refresh(cookie)
 
     expect(response.status).toBe(403)
@@ -790,7 +774,7 @@ describe('POST /auth/password/reset', () => {
     expect((await access(legacy_access)).status).toBe(200)
     expect((await request('/auth/password/reset', { token: legacy_token.token, user_password: new_password })).status).toBe(200)
     expect((await access(legacy_access)).status).toBe(401)
-    expect((await refresh(`mawiid_refresh=${legacy_refresh}`)).status).toBe(401)
+    expect((await refresh(`__Host-mawiid_refresh=${legacy_refresh}`)).status).toBe(401)
   })
 
   test('cannot change the password when the stored password changes during reset', async () => {

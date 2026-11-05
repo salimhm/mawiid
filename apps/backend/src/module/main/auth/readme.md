@@ -25,9 +25,8 @@ A session response is `{ access_token, expires_in, user }`. Send the access toke
 routes that `.use(lib_jwt)` reject a missing, invalid or expired one with `401`.
 
 The refresh token is never in a response body. It is set as the cookie `__Host-mawiid_refresh` (`HttpOnly; Secure;
-SameSite=Strict; Path=/`, 30 days), so page scripts cannot read it and other sites cannot send it. With `ENV=dev` it is
-`mawiid_refresh` without `Secure` instead, because browsers reject `__Host-` and `Secure` cookies over HTTP on anything but
-localhost. That lets development run on localhost, 127.0.0.1 or a private network address. Never use `ENV=dev` in production.
+SameSite=Strict; Path=/`, 30 days), so page scripts cannot read it and other sites cannot send it. Browsers accept `Secure`
+cookies on `http://localhost`, so local development works without HTTPS.
 
 *No SMS provider is wired yet: `/auth/otp` only works with `ENV=dev`, where the code is returned in the response and logged
 to the console. Other environments get `503 service-unavailable`.

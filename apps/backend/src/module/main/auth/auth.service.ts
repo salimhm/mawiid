@@ -81,8 +81,8 @@ function auth_url(path: string, app_url?: string) {
     const base = new URL(app_url ?? process.env.PUBLIC_APP_URL ?? '')
     if (!is_origin(base)) throw lib_error.email_unavailable
 
-    const is_local_development = process.env.ENV === 'dev' && (is_loopback_host(base.hostname) || is_private_network_host(base.hostname))
-    const is_tunnel_development = process.env.ENV === 'dev' && base.protocol === 'https:' && is_cloudflare_tunnel(base.hostname)
+    const is_local_development = process.env.ENV === 'dev' && is_loopback_host(base.hostname)
+    const is_tunnel_development = process.env.ENV === 'dev' && base.protocol === 'https:' && (is_cloudflare_tunnel(base.hostname) || is_private_network_host(base.hostname))
     if (is_local_development || is_tunnel_development) {
       if (base.protocol !== 'https:' && !(is_local_development && base.protocol === 'http:')) throw lib_error.email_unavailable
       return new URL(path, base)

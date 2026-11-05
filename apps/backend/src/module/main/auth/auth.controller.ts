@@ -2,28 +2,16 @@ import { Elysia, type Cookie } from 'elysia'
 
 import { lib_jwt_sign } from '@lib/jwt.lib'
 import { lib_middleware_context } from '@lib/middleware.lib'
-import { dto_auth, dto_auth_refresh_cookie, dto_auth_refresh_cookie_dev } from '@module/main/auth/auth.dto'
+import { dto_auth, dto_auth_refresh_cookie } from '@module/main/auth/auth.dto'
 import { service_auth, service_auth_refresh_ttl_seconds } from '@module/main/auth/auth.service'
 
 type auth_cookie = Record<string, Cookie<unknown>>
 
-function is_dev() {
-  return process.env.ENV === 'dev'
-}
-
-function refresh_cookie(cookie: auth_cookie) {
-  return cookie[is_dev() ? dto_auth_refresh_cookie_dev : dto_auth_refresh_cookie]!
-}
-
-function read_refresh_cookie(cookie: auth_cookie) {
-  return refresh_cookie(cookie).value as string | undefined
-}
-
 function write_refresh_cookie(cookie: auth_cookie, value: string, max_age: number) {
-  refresh_cookie(cookie).set({
+  cookie[dto_auth_refresh_cookie]!.set({
     value,
     httpOnly: true,
-    secure: !is_dev(),
+    secure: true,
     sameSite: 'strict',
     path: '/',
     maxAge: max_age,
@@ -137,7 +125,7 @@ export const controller_auth = new Elysia({ prefix: '/auth' })
     '/refresh',
     async (context) => {
       const { cookie, lib_jwt_signer, database, redis } = context
-      const refresh_token = read_refresh_cookie(cookie)
+      const refresh_token = cookie[dto_auth_refresh_cookie].value
 
       try {
         return deliver(cookie, await service_auth.refresh(refresh_token, lib_jwt_signer, database, redis))
@@ -153,7 +141,7 @@ export const controller_auth = new Elysia({ prefix: '/auth' })
     '/logout',
     async (context) => {
       const { cookie, redis } = context
-      const refresh_token = read_refresh_cookie(cookie)
+      const refresh_token = cookie[dto_auth_refresh_cookie].value
 
       write_refresh_cookie(cookie, '', 0)
       return await service_auth.logout(refresh_token, redis)

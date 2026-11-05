@@ -27,12 +27,18 @@ export async function copyText(text: string): Promise<void> {
   if (!copied) throw new Error("copy-failed");
 }
 
-// A loopback LiveKit URL from the backend means this machine's dev server. From
-// another device on the network it has to point at the host serving this page.
+// A loopback LiveKit URL from the backend means this machine's dev server. On
+// HTTPS it is reached through the same-origin wss:// proxy in src/index.ts, and
+// over plain HTTP at the host serving this page.
 export function reachableUrl(url: string): string {
   const target = new URL(url);
+  const page = window.location;
   const isLoopback = (host: string) => host === "localhost" || host === "127.0.0.1" || host === "[::1]";
-  if (!isLoopback(target.hostname) || isLoopback(window.location.hostname)) return url;
-  target.hostname = window.location.hostname;
+  if (page.protocol === "https:") {
+    if (isLoopback(target.hostname)) return `wss://${page.host}/livekit`;
+    if (target.protocol === "ws:") target.protocol = "wss:";
+    return target.href;
+  }
+  if (isLoopback(target.hostname)) target.hostname = page.hostname;
   return target.href;
 }

@@ -89,7 +89,7 @@ Signup now issues and emails verification tokens. Copy the `token` query paramet
 
 `POST /auth/register` remains public. It creates an unverified account with an Argon2id password hash, stores a 24-hour verification token in Redis, and sends the verification email. It returns a confirmation, not an access token or refresh cookie.
 
-The frontend sends its current origin as optional `app_url` in registration, verification resend, and password-reset requests. In development the backend accepts local loopback origins, private network IPv4 origins (`10.x`, `172.16-31.x`, `192.168.x`) and HTTPS Cloudflare Quick Tunnel (`*.trycloudflare.com`) origins; all other supplied origins are rejected. In production an `app_url` must exactly match the HTTPS `PUBLIC_APP_URL` allowlist entry. `PUBLIC_APP_URL` remains the fallback for non-browser calls. Email links use `/auth/verify-email?token=...`.
+The frontend sends its current origin as optional `app_url` in registration, verification resend, and password-reset requests. In development the backend accepts local loopback origins, HTTPS private network IPv4 origins (`10.x`, `172.16-31.x`, `192.168.x`) and HTTPS Cloudflare Quick Tunnel (`*.trycloudflare.com`) origins; all other supplied origins are rejected. In production an `app_url` must exactly match the HTTPS `PUBLIC_APP_URL` allowlist entry. `PUBLIC_APP_URL` remains the fallback for non-browser calls. Email links use `/auth/verify-email?token=...`.
 
 Example request, replacing the email with an inbox you control and using a username not already registered:
 
@@ -220,7 +220,7 @@ No JSON body or Bearer token is required. Browsers send the refresh cookie autom
 
 ```http
 POST /auth/refresh
-Cookie: mawiid_refresh=<current-refresh-token>
+Cookie: __Host-mawiid_refresh=<current-refresh-token>
 ```
 
 For a verified password account with a valid refresh cookie, expect `200` with a new session and a rotated refresh cookie. A previously issued refresh cookie for an unverified password account returns the same `403 email-not-verified` response above. Its refresh-token family is revoked, the token is consumed, and the response clears the browser's refresh cookie. After verifying the email, the user must log in again; the revoked cookie cannot be revived by verification.
@@ -361,7 +361,7 @@ Schema validation failures use the shared format documented in `docs/backend-val
 | POST | `/auth/refresh` | Refresh cookie | Rotated session; unverified password accounts lose their refresh family and receive `403` |
 | POST | `/auth/logout` | Refresh cookie | `{ data: { logged_out: true } }` |
 
-Session responses use `{ data: { access_token, expires_in, user } }`. The user includes `user_email_verified_at`, serialized as a date string or `null`. Refresh tokens are only delivered in the `__Host-mawiid_refresh` cookie (`mawiid_refresh` without `Secure` under `ENV=dev`). Public signup/login/OTP routes require no existing session; refresh requires a valid refresh cookie. Protected application routes require a Bearer access token.
+Session responses use `{ data: { access_token, expires_in, user } }`. The user includes `user_email_verified_at`, serialized as a date string or `null`. Refresh tokens are only delivered in the `__Host-mawiid_refresh` cookie. Public signup/login/OTP routes require no existing session; refresh requires a valid refresh cookie. Protected application routes require a Bearer access token.
 
 ## Deployment and testing
 

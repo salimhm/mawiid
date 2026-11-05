@@ -28,6 +28,17 @@ The dev server proxies `/api/*` (HTTP and WebSocket) to the Mawiid backend, so t
 BACKEND_URL=http://localhost:3000 bun dev   # BACKEND_URL defaults to http://localhost:3000
 ```
 
+## HTTPS in development
+
+`make dev` and `make frontend` serve `https://<host>:3443`, and `http://<host>:3100` redirects to it. `make certs` creates a
+self-signed certificate in `.secrets/dev-tls` for localhost and this machine's IPv4 addresses, and replaces it when an
+address changes. Each browser asks you to accept it once.
+
+`/livekit/*` proxies to LiveKit (`LIVEKIT_PROXY_URL`, default `http://localhost:7880`), so signaling uses `wss://` with the
+same certificate. Browsers do not follow redirects on WebSocket handshakes, so `ws://` on port 3100 gets a redirect response
+but does not connect; the frontend always uses `wss://` on an HTTPS page. Without `TLS_CERT_FILE` and `TLS_KEY_FILE`, the
+server stays plain HTTP on `PORT`, which is how `bun dev` runs.
+
 Sign in at `/login` (`/welcome` and `/meet/*` redirect there when signed out) with a username or email and a password, or
 create an account there. The seeded users sign in as `host`, `moderator`, `member`, `viewer`, `guest` or `outsider` (or
 `<name>@mawiid.test`) with the password `mawiid-password`. The "Phone code" tab keeps the phone and 6-digit code flow: with
