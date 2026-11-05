@@ -4,7 +4,9 @@ so the voice detector cuts the stream into phrases and each phrase is transcribe
 from __future__ import annotations
 
 import logging
+import os
 import threading
+import time
 from collections.abc import Iterable
 
 import numpy as np
@@ -18,6 +20,28 @@ log = logging.getLogger(__name__)
 
 # Nudges Whisper toward punctuated Mandarin; without it Chinese output often has no punctuation.
 _PROMPTS = {"zh": "以下是普通话的句子。"}
+
+
+# Whisper pads every phrase to 30 s and encodes all of it, so a 2 s phrase costs as much as a
+# 30 s one: 7 s with the Darija model on a laptop CPU. Encoding the phrase plus some silence is
+# 3-4 times faster. Below ~10 s in total the decoder starts repeating itself on short phrases.
+_MIN_FRAMES = 1000
+_TRAILING_FRAMES = 300
+_MAX_FRAMES = 3000
+
+
+def pad_to_phrase(features: np.ndarray) -> np.ndarray:
+    frames = min(_MAX_FRAMES, max(_MIN_FRAMES, features.shape[-1] + _TRAILING_FRAMES))
+    frames += frames % 2
+    if features.shape[-1] >= frames:
+        return features[..., :frames]
+    padding = [(0, 0)] * features.ndim
+    padding[-1] = (0, frames - features.shape[-1])
+    return np.pad(features, padding)
+
+
+def _default_cpu_threads() -> int:
+    return max(4, (os.cpu_count() or 4) * 2 // 3)
 
 
 def _resolve_device(settings: WhisperSettings) -> tuple[str, str]:
@@ -48,7 +72,12 @@ class WhisperEngine(SttEngine):
         self.settings = settings
         self.vad_settings = vad_settings
         self.device, self.compute_type = _resolve_device(settings)
-        self.partials = settings.partials == "1" or (settings.partials == "auto" and self.device == "cuda")
+        self.partials = settings.partials == "1"
+        if self.device == "cpu":
+            import faster_whisper.transcribe
+
+            # GPUs keep the stock 30 s, which is fast enough there.
+            faster_whisper.transcribe.pad_or_trim = pad_to_phrase
         log.info(
             "loading %s (%s) on %s (%s), partials %s",
             name, settings.model, self.device, self.compute_type, "on" if self.partials else "off",
@@ -57,7 +86,7 @@ class WhisperEngine(SttEngine):
             settings.model,
             device=self.device,
             compute_type=self.compute_type,
-            cpu_threads=settings.cpu_threads,
+            cpu_threads=settings.cpu_threads or (_default_cpu_threads() if self.device == "cpu" else 0),
         )
         # CTranslate2 handles concurrent calls, but on CPU they just fight over cores.
         self._lock = threading.Lock() if self.device == "cpu" else None
@@ -117,6 +146,7 @@ class WhisperStream(SttStream):
         self._last_partial_at = 0
         self._last_partial_text = ""
         self._partial_segment = -1
+        self._next_partial_at = 0.0
 
     def push_audio(self, audio: np.ndarray | bytes) -> list[Transcript]:
         results = [r for seg in self._vad.feed(to_float32(audio)) if (r := self._final(seg.audio, seg.start_sample))]
@@ -144,11 +174,14 @@ class WhisperStream(SttStream):
             self._last_partial_at = start
             self._last_partial_text = ""
         now = self._vad.samples_seen
-        if now - self._last_partial_at < self._partial_every:
+        if now - self._last_partial_at < self._partial_every or time.monotonic() < self._next_partial_at:
             return None
         self._last_partial_at = now
         audio = self._vad.current_audio()
+        started = time.monotonic()
         text = self._engine.transcribe(audio, self._language, partial=True)
+        finished = time.monotonic()
+        self._next_partial_at = finished + (finished - started) * (1 / self._engine.settings.partial_max_load - 1)
         if not text or text == self._last_partial_text:
             return None
         self._last_partial_text = text

@@ -34,8 +34,8 @@ MAWIID_STT_DARIJA_MODEL=data/models/whisper-darija-medium-ct2 ...  # pick anothe
 
 ### How it works
 
-- `vad.py`: Silero voice detection (bundled with faster-whisper, no PyTorch) cuts the stream into phrases at 500 ms pauses, max 15 s each.
-- `whisper_engine.py`: faster-whisper transcribes each phrase (finals) and the phrase so far, once per second (partials).
+- `vad.py`: Silero voice detection (bundled with faster-whisper, no PyTorch) cuts the stream into phrases at 500 ms pauses, max 6 s each, so non-stop speech still shows up.
+- `whisper_engine.py`: faster-whisper transcribes each phrase (finals) and the phrase so far, up to once per second (partials), using at most half the time so a slow machine shows fewer partials instead of falling behind. On a CPU it encodes the phrase plus 3 s of silence (at least 10 s) instead of Whisper's fixed 30 s, which is 3-4 times faster.
 - `router.py`: each language has an ordered engine list in `config.py` (`voxtral`, then `whisper`). Engines that aren't loaded are skipped. If the active engine crashes, or is too slow (above 3 s per call) while a backup exists, the stream switches engines and replays the audio since the last final, so no speech is lost. The failed engine is skipped by all streams for 60 s, then retried at the next phrase boundary.
 - `postprocess.py`: whitespace clean-up and Simplified/Traditional Chinese conversion (OpenCC).
 
@@ -132,4 +132,4 @@ Or directly: `.venv/bin/python -m mawiid_ai.agent dev` (`start` in production) w
 | `MAWIID_BACKEND_URL`, `INTERNAL_SERVICE_TOKEN`       | Where to save transcripts; without them nothing is saved        |
 | `MAWIID_STT_*`, `MAWIID_MT_*`                        | Model settings (sections above)                                 |
 
-The first start downloads Whisper. On a machine without CUDA libraries, set `MAWIID_STT_WHISPER_DEVICE=cpu` (partials are then off, finals arrive about half a second after the speaker pauses).
+The first start downloads Whisper. On a machine without CUDA libraries, set `MAWIID_STT_WHISPER_DEVICE=cpu` (`MAWIID_STT_PARTIALS=0` turns partials off if the machine is short of CPU).

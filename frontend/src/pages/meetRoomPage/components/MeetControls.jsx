@@ -8,10 +8,10 @@ import * as icons from '../../../assets/icons';
 const LANGUAGE_CODES = {
     English: 'en',
     Arabic: 'ar',
-    'Darija (Moroccan Arabic)': 'ar-MA',
+    // 'Darija (Moroccan Arabic)': 'ar-MA',
     French: 'fr',
-    'Chinese (Simplified)': 'zh-CN',
-    'Chinese (Traditional)': 'zh-TW',
+    // 'Chinese (Simplified)': 'zh-CN',
+    // 'Chinese (Traditional)': 'zh-TW',
 };
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮'];
 

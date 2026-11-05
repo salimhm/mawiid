@@ -30,7 +30,7 @@ def main() -> int:
     parser.add_argument("--language", default="en-US", choices=list(LANGUAGES))
     parser.add_argument("--model", help="whisper model size (default: small)")
     parser.add_argument(
-        "--partials", choices=["auto", "1", "0"], default="auto", help="live partial results (auto: GPU only)"
+        "--partials", choices=["1", "0"], default="1", help="live partial results"
     )
     parser.add_argument("--device", type=int, help="input device index (see: python -m sounddevice)")
     parser.add_argument("--translate", nargs="+", default=[], choices=list(LANGUAGES), help="listener languages")

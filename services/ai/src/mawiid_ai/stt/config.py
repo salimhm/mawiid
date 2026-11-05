@@ -51,7 +51,7 @@ class VadSettings:
     min_silence_ms: int = 500  # pause length that ends a phrase
     speech_pad_ms: int = 200  # audio kept before speech starts so first syllables aren't cut
     min_speech_ms: int = 250  # shorter blips are dropped (coughs, clicks)
-    max_segment_s: float = 15.0  # long monologues are cut so finals keep flowing
+    max_segment_s: float = 6.0  # non-stop speech is cut so it shows up without waiting for a pause
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,8 +63,9 @@ class WhisperSettings:
     beam_size: int = 5  # finals: accuracy matters
     partial_beam_size: int = 1  # partials: speed matters
     partial_interval_s: float = field(default_factory=lambda: float(_env("PARTIAL_INTERVAL_S", "1.0")))
-    # auto: on with a GPU, off on CPU (each partial costs a full Whisper pass; a CPU can't keep up).
-    partials: str = field(default_factory=lambda: _env("PARTIALS", "auto"))  # auto | 1 | 0
+    partials: str = field(default_factory=lambda: _env("PARTIALS", "1"))  # 1 | 0
+    # Partials use at most this share of the time, so a slow machine shows fewer instead of falling behind.
+    partial_max_load: float = 0.5
     # Results Whisper is unsure about are dropped; this is where its "Thank you." hallucinations live.
     max_no_speech_prob: float = 0.6
     min_avg_logprob: float = -1.0
