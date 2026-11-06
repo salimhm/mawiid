@@ -4,7 +4,7 @@ Audio is pushed in 20 ms chunks, exactly like a live call, through the same
 router the service uses. Accuracy is word error rate (WER), or character error
 rate (CER) for Chinese, after removing punctuation and case.
 
-    python scripts/benchmark.py                      # all languages, whisper small
+    python scripts/benchmark.py                      # all languages, default whisper model
     python scripts/benchmark.py --model large-v3-turbo --languages fr-FR ar-SA
     python scripts/benchmark.py --partials --limit 3 # include live partial results
 """

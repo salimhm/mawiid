@@ -13,7 +13,6 @@ const ATTRIBUTE = {
     userId: 'mawiid.user_id',
     role: 'mawiid.role',
     language: 'mawiid.language',
-    spokenLanguage: 'mawiid.spoken_language',
     translationEnabled: 'mawiid.translation_enabled',
     handRaised: 'mawiid.hand_raised',
 }
@@ -24,6 +23,7 @@ const MESSAGE_PAGE = 50
 const MESSAGE_PAGE_MAX = 100
 const CAPTION_VISIBLE_MS = 6000
 const CAPTION_MAX = 3
+const TRANSLATION_WAIT_MS = 5000
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -85,8 +85,7 @@ function trackOwner(room, trackId) {
         .find((participant) => participant.trackPublications.has(trackId)) || null
 }
 
-// A translation replaces the original of the same segment, never the other way round:
-// the original final arrives first, its translation a moment later.
+// A translation replaces the original of the same segment, never the other way round.
 function mergeCaption(current, caption) {
     const existing = current.find((entry) => entry.id === caption.id)
     if (!existing)
@@ -117,6 +116,8 @@ export function useRoom(roomUid, {
     const [reactions, setReactions] = useState([])
     const [settings, setSettings] = useState({ locked: false, lobby: false })
     const [captions, setCaptions] = useState([])
+    // Timers of final originals held back while their translation is on its way, by segment id.
+    const heldOriginals = useRef(new Map())
     const [messages, setMessages] = useState([])
     const [hasOlderMessages, setHasOlderMessages] = useState(false)
     // Newest message_id in the history loaded on join: those count as read.
@@ -172,7 +173,6 @@ export function useRoom(roomUid, {
             name: isLocal ? `${participant.name || 'You'} (You)` : participant.name || participant.identity,
             role: attributes[ATTRIBUTE.role] || '',
             language: attributes[ATTRIBUTE.language] || '',
-            spokenLanguage: attributes[ATTRIBUTE.spokenLanguage] || '',
             translationEnabled: attributes[ATTRIBUTE.translationEnabled] === 'true',
             handRaised: attributes[ATTRIBUTE.handRaised] === 'true',
             stream: streamFor(video?.track),
@@ -200,21 +200,39 @@ export function useRoom(roomUid, {
         setParticipants([...room.remoteParticipants.values()].filter((p) => !p.isAgent).map((p) => toParticipant(p, false)))
     }, [toParticipant])
 
+    const dropHeldOriginals = useCallback(() => {
+        heldOriginals.current.forEach(clearTimeout)
+        heldOriginals.current.clear()
+    }, [])
+
+    // Readers of another language go straight to the translation. Their original is only
+    // shown when none comes: no model for the language, a failure, or text that needs none.
     const showCaption = useCallback((caption) => {
         const room = roomRef.current
         if (!room)
             return
         const speaker = trackOwner(room, caption.trackId)
         const myLanguage = room.localParticipant.attributes?.[ATTRIBUTE.language]
-        setCaptions((prev) => mergeCaption(prev, {
+        const held = heldOriginals.current
+        const entry = {
             id: caption.segmentId,
             speaker: speaker === room.localParticipant ? 'You' : speaker?.name || speaker?.identity || 'Speaker',
             text: caption.text,
             final: caption.final,
             translated: caption.translated,
             foreign: !caption.translated && Boolean(myLanguage) && baseLanguage(caption.language) !== baseLanguage(myLanguage),
-            shownAt: Date.now(),
-        }))
+        }
+        if (entry.foreign) {
+            if (entry.final)
+                held.set(entry.id, setTimeout(() => {
+                    held.delete(entry.id)
+                    setCaptions((prev) => mergeCaption(prev, { ...entry, shownAt: Date.now() }))
+                }, TRANSLATION_WAIT_MS))
+            return
+        }
+        clearTimeout(held.get(entry.id))
+        held.delete(entry.id)
+        setCaptions((prev) => mergeCaption(prev, { ...entry, shownAt: Date.now() }))
     }, [])
 
     useEffect(() => {
@@ -414,6 +432,7 @@ export function useRoom(roomUid, {
             socket.close()
             signal.close()
             captionFeed.close()
+            dropHeldOriginals()
             signalRef.current = null
             room.removeAllListeners()
             room.disconnect()
@@ -423,7 +442,7 @@ export function useRoom(roomUid, {
                 roomRef.current = null
         }
         // Device choices only apply when joining.
-    }, [roomUid, refresh, showReaction, showCaption, addMessages, catchUpMessages])
+    }, [roomUid, refresh, showReaction, showCaption, dropHeldOriginals, addMessages, catchUpMessages])
 
     const runLocal = useCallback(async (action, failure) => {
         const room = roomRef.current
@@ -465,28 +484,20 @@ export function useRoom(roomUid, {
         [updateSelf, localUser.handRaised],
     )
 
-    // Speech follows the caption language until a spoken language is set, so
-    // pin it first: changing what you read must not change what you are heard as.
     const setLanguage = useCallback(
-        (language) => updateSelf({
-            participant_language: language,
-            ...(!localUser.spokenLanguage && localUser.language ? { participant_spoken_language: localUser.language } : {}),
-        }),
-        [updateSelf, localUser.spokenLanguage, localUser.language],
+        (language) => updateSelf({ participant_language: language }),
+        [updateSelf],
     )
 
     const toggleTranslation = useCallback(() => {
         const enabled = !localUser.translationEnabled
         localStorage.setItem(CAPTIONS_KEY, String(enabled))
-        if (!enabled)
+        if (!enabled) {
+            dropHeldOriginals()
             setCaptions([])
+        }
         return updateSelf({ participant_translation_enabled: enabled })
-    }, [updateSelf, localUser.translationEnabled])
-
-    const setSpokenLanguage = useCallback(
-        (language) => updateSelf({ participant_spoken_language: language }),
-        [updateSelf],
-    )
+    }, [updateSelf, dropHeldOriginals, localUser.translationEnabled])
 
     const answerKnock = useCallback(async (userId, admit) => {
         setKnocks((prev) => prev.filter((knock) => knock.userId !== userId))
@@ -620,7 +631,6 @@ export function useRoom(roomUid, {
         toggleScreenShare,
         toggleHand,
         setLanguage,
-        setSpokenLanguage,
         toggleTranslation,
         admit: (userId) => answerKnock(userId, true),
         deny: (userId) => answerKnock(userId, false),

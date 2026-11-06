@@ -13,7 +13,7 @@ class Language:
     script: str | None = None  # forced Chinese script: "simplified" or "traditional"
 
 
-# Mawiid language codes, matching the "Speak:" dropdown in the apps.
+# Mawiid language codes.
 LANGUAGES: dict[str, Language] = {
     "en-US": Language("en"),
     "fr-FR": Language("fr"),
@@ -23,6 +23,12 @@ LANGUAGES: dict[str, Language] = {
     # Whisper has no Darija token; Darija models are trained under "ar".
     "ar-MA": Language("ar"),
 }
+
+# Open a stream with this instead of a language to detect the language of each phrase from the voice.
+AUTO_LANGUAGE = "auto"
+# What detection chooses between: the languages the apps offer. One Whisper language each, because
+# detection can't tell apart languages that share one (zh-CN and zh-TW, ar-SA and ar-MA).
+DETECT_LANGUAGES = ("en-US", "fr-FR", "ar-SA")
 
 # Engines tried in order for each language. Engines that are not loaded
 # (e.g. Voxtral on a machine without a GPU) are skipped.
@@ -34,6 +40,7 @@ DEFAULT_ROUTES: dict[str, list[str]] = {
     "zh-TW": ["voxtral", "whisper"],
     # Stock Whisper only as a last resort: it hears Darija as Arabic and misses most dialect words.
     "ar-MA": ["whisper-darija", "whisper"],
+    AUTO_LANGUAGE: ["whisper"],
 }
 
 # Written by scripts/convert_darija_model.py; data/ is git-ignored.
@@ -52,11 +59,12 @@ class VadSettings:
     speech_pad_ms: int = 200  # audio kept before speech starts so first syllables aren't cut
     min_speech_ms: int = 250  # shorter blips are dropped (coughs, clicks)
     max_segment_s: float = 6.0  # non-stop speech is cut so it shows up without waiting for a pause
+    overlap_ms: int = 500  # audio such a cut repeats in the next chunk, so a word it splits is heard whole
 
 
 @dataclass(frozen=True, slots=True)
 class WhisperSettings:
-    model: str = field(default_factory=lambda: _env("WHISPER_MODEL", "small"))
+    model: str = field(default_factory=lambda: _env("WHISPER_MODEL", "large-v3"))
     device: str = field(default_factory=lambda: _env("WHISPER_DEVICE", "auto"))  # auto | cpu | cuda
     compute_type: str = field(default_factory=lambda: _env("WHISPER_COMPUTE_TYPE", "default"))
     cpu_threads: int = field(default_factory=lambda: int(_env("WHISPER_CPU_THREADS", "0")))
@@ -69,6 +77,10 @@ class WhisperSettings:
     # Results Whisper is unsure about are dropped; this is where its "Thank you." hallucinations live.
     max_no_speech_prob: float = 0.6
     min_avg_logprob: float = -1.0
+    detect_min_audio_s: float = 1.0  # shorter chunks reuse the previous chunk's language
+    # Partials start from about 1 s of audio, where detection is often wrong (the final corrects it),
+    # so they keep the previous language for longer.
+    detect_partial_min_audio_s: float = 3.0
 
 
 def _darija_settings() -> WhisperSettings:

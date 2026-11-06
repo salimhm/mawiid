@@ -2,9 +2,10 @@
 
 Needs PortAudio: sudo apt install libportaudio2
 
+    python scripts/mic_demo.py                     # detects the language from your voice
     python scripts/mic_demo.py --language fr-FR
     python scripts/mic_demo.py --language zh-TW --model medium
-    python scripts/mic_demo.py --language fr-FR --translate en-US ar-SA zh-TW
+    python scripts/mic_demo.py --translate en-US fr-FR ar-SA
 
 Partial results overwrite the current line; final results stay, followed by their
 subtitles when --translate is given. Ctrl+C to stop.
@@ -19,7 +20,7 @@ import sys
 import time
 from dataclasses import replace
 
-from mawiid_ai.stt import LANGUAGES, SAMPLE_RATE, ResultKind, SttSettings, build_router
+from mawiid_ai.stt import AUTO_LANGUAGE, LANGUAGES, SAMPLE_RATE, ResultKind, SttSettings, build_router
 from mawiid_ai.translation import build_translator
 
 CHUNK = SAMPLE_RATE // 50  # 20 ms
@@ -27,8 +28,8 @@ CHUNK = SAMPLE_RATE // 50  # 20 ms
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--language", default="en-US", choices=list(LANGUAGES))
-    parser.add_argument("--model", help="whisper model size (default: small)")
+    parser.add_argument("--language", default=AUTO_LANGUAGE, choices=[AUTO_LANGUAGE, *LANGUAGES])
+    parser.add_argument("--model", help="whisper model size (default: large-v3)")
     parser.add_argument(
         "--partials", choices=["1", "0"], default="1", help="live partial results"
     )
@@ -72,7 +73,7 @@ def show(result, translator, languages: list[str]) -> None:
     if result.kind is ResultKind.PARTIAL:
         print(f"\r\033[K… {result.text}", end="", flush=True)
         return
-    print(f"\r\033[K[{result.start:6.1f}s] {result.text}", flush=True)
+    print(f"\r\033[K[{result.start:6.1f}s] [{result.language}] {result.text}", flush=True)
     if translator is not None:
         started = time.perf_counter()
         subtitles = [s for s in translator.translate(result, languages) if s.language != result.language]

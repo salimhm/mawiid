@@ -39,7 +39,7 @@ MAWIID_STT_DARIJA_MODEL=data/models/whisper-darija-medium-ct2 ...  # pick anothe
 - `router.py`: each language has an ordered engine list in `config.py` (`voxtral`, then `whisper`). Engines that aren't loaded are skipped. If the active engine crashes, or is too slow (above 3 s per call) while a backup exists, the stream switches engines and replays the audio since the last final, so no speech is lost. The failed engine is skipped by all streams for 60 s, then retried at the next phrase boundary.
 - `postprocess.py`: whitespace clean-up and Simplified/Traditional Chinese conversion (OpenCC).
 
-Settings live in `config.py`; the Whisper ones can be overridden with environment variables: `MAWIID_STT_WHISPER_MODEL` (default `small`), `MAWIID_STT_WHISPER_DEVICE` (`auto`/`cpu`/`cuda`), `MAWIID_STT_WHISPER_COMPUTE_TYPE`, `MAWIID_STT_WHISPER_CPU_THREADS`, `MAWIID_STT_PARTIALS` (`auto`/`1`/`0`; auto = only with a GPU, a CPU can't keep up), `MAWIID_STT_PARTIAL_INTERVAL_S`.
+Settings live in `config.py`; the Whisper ones can be overridden with environment variables: `MAWIID_STT_WHISPER_MODEL` (default `large-v3`), `MAWIID_STT_WHISPER_DEVICE` (`auto`/`cpu`/`cuda`), `MAWIID_STT_WHISPER_COMPUTE_TYPE`, `MAWIID_STT_WHISPER_CPU_THREADS`, `MAWIID_STT_PARTIALS` (`auto`/`1`/`0`; auto = only with a GPU, a CPU can't keep up), `MAWIID_STT_PARTIAL_INTERVAL_S`.
 
 ### Setup and scripts
 
@@ -105,10 +105,11 @@ Links the two modules above to the app's calls. It is a LiveKit agent (`livekit-
 
 In each room it:
 
-1. Subscribes to every person's microphone (16 kHz mono) and runs one speech-to-text stream per speaker, in the language of the speaker's `mawiid.spoken_language` attribute, or `mawiid.language` until one is set (`en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`; other codes fall back to the language without region, then to `en-US`).
+1. Subscribes to every person's microphone (16 kHz mono) and runs one speech-to-text stream per speaker. Silero VAD cuts the audio into chunks on pauses; speech with no pause is cut at 6 s, and the next chunk repeats the last 500 ms so no word is split, with the repeated words removed from its text. The language of each chunk is detected from the voice, keeping only the scores for English, French and Arabic (`DETECT_LANGUAGES` in `stt/config.py`); chunks under 1 s reuse the previous chunk's language, starting from the language the speaker reads. Partials wait for 3 s of audio before detecting. Detection adds an encoder pass per chunk, and the Darija model is never picked this way because Whisper hears Darija as Arabic. Setting the speaker's `mawiid.spoken_language` attribute skips detection (`en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`; other codes fall back to the language without region).
 2. Sends each partial and final result to the participants with captions on, on the `lk.transcription` text-stream topic.
 3. Translates each final once per language that listeners picked (the same `mawiid.language` attribute) and sends it on `mawiid.translation.v1`, only to the listeners of that language. Listeners of the spoken language only get the original.
-4. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s).
+4. Logs each final at INFO before translating it (`transcript <segment> ...`) and each translation after (`translation <segment> ...`), so the two can be compared when words go missing. These lines contain what people said.
+5. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s).
 
 Without the converted MADLAD model, step 3 is skipped and everyone gets captions in the spoken language. The topics and attributes are described in `apps/backend/src/module/main/participants/integration.md` (section 8). The code: `pipeline.py` (one room, no LiveKit code, tested with fakes in `tests/test_pipeline.py`), `uploader.py` (transcript batches), `worker.py` (LiveKit wiring). Rooms run as threads in one process, so every room shares the models loaded once.
 

@@ -15,7 +15,7 @@ const LANGUAGE_CODES = {
 };
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮'];
 
-export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, language = '', spokenLanguage = '', onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, translationEnabled = false, onTranslationToggle, onLanguageChange, onSpokenLanguageChange, onReaction, onLeave, roomCode = '' })
+export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, language = '', onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, translationEnabled = false, onTranslationToggle, onLanguageChange, onReaction, onLeave, roomCode = '' })
 {
     const [translating, setTranslating] = useState(false);
     const [reacting, setReacting] = useState(false);
@@ -23,7 +23,6 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
     const [copied, setCopied] = useState(false);
     const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
     const [pickedLanguage, setPickedLanguage] = useState('');
-    const [pickedSpokenLanguage, setPickedSpokenLanguage] = useState('');
 
     const navigate = useNavigate();
     const languages = Object.keys(LANGUAGE_CODES);
@@ -31,7 +30,6 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
         || languages.find((name) => LANGUAGE_CODES[name] === code.split('-')[0])
         || 'English';
     const currLanguage = pickedLanguage || languageName(language);
-    const currSpokenLanguage = pickedSpokenLanguage || languageName(spokenLanguage || language);
     const roomID = roomCode;
 
     useEffect(() => {
@@ -83,11 +81,6 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
     const handleLanguageChange = (name) => {
         setPickedLanguage(name);
         onLanguageChange?.(LANGUAGE_CODES[name]);
-    };
-
-    const handleSpokenLanguageChange = (name) => {
-        setPickedSpokenLanguage(name);
-        onSpokenLanguageChange?.(LANGUAGE_CODES[name]);
     };
 
     const languageSection = (title, current, onPick) => (
@@ -165,7 +158,6 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
                         Live translation
                         <span className={translationEnabled ? 'rounded-full bg-blue-600 px-2.5 py-0.5 text-xs' : 'rounded-full bg-white/20 px-2.5 py-0.5 text-xs'}>{translationEnabled ? 'On' : 'Off'}</span>
                     </button>
-                    {languageSection('I speak', currSpokenLanguage, handleSpokenLanguageChange)}
                     {languageSection('Show captions in', currLanguage, handleLanguageChange)}
                 </div>
             )}

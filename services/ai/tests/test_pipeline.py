@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from dataclasses import dataclass
 
 import numpy as np
@@ -14,6 +15,7 @@ from mawiid_ai.agent.pipeline import (
     Segment,
     mawiid_language,
 )
+from mawiid_ai.stt import AUTO_LANGUAGE
 from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind, SttError, SttStream, Transcript
 from mawiid_ai.translation.base import TranslationEngine
 from mawiid_ai.translation.config import TranslationSettings
@@ -30,6 +32,10 @@ class FakeStream(SttStream):
         self.chunks = 0
         self.phrases = 0
         self.closed = False
+        self.hint = None
+
+    def hint_language(self, language: str) -> None:
+        self.hint = language
 
     def push_audio(self, audio):
         if self.router.crash:
@@ -55,13 +61,17 @@ class FakeStream(SttStream):
 
     def _result(self, kind: ResultKind, label: str) -> Transcript:
         start = self.phrases * PHRASE_CHUNKS * 0.1
-        return Transcript(kind, f"{self.language} {label} {self.phrases}", self.language, start, start + 0.4, "fake")
+        language = self.language
+        if language == AUTO_LANGUAGE:
+            language = self.router.detected[min(self.phrases - (kind is ResultKind.FINAL), len(self.router.detected) - 1)]
+        return Transcript(kind, f"{language} {label} {self.phrases}", language, start, start + 0.4, "fake")
 
 
 class FakeRouter:
     def __init__(self) -> None:
         self.streams: list[FakeStream] = []
         self.crash = False
+        self.detected = ["fr-FR"]  # what automatic streams hear, phrase by phrase
 
     def open_stream(self, language: str) -> FakeStream:
         stream = FakeStream(self, language)
@@ -135,6 +145,7 @@ def test_app_language_codes_map_to_model_languages():
     assert mawiid_language("de") is None
     assert mawiid_language("") is None
     assert mawiid_language(None) is None
+    assert mawiid_language("auto") is None  # detection is the default, not a language to pick
 
 
 def test_original_goes_to_everyone_with_captions_on_and_partial_and_final_share_a_segment():
@@ -258,22 +269,50 @@ def test_speech_uses_the_spoken_language_and_captions_the_read_language():
     assert room.pipeline.listeners() == {"en-US": ["user_1"], "fr-FR": ["user_2"]}
 
 
-def test_speech_follows_the_read_language_until_a_spoken_language_is_set():
+def test_speech_is_detected_from_the_voice_unless_a_spoken_language_is_set():
     room = Room()
     room.pipeline.set_language("user_1", "fr")
 
     room.speak("user_1", 1)
 
-    assert [stream.language for stream in room.router.streams] == ["fr-FR"]
+    assert [stream.language for stream in room.router.streams] == [AUTO_LANGUAGE]
+    assert room.router.streams[0].hint == "fr-FR"  # where detection starts from
 
 
-def test_changing_language_finishes_the_phrase_then_reopens_the_stream():
+def test_changing_the_read_language_does_not_touch_the_speech_stream():
     room = Room()
     room.pipeline.set_language("user_1", "fr")
 
     def switch(chunk: int) -> None:
         if chunk == 1:
             room.pipeline.set_language("user_1", "ar")
+
+    room.speak("user_1", 3, between=switch)
+
+    assert len(room.router.streams) == 1
+
+
+def test_detected_language_of_each_phrase_drives_translation():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "en")
+    room.router.detected = ["fr-FR", "en-US"]
+
+    room.speak("user_1", PHRASE_CHUNKS * 2)
+
+    first, second = room.segments
+    assert (first.language, second.language) == ("fr-FR", "en-US")
+    assert set(first.translations) == {"en-US"}  # the French reader gets the original
+    assert set(second.translations) == {"fr-FR"}  # the English reader gets the original
+
+
+def test_changing_spoken_language_finishes_the_phrase_then_reopens_the_stream():
+    room = Room()
+    room.pipeline.set_language("user_1", "en", "fr")
+
+    def switch(chunk: int) -> None:
+        if chunk == 1:
+            room.pipeline.set_language("user_1", "en", "ar")
 
     room.speak("user_1", 3, between=switch)
 
@@ -296,14 +335,14 @@ def test_without_a_translation_model_only_originals_are_sent():
     assert room.segments[0].translations == {}
 
 
-def test_unsupported_languages_read_originals_and_speak_the_default():
+def test_unsupported_languages_read_originals_and_their_speech_is_detected():
     room = Room()
     room.pipeline.set_language("user_1", "de")
     room.pipeline.set_language("user_2", "fr")
 
     assert room.pipeline.listeners() == {"fr-FR": ["user_2"]}
     room.speak("user_1", PHRASE_CHUNKS)
-    assert room.router.streams[0].language == "en-US"
+    assert room.router.streams[0].language == AUTO_LANGUAGE
 
 
 def test_listeners_who_leave_stop_getting_translations():
@@ -327,3 +366,33 @@ def test_a_crashed_stream_is_reopened_on_the_next_chunk():
     room.speak("user_1", 3, between=crash_once)
 
     assert len(room.router.streams) == 2
+
+
+def test_raw_transcript_is_logged_before_its_translation(caplog):
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "en")
+
+    with caplog.at_level(logging.INFO, logger="mawiid_ai.agent.pipeline"):
+        room.speak("user_1", PHRASE_CHUNKS)
+
+    lines = [record.getMessage() for record in caplog.records]
+    segment_id = room.segments[0].segment_id
+    assert lines == [
+        f"transcript {segment_id} user_1 fr-FR: fr-FR final 1",
+        f"translation {segment_id} fr-FR->en-US: <en-US>fr-FR final 1",
+    ]
+
+
+def test_translations_of_a_speakers_chunks_stay_in_order():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "en")
+
+    room.speak("user_1", PHRASE_CHUNKS * 3)
+
+    assert [sent.text for sent in room.topic(TRANSLATION_TOPIC)] == [
+        "<en-US>fr-FR final 1",
+        "<en-US>fr-FR final 2",
+        "<en-US>fr-FR final 3",
+    ]

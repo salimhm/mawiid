@@ -42,6 +42,9 @@ class SttStream(ABC):
     def flush(self) -> list[Transcript]:
         """Finalize whatever speech is still buffered, e.g. when the speaker leaves."""
 
+    def hint_language(self, language: str) -> None:  # noqa: B027 - optional hook
+        """A likely language to start from, for streams that detect it from the voice."""
+
     def close(self) -> None:  # noqa: B027 - optional hook
         """Release resources held by the stream."""
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from functools import cache
 
 import opencc
@@ -25,6 +26,26 @@ def normalize_script(text: str, language: str) -> str:
     if script == "traditional":
         return _converter("s2tw").convert(text)
     return text
+
+
+def _comparable(word: str) -> str:
+    """A word without case, punctuation or Arabic vowel marks, which vary between two hearings."""
+    return "".join(c for c in unicodedata.normalize("NFKC", word).casefold() if unicodedata.category(c)[0] in "LN")
+
+
+def remove_overlap(previous: list[str], text: str, max_words: int = 6) -> tuple[str, list[str]]:
+    """Drop the words at the start of ``text`` that repeat the end of the previous chunk.
+
+    Returns the remaining text and the dropped words. Takes the longest exact match, so a real
+    repetition further along ("oui oui") stays.
+    """
+    words = text.split()
+    old = [_comparable(word) for word in previous[-max_words:]]
+    new = [_comparable(word) for word in words[:max_words]]
+    for size in range(min(len(old), len(new)), 0, -1):
+        if old[-size:] == new[:size] and any(new[:size]):
+            return " ".join(words[size:]), words[:size]
+    return text, []
 
 
 def clean_text(text: str, language: str) -> str:

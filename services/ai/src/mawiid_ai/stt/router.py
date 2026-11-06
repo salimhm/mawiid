@@ -18,7 +18,7 @@ from collections.abc import Callable, Mapping
 import numpy as np
 
 from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind, SttEngine, SttError, SttStream, Transcript, to_float32
-from mawiid_ai.stt.config import LANGUAGES, FailoverSettings
+from mawiid_ai.stt.config import AUTO_LANGUAGE, LANGUAGES, FailoverSettings
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class SttRouter:
 
     def chain_for(self, language: str) -> list[str]:
         """Loaded engines that support the language, in preference order."""
-        if language not in LANGUAGES:
+        if language != AUTO_LANGUAGE and language not in LANGUAGES:
             raise SttError(f"unsupported language: {language}")
         return [
             name
@@ -86,6 +86,7 @@ class FailoverStream(SttStream):
         self._replay_samples = 0
         self._samples_seen = 0
         self._switch_back_to: int | None = None
+        self._language_hint: str | None = None
         self._index = self._first_available(0)
         self._stream = self._open(self._index, time_offset=0.0)
 
@@ -104,6 +105,10 @@ class FailoverStream(SttStream):
         self._replay.clear()
         self._replay_samples = 0
         return results
+
+    def hint_language(self, language: str) -> None:
+        self._language_hint = language
+        self._stream.hint_language(language)
 
     def close(self) -> None:
         self._stream.close()
@@ -195,7 +200,10 @@ class FailoverStream(SttStream):
         return True
 
     def _open(self, index: int, time_offset: float) -> SttStream:
-        return self._router.engines[self._chain[index]].open_stream(self._language, time_offset=time_offset)
+        stream = self._router.engines[self._chain[index]].open_stream(self._language, time_offset=time_offset)
+        if self._language_hint is not None:
+            stream.hint_language(self._language_hint)
+        return stream
 
     def _first_available(self, start: int, required: bool = True, exclude: int | None = None) -> int | None:
         for i in range(start, len(self._chain)):

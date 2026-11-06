@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from mawiid_ai.stt import LANGUAGES, ResultKind, SttRouter, SttStream, Transcript
+from mawiid_ai.stt import AUTO_LANGUAGE, LANGUAGES, ResultKind, SttRouter, SttStream, Transcript
 from mawiid_ai.translation import SubtitleTranslator
 
 log = logging.getLogger(__name__)
@@ -29,9 +29,8 @@ TRACK_ATTRIBUTE = "lk.transcribed_track_id"
 FINAL_ATTRIBUTE = "lk.transcription_final"
 LANGUAGE_ATTRIBUTE = "mawiid.language"  # the language someone reads captions in
 TRANSLATION_ATTRIBUTE = "mawiid.translation_enabled"  # "true" when someone wants captions
-SPOKEN_LANGUAGE_ATTRIBUTE = "mawiid.spoken_language"  # the language someone speaks; defaults to the above
+SPOKEN_LANGUAGE_ATTRIBUTE = "mawiid.spoken_language"  # optional: skips detecting it from the voice (Darija needs it)
 
-DEFAULT_LANGUAGE = "en-US"  # backend default for accounts without user_language
 OPEN_RETRY_S = 5.0
 
 # Accounts store short codes (user_language "fr"). Chinese script and Darija need the full
@@ -97,7 +96,7 @@ class RoomPipeline:
         # Everyone in the room, by identity: the language they read.
         # None: a language no model handles, so they only get the originals.
         self._languages: dict[str, str | None] = {}
-        # The language they speak, when they picked one; otherwise the one they read.
+        # The language they speak, when they set one; otherwise it is detected from their voice.
         self._spoken_languages: dict[str, str | None] = {}
         # Who switched captions on. Nobody: nothing is transcribed, sent or saved.
         self._captions: set[str] = set()
@@ -141,7 +140,7 @@ class RoomPipeline:
                 if not self._captions:
                     await self._close(speaker)
                     continue
-                language = self._spoken_languages.get(identity) or self._languages.get(identity) or DEFAULT_LANGUAGE
+                language = self._spoken_languages.get(identity) or AUTO_LANGUAGE
                 if speaker.stream is not None and speaker.language != language:
                     await self._close(speaker)  # finish the current phrase in the old language
                 if speaker.stream is None and not await self._open(speaker, language):
@@ -161,6 +160,9 @@ class RoomPipeline:
             log.exception("could not open speech-to-text for %s (%s)", speaker.identity, language)
             speaker.retry_at = self._clock() + OPEN_RETRY_S
             return False
+        # Too short to detect, a first "bonjour" is more likely in the language they read than not.
+        if read_language := self._languages.get(speaker.identity):
+            speaker.stream.hint_language(read_language)
         speaker.language = language
         speaker.offset = self._clock() - self._started
         return True
@@ -199,6 +201,8 @@ class RoomPipeline:
         final = result.kind is ResultKind.FINAL
         if final:
             speaker.segment_id = None
+            # Compare with the translation lines below: words missing here were lost at speech-to-text.
+            log.info("transcript %s %s %s: %s", segment_id, speaker.identity, result.language, result.text)
         attributes = {
             SEGMENT_ATTRIBUTE: segment_id,
             TRACK_ATTRIBUTE: speaker.track_sid,
@@ -235,6 +239,11 @@ class RoomPipeline:
                 if subtitle.text.strip() == result.text.strip():
                     continue
                 translations[subtitle.language] = subtitle.text
+                if result.kind is ResultKind.FINAL:
+                    log.info(
+                        "translation %s %s->%s: %s",
+                        attributes[SEGMENT_ATTRIBUTE], result.language, subtitle.language, subtitle.text,
+                    )
                 await self._send(
                     subtitle.text,
                     TRANSLATION_TOPIC,
