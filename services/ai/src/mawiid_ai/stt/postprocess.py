@@ -6,7 +6,7 @@ from functools import cache
 
 import opencc
 
-from mawiid_ai.stt.config import LANGUAGES
+from mawiid_ai.stt.config import ALL_LANGUAGES as LANGUAGES
 
 
 @cache

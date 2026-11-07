@@ -7,6 +7,8 @@ from mawiid_ai.translation.base import TranslationEngine, TranslationError
 from mawiid_ai.translation.config import TranslationSettings
 from mawiid_ai.translation.translator import SubtitleTranslator
 
+from conftest import needs_languages
+
 
 class FakeClock:
     def __init__(self) -> None:
@@ -80,6 +82,7 @@ def test_duplicate_listener_languages_are_translated_once():
     assert engine.calls[0].targets == ["en-US"]
 
 
+@needs_languages("zh-CN", "zh-TW")
 def test_simplified_and_traditional_listeners_share_one_chinese_translation():
     engine = FakeEngine("madlad", replies={"zh-CN": "这是简体", "zh-TW": "这是简体"})
     subs = by_language(make(engine).translate(transcript("This is simplified", "en-US"), ["zh-CN", "zh-TW"]))
@@ -89,6 +92,7 @@ def test_simplified_and_traditional_listeners_share_one_chinese_translation():
     assert subs["zh-TW"].text == "這是簡體"
 
 
+@needs_languages("ar-MA")
 def test_darija_and_arabic_listeners_read_the_original():
     engine = FakeEngine("a")
     subs = by_language(make(engine).translate(transcript("text", "ar-MA"), ["ar-SA", "ar-MA", "fr-FR"]))
@@ -98,6 +102,7 @@ def test_darija_and_arabic_listeners_read_the_original():
     assert subs["ar-MA"].text == "text"
 
 
+@needs_languages("zh-CN", "zh-TW")
 def test_same_spoken_language_is_only_converted_to_the_listeners_script():
     engine = FakeEngine("madlad")
     [sub] = make(engine).translate(transcript("这是简体", "zh-CN"), ["zh-TW"])

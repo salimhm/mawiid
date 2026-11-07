@@ -13,8 +13,8 @@ class Language:
     script: str | None = None  # forced Chinese script: "simplified" or "traditional"
 
 
-# Mawiid language codes, matching the "Speak:" dropdown in the apps.
-LANGUAGES: dict[str, Language] = {
+# Every language the code can handle, by Mawiid language code.
+ALL_LANGUAGES: dict[str, Language] = {
     "en-US": Language("en"),
     "fr-FR": Language("fr"),
     "ar-SA": Language("ar"),
@@ -24,9 +24,25 @@ LANGUAGES: dict[str, Language] = {
     "ar-MA": Language("ar"),
 }
 
+# The languages switched on, matching the "Speak:" dropdown in the apps. Chinese and Darija are
+# off for now; add them back with MAWIID_LANGUAGES=en-US,fr-FR,ar-SA,zh-CN,zh-TW,ar-MA (and the
+# commented-out entries in the frontend's MeetControls.jsx).
+_DEFAULT_ENABLED = "en-US,fr-FR,ar-SA"
+
+
+def _enabled_languages() -> dict[str, Language]:
+    codes = [code.strip() for code in os.environ.get("MAWIID_LANGUAGES", _DEFAULT_ENABLED).split(",") if code.strip()]
+    unknown = [code for code in codes if code not in ALL_LANGUAGES]
+    if unknown:
+        raise ValueError(f"MAWIID_LANGUAGES: unknown language {', '.join(unknown)} (known: {', '.join(ALL_LANGUAGES)})")
+    return {code: ALL_LANGUAGES[code] for code in codes}
+
+
+LANGUAGES: dict[str, Language] = _enabled_languages()
+
 # Engines tried in order for each language. Engines that are not loaded
 # (e.g. Voxtral on a machine without a GPU) are skipped.
-DEFAULT_ROUTES: dict[str, list[str]] = {
+ALL_ROUTES: dict[str, list[str]] = {
     "en-US": ["voxtral", "whisper"],
     "fr-FR": ["voxtral", "whisper"],
     "ar-SA": ["voxtral", "whisper"],
@@ -35,6 +51,7 @@ DEFAULT_ROUTES: dict[str, list[str]] = {
     # Stock Whisper only as a last resort: it hears Darija as Arabic and misses most dialect words.
     "ar-MA": ["whisper-darija", "whisper"],
 }
+DEFAULT_ROUTES: dict[str, list[str]] = {code: route for code, route in ALL_ROUTES.items() if code in LANGUAGES}
 
 # Written by scripts/convert_darija_model.py; data/ is git-ignored.
 DEFAULT_DARIJA_MODEL_PATH = Path(__file__).resolve().parents[3] / "data" / "models" / "whisper-darija-ct2"

@@ -18,7 +18,7 @@ for chunk in audio_chunks:               # int16 bytes/array or float32, any chu
 stream.flush()                           # speaker left: finalize what's buffered
 ```
 
-Supported languages: `en-US`, `fr-FR`, `ar-SA`, `zh-CN`, `zh-TW` (same Mandarin audio; the text is converted to the chosen script) and `ar-MA` (Darija, see below).
+Languages switched on: `en-US`, `fr-FR`, `ar-SA`. The code also handles `zh-CN`, `zh-TW` (same Mandarin audio; the text is converted to the chosen script) and `ar-MA` (Darija, see below), but they are off for now. `MAWIID_LANGUAGES` picks the languages (default `en-US,fr-FR,ar-SA`); to turn the others back on, set `MAWIID_LANGUAGES=en-US,fr-FR,ar-SA,zh-CN,zh-TW,ar-MA`, uncomment them in the frontend's `MeetControls.jsx`, and for Darija convert its model (below). While a language is off, a listener who picks it reads the original text, and a speaker who picks `ar-MA` is transcribed as `ar-SA`. Their tests are skipped.
 
 ### Darija (`ar-MA`)
 
@@ -30,7 +30,7 @@ Stock Whisper hears Darija as Arabic and misses most dialect words, so `ar-MA` r
 MAWIID_STT_DARIJA_MODEL=data/models/whisper-darija-medium-ct2 ...  # pick another conversion
 ```
 
-`make ai-models` converts it. Without a converted model the engine is skipped, the worker logs a warning and Darija goes to stock Whisper. Output is Arabic script. Test clips come from DVoice v2.0 and adiren7/darija_speech_to_text (`fetch_samples.py --languages ar-MA`); the benchmark scores each source separately and also reports CER, because Darija has no standard spelling and WER counts every spelling variant as an error.
+Only needed while `ar-MA` is switched on; `make ai-models` no longer converts it. Without a converted model the engine is skipped, the worker logs a warning and Darija goes to stock Whisper. Output is Arabic script. Test clips come from DVoice v2.0 and adiren7/darija_speech_to_text (`fetch_samples.py --languages ar-MA`); the benchmark scores each source separately and also reports CER, because Darija has no standard spelling and WER counts every spelling variant as an error.
 
 ### How it works
 

@@ -36,6 +36,7 @@ OPEN_RETRY_S = 5.0
 
 # Accounts store short codes (user_language "fr"). Chinese script and Darija need the full
 # code ("zh-TW", "ar-MA"); other regions fall back to the language ("en-GB" -> "en-US").
+# Only languages switched on in LANGUAGES are returned.
 _SHORT_CODES = {"en": "en-US", "fr": "fr-FR", "ar": "ar-SA", "zh": "zh-CN"}
 
 # text, topic, attributes, destination identities (None: everyone in the room)
@@ -50,7 +51,8 @@ def mawiid_language(code: str | None) -> str | None:
     for known in LANGUAGES:
         if known.lower() == code:
             return known
-    return _SHORT_CODES.get(code.split("-")[0])
+    short = _SHORT_CODES.get(code.split("-")[0])
+    return short if short in LANGUAGES else None
 
 
 @dataclass(frozen=True, slots=True)

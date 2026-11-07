@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from conftest import needs_languages
+
 from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind
 from mawiid_ai.stt.config import DEFAULT_ROUTES, SttSettings
 from mawiid_ai.stt.router import SttRouter
@@ -17,6 +19,7 @@ SAMPLES = Path(__file__).resolve().parent.parent / "data" / "samples" / "ar-MA"
 SETTINGS = SttSettings()
 
 pytestmark = [
+    needs_languages("ar-MA"),
     pytest.mark.skipif(not (Path(SETTINGS.darija.model) / "model.bin").exists(), reason="no converted darija model"),
     pytest.mark.skipif(not (SAMPLES / "manifest.jsonl").exists(), reason="no darija sample clips"),
 ]

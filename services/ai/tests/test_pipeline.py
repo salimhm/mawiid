@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from mawiid_ai.agent import pipeline
 from mawiid_ai.agent.pipeline import (
     FINAL_ATTRIBUTE,
     LANGUAGE_ATTRIBUTE,
@@ -14,6 +15,7 @@ from mawiid_ai.agent.pipeline import (
     Segment,
     mawiid_language,
 )
+from mawiid_ai.stt.config import ALL_LANGUAGES
 from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind, SttError, SttStream, Transcript
 from mawiid_ai.translation.base import TranslationEngine
 from mawiid_ai.translation.config import TranslationSettings
@@ -130,11 +132,16 @@ def test_app_language_codes_map_to_model_languages():
     assert mawiid_language("fr") == "fr-FR"
     assert mawiid_language("en") == "en-US"
     assert mawiid_language("en-GB") == "en-US"
-    assert mawiid_language("zh-tw") == "zh-TW"
-    assert mawiid_language("ar-MA") == "ar-MA"
     assert mawiid_language("de") is None
     assert mawiid_language("") is None
     assert mawiid_language(None) is None
+
+
+def test_languages_switched_off_map_to_what_is_on(monkeypatch):
+    monkeypatch.setattr(pipeline, "LANGUAGES", {code: ALL_LANGUAGES[code] for code in ("en-US", "fr-FR", "ar-SA")})
+    assert mawiid_language("ar-MA") == "ar-SA"  # Darija off: plain Arabic
+    assert mawiid_language("zh-tw") is None  # Chinese off: originals only
+    assert mawiid_language("zh") is None
 
 
 def test_original_goes_only_to_readers_of_the_spoken_language_and_partial_and_final_share_a_segment():
@@ -251,12 +258,12 @@ def test_turning_captions_off_finishes_the_phrase_and_stops_transcribing():
 
 def test_speech_uses_the_spoken_language_and_captions_the_read_language():
     room = Room()
-    room.pipeline.set_language("user_1", "en", "ar-MA")
+    room.pipeline.set_language("user_1", "en", "ar")
     room.pipeline.set_language("user_2", "fr")
 
     room.speak("user_1", 1)
 
-    assert [stream.language for stream in room.router.streams] == ["ar-MA"]
+    assert [stream.language for stream in room.router.streams] == ["ar-SA"]
     assert room.pipeline.listeners() == {"en-US": ["user_1"], "fr-FR": ["user_2"]}
 
 
