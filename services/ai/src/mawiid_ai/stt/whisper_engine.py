@@ -32,6 +32,9 @@ _TRAILING_FRAMES = 300
 _MAX_FRAMES = 3000
 
 _REMEMBERED_WORDS = 6
+# Text this repetitive is a hallucination ("1.1.1.1..."), Whisper's own limit. Finals are retried past
+# it at higher temperatures; partials skip those retries, so theirs are dropped.
+_MAX_COMPRESSION_RATIO = 2.4
 
 
 def pad_to_phrase(features: np.ndarray) -> np.ndarray:
@@ -145,6 +148,9 @@ class WhisperEngine(SttEngine):
             log_prob_threshold=s.min_avg_logprob,
             initial_prompt=_PROMPTS.get(code, _MIXED_PROMPT),
         )
+        segments = list(segments)
+        if partial and any(segment.compression_ratio > _MAX_COMPRESSION_RATIO for segment in segments):
+            return ""
         return clean_text("".join(segment.text for segment in segments), language)
 
 

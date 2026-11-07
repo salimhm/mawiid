@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from dataclasses import dataclass
 
 import numpy as np
@@ -13,6 +14,7 @@ from mawiid_ai.agent.pipeline import (
     TRANSLATION_TOPIC,
     RoomPipeline,
     Segment,
+    _Speaker,
     mawiid_language,
 )
 from mawiid_ai.stt import AUTO_LANGUAGE
@@ -396,3 +398,103 @@ def test_translations_of_a_speakers_chunks_stay_in_order():
         "<en-US>fr-FR final 2",
         "<en-US>fr-FR final 3",
     ]
+
+
+class SlowEngine(FakeEngine):
+    """Each translation waits until the test lets it finish."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.release = threading.Semaphore(0)
+
+    def translate(self, text, source, targets):
+        self.release.acquire(timeout=5)
+        return super().translate(text, source, targets)
+
+
+def live_pipeline(engine: FakeEngine):
+    sent: list[Sent] = []
+
+    async def publish(text, topic, attributes, identities):
+        sent.append(Sent(text, topic, attributes, identities))
+
+    settings = TranslationSettings(engines=["fake"], partials=True)
+    pipeline = RoomPipeline(FakeRouter(), SubtitleTranslator({"fake": engine}, settings), publish, clock=lambda: 0.0)
+    pipeline.set_language("user_1", "fr")
+    pipeline.set_language("user_2", "en")
+    pipeline.set_captions("user_2", True)
+    return pipeline, sent
+
+
+def said(kind: ResultKind, text: str) -> Transcript:
+    return Transcript(kind, text, "fr-FR", 0.0, 1.0, "fake")
+
+
+async def settle(speaker) -> None:
+    while speaker.translating is not None and not speaker.translating.done():
+        await speaker.translating
+
+
+def test_only_the_newest_partial_waits_for_a_busy_translator():
+    async def scenario():
+        engine = SlowEngine()
+        pipeline, sent = live_pipeline(engine)
+        speaker = _Speaker("user_1", "TR_mic")
+        for text in ("un deux trois", "un deux trois quatre", "un deux trois quatre cinq"):
+            await pipeline._emit(speaker, said(ResultKind.PARTIAL, text))
+        for _ in range(2):
+            engine.release.release()
+        await settle(speaker)
+        return [s.text for s in sent if s.topic == TRANSLATION_TOPIC]
+
+    assert asyncio.run(scenario()) == ["<en-US>un deux trois", "<en-US>un deux trois quatre cinq"]
+
+
+def test_a_final_replaces_the_waiting_partial_and_comes_last():
+    async def scenario():
+        engine = SlowEngine()
+        pipeline, sent = live_pipeline(engine)
+        speaker = _Speaker("user_1", "TR_mic")
+        await pipeline._emit(speaker, said(ResultKind.PARTIAL, "un deux trois"))
+        await pipeline._emit(speaker, said(ResultKind.PARTIAL, "un deux trois quatre"))
+        await pipeline._emit(speaker, said(ResultKind.FINAL, "un deux trois quatre cinq"))
+        for _ in range(2):
+            engine.release.release()
+        await settle(speaker)
+        return [(s.text, s.attributes[FINAL_ATTRIBUTE]) for s in sent if s.topic == TRANSLATION_TOPIC]
+
+    assert asyncio.run(scenario()) == [
+        ("<en-US>un deux trois", "false"),
+        ("<en-US>un deux trois quatre cinq", "true"),
+    ]
+
+
+def test_a_partial_after_a_final_cannot_overtake_it():
+    async def scenario():
+        engine = SlowEngine()
+        pipeline, sent = live_pipeline(engine)
+        speaker = _Speaker("user_1", "TR_mic")
+        await pipeline._emit(speaker, said(ResultKind.PARTIAL, "un deux trois"))
+        await pipeline._emit(speaker, said(ResultKind.FINAL, "un deux trois quatre"))
+        await pipeline._emit(speaker, said(ResultKind.PARTIAL, "phrase suivante ici"))
+        for _ in range(3):
+            engine.release.release()
+        await settle(speaker)
+        return [s.text for s in sent if s.topic == TRANSLATION_TOPIC]
+
+    assert asyncio.run(scenario()) == [
+        "<en-US>un deux trois",
+        "<en-US>un deux trois quatre",
+        "<en-US>phrase suivante ici",
+    ]
+
+
+def test_live_translation_waits_for_a_few_words():
+    async def scenario():
+        pipeline, sent = live_pipeline(FakeEngine())
+        speaker = _Speaker("user_1", "TR_mic")
+        await pipeline._emit(speaker, said(ResultKind.PARTIAL, "bonjour"))
+        await settle(speaker)
+        return [s for s in sent if s.topic == TRANSLATION_TOPIC]
+
+    assert asyncio.run(scenario()) == []

@@ -187,6 +187,15 @@ def test_transcription_settings_for_mixed_speech():
     assert options["initial_prompt"] == _MIXED_PROMPT
 
 
+def test_repetitive_partials_are_dropped_but_finals_are_kept():
+    # Finals have already been through Whisper's retries by the time they get here.
+    looping = SimpleNamespace(text="1.1.1.1.1.1", compression_ratio=8.0)
+    model = SimpleNamespace(transcribe=lambda audio, **options: ([looping], None))
+
+    assert whisper_with(model).transcribe(LONG, "fr-FR", partial=True) == ""
+    assert whisper_with(model).transcribe(LONG, "fr-FR") == "1.1.1.1.1.1"
+
+
 def test_the_default_model_is_multilingual_large_v3(monkeypatch):
     monkeypatch.delenv("MAWIID_STT_WHISPER_MODEL", raising=False)
     assert WhisperSettings().model == "large-v3"

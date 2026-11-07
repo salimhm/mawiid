@@ -32,6 +32,7 @@ TRANSLATION_ATTRIBUTE = "mawiid.translation_enabled"  # "true" when someone want
 SPOKEN_LANGUAGE_ATTRIBUTE = "mawiid.spoken_language"  # optional: skips detecting it from the voice (Darija needs it)
 
 OPEN_RETRY_S = 5.0
+LIVE_MIN_WORDS = 3  # a word or two alone translates badly: wait for a little context
 
 # Accounts store short codes (user_language "fr"). Chinese script and Darija need the full
 # code ("zh-TW", "ar-MA"); other regions fall back to the language ("en-GB" -> "en-US").
@@ -75,6 +76,8 @@ class _Speaker:
         self.retry_at = 0.0
         self.segment_id: str | None = None  # shared by a phrase's partials and its final
         self.translating: asyncio.Task[None] | None = None
+        # The newest partial waiting for the translator; a newer one replaces it, so translation never queues up.
+        self.waiting_partial: tuple[Transcript, dict[str, str]] | None = None
 
 
 class RoomPipeline:
@@ -148,7 +151,7 @@ class RoomPipeline:
                 await self._feed(speaker, lambda stream: stream.push_audio(chunk))
         finally:
             await self._close(speaker)
-            if speaker.translating is not None:
+            while speaker.translating is not None and not speaker.translating.done():
                 await speaker.translating
 
     async def _open(self, speaker: _Speaker, language: str) -> bool:
@@ -210,11 +213,25 @@ class RoomPipeline:
             LANGUAGE_ATTRIBUTE: result.language,
         }
         await self._send(result.text, TRANSCRIPTION_TOPIC, attributes, sorted(self._captions))
-        translate_partials = self._translator is not None and self._translator.settings.partials
-        if final or translate_partials:
-            # Translation runs beside speech-to-text, chained so a speaker's subtitles stay in order.
-            previous = speaker.translating
-            speaker.translating = asyncio.create_task(self._translate(previous, speaker, result, attributes))
+        if final:
+            speaker.waiting_partial = None  # the final says it all
+            self._start_translation(speaker, result, attributes)
+        elif self._translates_live(result):
+            if speaker.translating is None or speaker.translating.done():
+                self._start_translation(speaker, result, attributes)
+            else:
+                speaker.waiting_partial = (result, attributes)
+
+    def _translates_live(self, result: Transcript) -> bool:
+        if self._translator is None or not self._translator.settings.partials:
+            return False
+        # Characters for Chinese, which has no spaces.
+        return len(result.text.split()) >= LIVE_MIN_WORDS or len(result.text) >= 3 * LIVE_MIN_WORDS
+
+    def _start_translation(self, speaker: _Speaker, result: Transcript, attributes: dict[str, str]) -> None:
+        # Translation runs beside speech-to-text, chained so a speaker's subtitles stay in order.
+        previous = speaker.translating
+        speaker.translating = asyncio.create_task(self._translate(previous, speaker, result, attributes))
 
     async def _translate(
         self,
@@ -262,6 +279,10 @@ class RoomPipeline:
                     translations=translations,
                 )
             )
+        # Only the last task in the chain: a final may be waiting behind this one.
+        if speaker.waiting_partial is not None and speaker.translating is asyncio.current_task():
+            (waiting, waiting_attributes), speaker.waiting_partial = speaker.waiting_partial, None
+            self._start_translation(speaker, waiting, waiting_attributes)
 
     async def _send(self, text: str, topic: str, attributes: dict[str, str], identities: list[str] | None) -> None:
         try:

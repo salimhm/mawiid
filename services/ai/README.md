@@ -72,7 +72,7 @@ for result in stream.push_audio(chunk):  # one speaker's transcripts
 
 - Darija listeners read Modern Standard Arabic, and Darija and Arabic listeners read each other's original text: MADLAD's `<2ary>` tag returns lossy Standard Arabic, and its Darija-to-Arabic output changed the meaning in testing. Its Darija-to-English and French output is also unreliable.
 - Each language is translated once, however many listeners picked it. `zh-CN` and `zh-TW` share one translation, converted to each script. Listeners who speak the speaker's language get the transcript as-is.
-- Only finals are translated. Partials go only to listeners of the speaker's language (`MAWIID_MT_PARTIALS=1` translates them too, at several times the GPU load).
+- Partials are translated too, so listeners read along while someone speaks (`MAWIID_MT_PARTIALS=0` turns this off). Only a speaker's newest partial with at least 3 words is translated and a newer one replaces any still waiting, so a slow machine shows fewer updates instead of falling behind.
 - Model: [MADLAD-400 3B](https://huggingface.co/google/madlad400-3b-mt) (Apache 2.0), int8 in CTranslate2, greedy decoding. Finals are split into sentences, because MADLAD drops sentences from long inputs. Output length is capped, and looping outputs are retried. `&apos;` and similar escapes are cleaned up.
 - If the engine fails, it is skipped for 60 s, like the speech-to-text router. `MAWIID_MT_CPU_BACKUP=1` loads a second copy on the CPU as backup (~3 GB of RAM). It is a last resort: on a Core Ultra 7 155H it needs 2.6 s median and 4.6 s p95 per final, against 0.7 s on the GPU.
 
@@ -107,7 +107,7 @@ In each room it:
 
 1. Subscribes to every person's microphone (16 kHz mono) and runs one speech-to-text stream per speaker. Silero VAD cuts the audio into chunks on pauses; speech with no pause is cut at 6 s, and the next chunk repeats the last 500 ms so no word is split, with the repeated words removed from its text. The language of each chunk is detected from the voice, keeping only the scores for English, French and Arabic (`DETECT_LANGUAGES` in `stt/config.py`); chunks under 1 s reuse the previous chunk's language, starting from the language the speaker reads. Partials wait for 3 s of audio before detecting. Detection adds an encoder pass per chunk, and the Darija model is never picked this way because Whisper hears Darija as Arabic. Setting the speaker's `mawiid.spoken_language` attribute skips detection (`en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`; other codes fall back to the language without region).
 2. Sends each partial and final result to the participants with captions on, on the `lk.transcription` text-stream topic.
-3. Translates each final once per language that listeners picked (the same `mawiid.language` attribute) and sends it on `mawiid.translation.v1`, only to the listeners of that language. Listeners of the spoken language only get the original.
+3. Translates each final, and the newest partial while someone speaks, once per language that listeners picked (the same `mawiid.language` attribute) and sends it on `mawiid.translation.v1`, only to the listeners of that language. Listeners of the spoken language only get the original.
 4. Logs each final at INFO before translating it (`transcript <segment> ...`) and each translation after (`translation <segment> ...`), so the two can be compared when words go missing. These lines contain what people said.
 5. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s).
 
@@ -132,5 +132,7 @@ Or directly: `.venv/bin/python -m mawiid_ai.agent dev` (`start` in production) w
 | `LIVEKIT_TRANSLATOR_AGENT`                           | Agent name, default `mawiid-translator`; must match the backend |
 | `MAWIID_BACKEND_URL`, `INTERNAL_SERVICE_TOKEN`       | Where to save transcripts; without them nothing is saved        |
 | `MAWIID_STT_*`, `MAWIID_MT_*`                        | Model settings (sections above)                                 |
+
+Without a GPU, use `MAWIID_STT_WHISPER_MODEL=small`: on a 12-core laptop CPU, 60 s of real-time speech finished in 66 s with `small` (final caption median 4.5 s after its audio) and in 124 s with `large-v3` (median 33 s and growing).
 
 The first start downloads Whisper. On a machine without CUDA libraries, set `MAWIID_STT_WHISPER_DEVICE=cpu` (`MAWIID_STT_PARTIALS=0` turns partials off if the machine is short of CPU).
