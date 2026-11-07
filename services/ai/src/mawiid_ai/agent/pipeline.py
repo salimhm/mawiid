@@ -133,6 +133,17 @@ class RoomPipeline:
                 groups.setdefault(language, []).append(identity)
         return groups
 
+    def _original_readers(self, spoken: str) -> list[str]:
+        """Who gets the original text: everyone without a translation model; otherwise those who
+        read the spoken language or a language no model handles."""
+        if self._translator is None:
+            return sorted(self._captions)
+        return sorted(
+            identity
+            for identity in self._captions
+            if self._languages.get(identity) in (None, spoken)
+        )
+
     async def run_speaker(self, identity: str, track_sid: str, audio: AsyncIterable[np.ndarray | bytes]) -> None:
         """Transcribe one audio track (16 kHz mono chunks) until it ends."""
         speaker = _Speaker(identity, track_sid)
@@ -205,7 +216,10 @@ class RoomPipeline:
             FINAL_ATTRIBUTE: "true" if final else "false",
             LANGUAGE_ATTRIBUTE: result.language,
         }
-        await self._send(result.text, TRANSCRIPTION_TOPIC, attributes, sorted(self._captions))
+        # People reading another language wait for their translation instead of the original.
+        readers = self._original_readers(result.language)
+        if readers:
+            await self._send(result.text, TRANSCRIPTION_TOPIC, attributes, readers)
         translate_partials = self._translator is not None and self._translator.settings.partials
         if final or translate_partials:
             # Translation runs beside speech-to-text, chained so a speaker's subtitles stay in order.
@@ -221,7 +235,8 @@ class RoomPipeline:
     ) -> None:
         if previous is not None:
             await previous
-        groups = self.listeners()
+        # Listeners of the spoken language already got the original.
+        groups = {language: ids for language, ids in self.listeners().items() if language != result.language}
         translations: dict[str, str] = {}
         if self._translator is not None and groups:
             try:
@@ -229,18 +244,25 @@ class RoomPipeline:
             except Exception:
                 log.exception("translation failed for %s", speaker.identity)
                 subtitles = []
+            missing = set(groups)
             for subtitle in subtitles:
-                # Listeners of the spoken language read the original. zh-CN and zh-TW share a
-                # language but not a script, so the converted text is still sent.
-                if subtitle.text.strip() == result.text.strip():
+                if subtitle.language not in groups:
                     continue
-                translations[subtitle.language] = subtitle.text
+                missing.discard(subtitle.language)
+                # zh-CN and zh-TW share a language but not a script: the text may come back
+                # unchanged, and is still sent since these listeners did not get the original.
+                if subtitle.text.strip() != result.text.strip():
+                    translations[subtitle.language] = subtitle.text
                 await self._send(
                     subtitle.text,
                     TRANSLATION_TOPIC,
                     {**attributes, LANGUAGE_ATTRIBUTE: subtitle.language},
                     groups[subtitle.language],
                 )
+            if missing and result.kind is ResultKind.FINAL:
+                # No translation came back: better the original than nothing.
+                readers = sorted(identity for language in missing for identity in groups[language])
+                await self._send(result.text, TRANSCRIPTION_TOPIC, attributes, readers)
         if result.kind is ResultKind.FINAL and self._on_segment is not None:
             self._on_segment(
                 Segment(

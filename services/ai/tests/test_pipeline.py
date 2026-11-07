@@ -137,15 +137,17 @@ def test_app_language_codes_map_to_model_languages():
     assert mawiid_language(None) is None
 
 
-def test_original_goes_to_everyone_with_captions_on_and_partial_and_final_share_a_segment():
+def test_original_goes_only_to_readers_of_the_spoken_language_and_partial_and_final_share_a_segment():
     room = Room()
     room.pipeline.set_language("user_1", "fr")
     room.pipeline.set_language("user_2", "en")
+    room.pipeline.set_language("user_3", "fr")
+    room.pipeline.set_language("user_4", "de")  # no model: reads originals
 
     room.speak("user_1", PHRASE_CHUNKS, track="TR_abc")
 
     partial, final = room.topic(TRANSCRIPTION_TOPIC)
-    assert partial.identities == final.identities == ["user_1", "user_2"]
+    assert partial.identities == final.identities == ["user_1", "user_3", "user_4"]
     assert partial.attributes[FINAL_ATTRIBUTE] == "false"
     assert final.attributes[FINAL_ATTRIBUTE] == "true"
     assert partial.attributes[SEGMENT_ATTRIBUTE] == final.attributes[SEGMENT_ATTRIBUTE]
@@ -228,7 +230,7 @@ def test_captions_reach_only_the_people_who_switched_them_on():
 
     room.speak("user_1", 3)
 
-    assert {tuple(sent.identities) for sent in room.topic(TRANSCRIPTION_TOPIC)} == {("user_2",)}
+    assert room.topic(TRANSCRIPTION_TOPIC) == []  # user_2 reads English, user_1 speaks French
     assert {tuple(sent.identities) for sent in room.topic(TRANSLATION_TOPIC)} == {("user_2",)}
     assert {sent.attributes["mawiid.language"] for sent in room.topic(TRANSLATION_TOPIC)} == {"en-US"}
 
@@ -280,8 +282,9 @@ def test_changing_language_finishes_the_phrase_then_reopens_the_stream():
     first, second = room.router.streams
     assert (first.language, second.language) == ("fr-FR", "ar-SA")
     assert first.closed and second.closed
-    texts = [sent.text for sent in room.topic(TRANSCRIPTION_TOPIC)]
-    assert texts == ["fr-FR flushed 1", "ar-SA partial 0", "ar-SA flushed 1"]
+    # The French phrase ends after user_1 switched to reading Arabic: they get its translation.
+    texts = [sent.text for sent in room.sent]
+    assert texts == ["<ar-SA>fr-FR flushed 1", "ar-SA partial 0", "ar-SA flushed 1"]
 
 
 def test_without_a_translation_model_only_originals_are_sent():
@@ -327,3 +330,24 @@ def test_a_crashed_stream_is_reopened_on_the_next_chunk():
     room.speak("user_1", 3, between=crash_once)
 
     assert len(room.router.streams) == 2
+
+
+
+def test_foreign_listeners_get_the_final_original_when_translation_fails():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "en")
+
+    def broken(*_):
+        raise RuntimeError("model down")
+
+    room.translator.translate = broken
+    room.speak("user_1", PHRASE_CHUNKS)
+
+    originals = room.topic(TRANSCRIPTION_TOPIC)
+    assert [(sent.attributes[FINAL_ATTRIBUTE], sent.identities) for sent in originals] == [
+        ("false", ["user_1"]),
+        ("true", ["user_1"]),
+        ("true", ["user_2"]),
+    ]
+    assert room.topic(TRANSLATION_TOPIC) == []
