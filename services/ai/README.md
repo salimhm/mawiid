@@ -72,7 +72,7 @@ for result in stream.push_audio(chunk):  # one speaker's transcripts
 
 - Darija listeners read Modern Standard Arabic, and Darija and Arabic listeners read each other's original text: MADLAD's `<2ary>` tag returns lossy Standard Arabic, and its Darija-to-Arabic output changed the meaning in testing. Its Darija-to-English and French output is also unreliable.
 - Each language is translated once, however many listeners picked it. `zh-CN` and `zh-TW` share one translation, converted to each script. Listeners who speak the speaker's language get the transcript as-is.
-- Only finals are translated. Partials go only to listeners of the speaker's language (`MAWIID_MT_PARTIALS=1` translates them too, at several times the GPU load).
+- Live translation (`MAWIID_MT_PARTIALS`, on by default): while someone talks, the words two partials in a row agree on are translated once at least 2 more are stable, so the subtitle grows with the speech without flickering. If a newer one arrives while a translation is waiting, the older one is dropped, so a slow machine sends fewer updates instead of falling behind. It needs speech-to-text partials (`MAWIID_STT_PARTIALS=1`). `MAWIID_MT_PARTIALS=0` translates finished phrases only (less GPU load).
 - Model: [MADLAD-400 3B](https://huggingface.co/google/madlad400-3b-mt) (Apache 2.0), int8 in CTranslate2, greedy decoding. Finals are split into sentences, because MADLAD drops sentences from long inputs. Output length is capped, and looping outputs are retried. `&apos;` and similar escapes are cleaned up.
 - If the engine fails, it is skipped for 60 s, like the speech-to-text router. `MAWIID_MT_CPU_BACKUP=1` loads a second copy on the CPU as backup (~3 GB of RAM). It is a last resort: on a Core Ultra 7 155H it needs 2.6 s median and 4.6 s p95 per final, against 0.7 s on the GPU.
 
@@ -106,9 +106,11 @@ Links the two modules above to the app's calls. It is a LiveKit agent (`livekit-
 In each room it:
 
 1. Subscribes to every person's microphone (16 kHz mono) and runs one speech-to-text stream per speaker, in the language of the speaker's `mawiid.spoken_language` attribute, or `mawiid.language` until one is set (`en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`; other codes fall back to the language without region, then to `en-US`).
-2. Sends each partial and final result to the participants with captions on, on the `lk.transcription` text-stream topic.
-3. Translates each final once per language that listeners picked (the same `mawiid.language` attribute) and sends it on `mawiid.translation.v1`, only to the listeners of that language. Listeners of the spoken language only get the original.
-4. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s).
+2. Sends each partial and final result on the `lk.transcription` text-stream topic to the participants with captions on who read the spoken language (or a language no model handles).
+3. Translates for everyone else, once per language that listeners picked (the same `mawiid.language` attribute), and sends it on `mawiid.translation.v1`, only to the listeners of that language: live while the speaker talks (see above), then the finished text. A final that ends mid-sentence (no `.`, `?`, `!`, `؟`) stays open: the next phrase is translated together with it under the same segment id, so listeners see one subtitle that grows and MADLAD gets whole sentences. It is closed after 1.5 s of silence or at 300 characters. If translation fails, those listeners get the original.
+4. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s). When finals were translated together, the translation is saved on the last of them.
+
+Whisper also gets the end of the speaker's previous phrase as a prompt (`MAWIID_STT_CONTEXT_CHARS`, default 200, `0` turns it off), so a phrase cut mid-sentence continues the sentence instead of getting a false full stop, and names keep their spelling.
 
 Without the converted MADLAD model, step 3 is skipped and everyone gets captions in the spoken language. The topics and attributes are described in `apps/backend/src/module/main/participants/integration.md` (section 8). The code: `pipeline.py` (one room, no LiveKit code, tested with fakes in `tests/test_pipeline.py`), `uploader.py` (transcript batches), `worker.py` (LiveKit wiring). Rooms run as threads in one process, so every room shares the models loaded once.
 

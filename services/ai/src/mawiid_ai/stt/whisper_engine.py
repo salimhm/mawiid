@@ -40,6 +40,18 @@ def pad_to_phrase(features: np.ndarray) -> np.ndarray:
     return np.pad(features, padding)
 
 
+def previous_text(context: str, text: str, limit: int) -> str:
+    """The last ``limit`` characters of what was said, cut at a word boundary."""
+    if limit <= 0:
+        return ""
+    joined = f"{context} {text}".strip()
+    if len(joined) <= limit:
+        return joined
+    tail = joined[-limit:]
+    space = tail.find(" ")
+    return tail[space + 1 :] if 0 <= space < len(tail) - 1 else tail
+
+
 def _default_cpu_threads() -> int:
     return max(4, (os.cpu_count() or 4) * 2 // 3)
 
@@ -101,18 +113,18 @@ class WhisperEngine(SttEngine):
             raise SttError(f"{self.name} does not support {language}")
         return WhisperStream(self, language, time_offset, vad_model)
 
-    def transcribe(self, audio: np.ndarray, language: str, partial: bool = False) -> str:
-        """Transcribe one phrase of 16 kHz float32 audio."""
+    def transcribe(self, audio: np.ndarray, language: str, partial: bool = False, context: str = "") -> str:
+        """Transcribe one phrase of 16 kHz float32 audio. ``context``: what the speaker said just before."""
         code = LANGUAGES[language].model_code
         try:
             if self._lock is not None:
                 with self._lock:
-                    return self._transcribe(audio, language, code, partial)
-            return self._transcribe(audio, language, code, partial)
+                    return self._transcribe(audio, language, code, partial, context)
+            return self._transcribe(audio, language, code, partial, context)
         except Exception as exc:
             raise SttError(f"{self.name} failed: {exc}") from exc
 
-    def _transcribe(self, audio: np.ndarray, language: str, code: str, partial: bool) -> str:
+    def _transcribe(self, audio: np.ndarray, language: str, code: str, partial: bool, context: str) -> str:
         s = self.settings
         segments, _ = self._model.transcribe(
             audio,
@@ -125,7 +137,7 @@ class WhisperEngine(SttEngine):
             without_timestamps=True,
             no_speech_threshold=s.max_no_speech_prob,
             log_prob_threshold=s.min_avg_logprob,
-            initial_prompt=_PROMPTS.get(code),
+            initial_prompt=" ".join(p for p in (_PROMPTS.get(code), context) if p) or None,
         )
         return clean_text("".join(segment.text for segment in segments), language)
 
@@ -147,6 +159,7 @@ class WhisperStream(SttStream):
         self._last_partial_text = ""
         self._partial_segment = -1
         self._next_partial_at = 0.0
+        self._context = ""  # the end of the previous final, prompted to Whisper
 
     def push_audio(self, audio: np.ndarray | bytes) -> list[Transcript]:
         results = [r for seg in self._vad.feed(to_float32(audio)) if (r := self._final(seg.audio, seg.start_sample))]
@@ -160,9 +173,10 @@ class WhisperStream(SttStream):
 
     def _final(self, audio: np.ndarray, start_sample: int) -> Transcript | None:
         self._last_partial_text = ""
-        text = self._engine.transcribe(audio, self._language)
+        text = self._engine.transcribe(audio, self._language, context=self._context)
         if not text:
             return None
+        self._context = previous_text(self._context, text, self._engine.settings.context_chars)
         return self._result(ResultKind.FINAL, text, start_sample, start_sample + len(audio))
 
     def _maybe_partial(self) -> Transcript | None:
@@ -179,7 +193,7 @@ class WhisperStream(SttStream):
         self._last_partial_at = now
         audio = self._vad.current_audio()
         started = time.monotonic()
-        text = self._engine.transcribe(audio, self._language, partial=True)
+        text = self._engine.transcribe(audio, self._language, partial=True, context=self._context)
         finished = time.monotonic()
         self._next_partial_at = finished + (finished - started) * (1 / self._engine.settings.partial_max_load - 1)
         if not text or text == self._last_partial_text:

@@ -1,10 +1,13 @@
 import asyncio
+import time
 from dataclasses import dataclass
 
 import numpy as np
 
 from mawiid_ai.agent import pipeline
 from mawiid_ai.agent.pipeline import (
+    ends_sentence,
+    stable_words,
     FINAL_ATTRIBUTE,
     LANGUAGE_ATTRIBUTE,
     SEGMENT_ATTRIBUTE,
@@ -57,13 +60,15 @@ class FakeStream(SttStream):
 
     def _result(self, kind: ResultKind, label: str) -> Transcript:
         start = self.phrases * PHRASE_CHUNKS * 0.1
-        return Transcript(kind, f"{self.language} {label} {self.phrases}", self.language, start, start + 0.4, "fake")
+        end = "." if self.router.punctuate and kind is ResultKind.FINAL else ""
+        return Transcript(kind, f"{self.language} {label} {self.phrases}{end}", self.language, start, start + 0.4, "fake")
 
 
 class FakeRouter:
     def __init__(self) -> None:
         self.streams: list[FakeStream] = []
         self.crash = False
+        self.punctuate = False  # finals end with a full stop
 
     def open_stream(self, language: str) -> FakeStream:
         stream = FakeStream(self, language)
@@ -94,14 +99,16 @@ class Sent:
 
 
 class Room:
-    def __init__(self, translate: bool = True, partials: bool = False) -> None:
-        self.router = FakeRouter()
+    def __init__(self, translate: bool = True, partials: bool = False, router=None, hold_s: float = 60.0) -> None:
+        self.router = router or FakeRouter()
         self.engine = FakeEngine()
         settings = TranslationSettings(engines=["fake"], partials=partials)
         self.translator = SubtitleTranslator({"fake": self.engine}, settings) if translate else None
         self.sent: list[Sent] = []
         self.segments: list[Segment] = []
-        self.pipeline = RoomPipeline(self.router, self.translator, self.publish, self.segments.append, clock=lambda: 0.0)
+        self.pipeline = RoomPipeline(
+            self.router, self.translator, self.publish, self.segments.append, clock=lambda: 0.0, hold_s=hold_s
+        )
 
         # Everyone has captions on unless a test says otherwise.
         set_language = self.pipeline.set_language
@@ -118,11 +125,13 @@ class Room:
     def topic(self, topic: str) -> list[Sent]:
         return [sent for sent in self.sent if sent.topic == topic]
 
-    def speak(self, identity: str, chunks: int, track: str = "TR_mic", between=None) -> None:
+    def speak(self, identity: str, chunks: int, track: str = "TR_mic", between=None, pause_after: int | None = None) -> None:
         async def audio():
             for i in range(chunks):
                 if between is not None:
                     between(i)
+                if i == pause_after:
+                    await asyncio.sleep(0.05)  # silence longer than hold_s
                 yield np.zeros(CHUNK, dtype=np.int16)
 
         asyncio.run(self.pipeline.run_speaker(identity, track, audio()))
@@ -201,16 +210,17 @@ def test_partials_are_not_translated_unless_enabled():
 
 def test_final_segments_are_saved_with_their_translations():
     room = Room()
+    room.router.punctuate = True
     room.pipeline.set_language("user_1", "fr")
     room.pipeline.set_language("user_2", "en")
 
     room.speak("user_1", PHRASE_CHUNKS * 2)
 
-    assert [segment.text for segment in room.segments] == ["fr-FR final 1", "fr-FR final 2"]
+    assert [segment.text for segment in room.segments] == ["fr-FR final 1.", "fr-FR final 2."]
     first, second = room.segments
     assert first.identity == "user_1"
     assert first.language == "fr-FR"
-    assert first.translations == {"en-US": "<en-US>fr-FR final 1"}
+    assert first.translations == {"en-US": "<en-US>fr-FR final 1."}
     assert (first.started_ms, first.ended_ms) == (400, 800)
     assert first.segment_id != second.segment_id
 
@@ -358,3 +368,157 @@ def test_foreign_listeners_get_the_final_original_when_translation_fails():
         ("true", ["user_2"]),
     ]
     assert room.topic(TRANSLATION_TOPIC) == []
+
+
+class ScriptedStream(SttStream):
+    """Returns the scripted results one audio chunk after another; flush returns the rest."""
+
+    def __init__(self, script: list[list[Transcript]]) -> None:
+        self.script = list(script)
+        self.closed = False
+
+    def push_audio(self, audio):
+        return self.script.pop(0) if self.script else []
+
+    def flush(self):
+        rest = [result for results in self.script for result in results]
+        self.script = []
+        return rest
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class ScriptedRouter:
+    def __init__(self, *script: list[Transcript]) -> None:
+        self.script = list(script)
+        self.streams: list[ScriptedStream] = []
+
+    def open_stream(self, language: str) -> ScriptedStream:
+        stream = ScriptedStream(self.script)
+        self.streams.append(stream)
+        return stream
+
+
+def partial(text: str) -> list[Transcript]:
+    return [Transcript(ResultKind.PARTIAL, text, "fr-FR", 0.0, 1.0, "fake")]
+
+
+def final(text: str, start: float = 0.0) -> list[Transcript]:
+    return [Transcript(ResultKind.FINAL, text, "fr-FR", start, start + 1.0, "fake")]
+
+
+def french_and_english_room(*script, partials=True, hold_s=60.0) -> Room:
+    room = Room(partials=partials, router=ScriptedRouter(*script), hold_s=hold_s)
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "en")
+    return room
+
+
+def translations(room: Room) -> list[tuple[str, str]]:
+    return [(sent.text, sent.attributes[FINAL_ATTRIBUTE]) for sent in room.topic(TRANSLATION_TOPIC)]
+
+
+def test_listeners_of_other_languages_get_the_stable_words_translated_while_someone_talks():
+    room = french_and_english_room(
+        partial("Bonjour à"),
+        partial("Bonjour à tous je"),  # "Bonjour à" stable
+        partial("Bonjour à tous, je"),  # "tous," changed: still only "Bonjour à"
+        partial("Bonjour à tous, je pense"),  # "Bonjour à tous, je" stable: 2 more words
+        final("Bonjour à tous, je pense."),
+    )
+    room.speak("user_1", 5)
+
+    assert translations(room) == [
+        ("<en-US>Bonjour à", "false"),
+        ("<en-US>Bonjour à tous, je", "false"),
+        ("<en-US>Bonjour à tous, je pense.", "true"),
+    ]
+    # One subtitle: every translation of the phrase shares the segment of its original.
+    [segment] = {sent.attributes[SEGMENT_ATTRIBUTE] for sent in room.sent}
+    assert segment.startswith("SG_")
+
+
+def test_live_translation_can_be_switched_off():
+    room = french_and_english_room(
+        partial("Bonjour à"), partial("Bonjour à tous je"), final("Bonjour à tous."), partials=False
+    )
+    room.speak("user_1", 3)
+    assert translations(room) == [("<en-US>Bonjour à tous.", "true")]
+
+
+def test_a_final_ending_mid_sentence_is_translated_with_the_next_one_as_one_subtitle():
+    room = french_and_english_room(final("Je pense que"), final("c'est une bonne idée.", start=1.0), partials=False)
+    room.speak("user_1", 2)
+
+    assert room.engine.calls == [("Je pense que c'est une bonne idée.", ["en-US"])]
+    first, second = room.segments
+    assert (first.text, first.translations) == ("Je pense que", {})
+    assert (second.text, second.translations) == ("c'est une bonne idée.", {"en-US": "<en-US>Je pense que c'est une bonne idée."})
+    [translation] = room.topic(TRANSLATION_TOPIC)
+    assert translation.attributes[SEGMENT_ATTRIBUTE] == first.segment_id
+    # French listeners still get each phrase as it is transcribed.
+    assert [sent.text for sent in room.topic(TRANSCRIPTION_TOPIC)] == ["Je pense que", "c'est une bonne idée."]
+
+
+def test_an_open_subtitle_shows_what_was_said_so_far_then_grows():
+    room = french_and_english_room(final("Je pense que"), partial("c'est une"), partial("c'est une bonne"), final("c'est une bonne idée."))
+    room.speak("user_1", 4)
+
+    assert translations(room) == [
+        ("<en-US>Je pense que", "false"),
+        ("<en-US>Je pense que c'est une", "false"),
+        ("<en-US>Je pense que c'est une bonne idée.", "true"),
+    ]
+    assert len({sent.attributes[SEGMENT_ATTRIBUTE] for sent in room.topic(TRANSLATION_TOPIC)}) == 1
+
+
+def test_an_open_subtitle_is_closed_after_a_silence():
+    room = french_and_english_room(final("Je pense que"), [], final("Autre chose."), partials=False, hold_s=0.01)
+    room.speak("user_1", 3, pause_after=1)
+
+    assert [text for text, _ in room.engine.calls] == ["Je pense que", "Autre chose."]
+    first, second = room.topic(TRANSLATION_TOPIC)
+    assert first.attributes[SEGMENT_ATTRIBUTE] != second.attributes[SEGMENT_ATTRIBUTE]
+
+
+def test_an_open_subtitle_is_closed_when_it_gets_too_long():
+    long = "mot " * 80
+    room = french_and_english_room(final(long.strip()), final("fin."), partials=False)
+    room.speak("user_1", 2)
+    assert [text for text, _ in room.engine.calls] == [long.strip(), "fin."]
+
+
+def test_stable_words_are_the_common_start_of_two_partials():
+    assert stable_words([], ["a", "b"]) == []
+    assert stable_words(["a", "b", "c"], ["a", "b", "d", "e"]) == ["a", "b"]
+    assert stable_words(["a", "b"], ["a", "b", "c"]) == ["a", "b"]
+
+
+def test_sentence_ends_are_recognised():
+    assert ends_sentence("Bonjour.") and ends_sentence("Vraiment ?") and ends_sentence("هل أنت هنا؟")
+    assert ends_sentence('Il a dit "oui."') and ends_sentence("Bon…")
+    assert not ends_sentence("Je pense que") and not ends_sentence("Alors,")
+
+
+class SlowEngine(FakeEngine):
+    def translate(self, text, source, targets):
+        time.sleep(0.05)  # longer than the partials take to arrive
+        return super().translate(text, source, targets)
+
+
+def test_queued_live_translations_are_skipped_when_newer_ones_arrive():
+    room = french_and_english_room(
+        partial("un"),
+        partial("un deux trois"),
+        partial("un deux trois quatre cinq"),
+        partial("un deux trois quatre cinq six sept"),
+        partial("un deux trois quatre cinq six sept huit"),
+        final("un deux trois quatre cinq six sept huit."),
+    )
+    room.engine = room.translator.engines["fake"] = SlowEngine()
+    room.speak("user_1", 6)
+
+    sent = translations(room)
+    assert sent[-1] == ("<en-US>un deux trois quatre cinq six sept huit.", "true")
+    assert len(sent) < 4  # 3 live ones were queued; the stale ones were dropped

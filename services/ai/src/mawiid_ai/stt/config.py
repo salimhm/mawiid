@@ -86,6 +86,9 @@ class WhisperSettings:
     # Results Whisper is unsure about are dropped; this is where its "Thank you." hallucinations live.
     max_no_speech_prob: float = 0.6
     min_avg_logprob: float = -1.0
+    # The end of the speaker's previous phrase is given to Whisper as a prompt, so a phrase cut in
+    # the middle of a sentence continues it (no false full stop) and names keep their spelling. 0: off.
+    context_chars: int = field(default_factory=lambda: int(_env("CONTEXT_CHARS", "200")))
 
 
 def _darija_settings() -> WhisperSettings:
