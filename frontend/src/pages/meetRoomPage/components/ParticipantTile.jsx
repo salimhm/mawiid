@@ -1,22 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as icons from '../../../assets/icons'
-
-const GRADIENT_COLORS = [
-    'from-amber-400 via-amber-600 to-amber-900',
-    'from-rose-400 via-rose-600 to-rose-900',
-    'from-teal-400 via-teal-600 to-teal-900',
-    'from-lime-400 via-lime-600 to-lime-900',
-    'from-violet-400 via-violet-600 to-violet-900',
-    'from-sky-400 via-sky-600 to-sky-900',
-]
-
-function getGradient(id)
-{
-    let hash = 0
-    for (let i = 0; i < id.length; i++)
-        hash = id.charCodeAt(i) + ((hash << 5) - hash)
-    return GRADIENT_COLORS[Math.abs(hash) % GRADIENT_COLORS.length]
-}
+import { participantColor } from '../../../lib/participantColor'
 
 export default function ParticipantTile({ name, stream, isCamOn, isMicOn, handRaised, id })
 {
@@ -31,7 +15,7 @@ export default function ParticipantTile({ name, stream, isCamOn, isMicOn, handRa
             videoElement.current.srcObject = null
     }, [stream, isCamOn])
 
-    const gradient = getGradient(id || 'default')
+    const gradient = participantColor(id || 'default').gradient
     const showVideo = isCamOn && stream
 
     return (

@@ -22,8 +22,9 @@ const REACTION_VISIBLE_MS = 4000
 const STAFF_ROLES = ['host', 'moderator']
 const MESSAGE_PAGE = 50
 const MESSAGE_PAGE_MAX = 100
-const CAPTION_VISIBLE_MS = 6000
-const CAPTION_MAX = 3
+// Captions stay until they scroll out of this history, so a long speech or several
+// people talking at once can still be read back.
+const CAPTION_MAX = 200
 const ROOM_EVENT_MAX = 200
 
 // Why a participant left, as a line in the chat. LiveKit sends the reason with
@@ -243,26 +244,13 @@ export function useRoom(roomUid, {
         setCaptions((prev) => mergeCaption(prev, {
             id: caption.segmentId,
             speaker: speaker === room.localParticipant ? 'You' : speaker?.name || speaker?.identity || 'Speaker',
+            speakerId: speaker?.identity || caption.trackId,
             text: caption.text,
             final: caption.final,
             translated: caption.translated,
             foreign: !caption.translated && Boolean(myLanguage) && baseLanguage(caption.language) !== baseLanguage(myLanguage),
-            shownAt: Date.now(),
         }))
     }, [])
-
-    useEffect(() => {
-        if (!captions.length)
-            return
-        const timer = setInterval(() => {
-            const now = Date.now()
-            setCaptions((prev) => {
-                const kept = prev.filter((caption) => now - caption.shownAt < CAPTION_VISIBLE_MS)
-                return kept.length === prev.length ? prev : kept
-            })
-        }, 1000)
-        return () => clearInterval(timer)
-    }, [captions.length])
 
     useEffect(() => {
         if (!roomUid)
