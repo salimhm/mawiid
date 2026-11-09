@@ -1,6 +1,7 @@
 
 import { useEffect, useRef } from 'react'
 import * as icons from '../../../assets/icons'
+import './meet-room-refresh.css'
 
 const palettes = [
   {
@@ -136,7 +137,7 @@ export default function ParticipantTile({
 
       <div className="meet-person__top">
         <span className="meet-person__name">
-          {name}
+          {name.replace(/\s*\(You\)\s*/gi, '').trim() || (isLocal ? 'You' : 'Guest')}
           {isLocal && ' (You)'}
         </span>
 

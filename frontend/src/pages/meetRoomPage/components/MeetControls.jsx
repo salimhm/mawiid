@@ -127,15 +127,15 @@ export default function MeetControls({
       <footer
         className={
           fullScreen
-            ? 'fixed bottom-0 left-0 right-0 z-40 h-16 sm:h-20 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:grid-cols-3 items-center px-2 sm:px-4 md:px-6 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] sm:pb-5 bg-gradient-to-t from-black/85 via-black/50 to-transparent'
-            : 'h-16 sm:h-20 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:grid-cols-3 items-center px-2 sm:px-4 md:px-6 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] sm:pb-0 mb-1 sm:mb-3'
+            ? 'fixed bottom-0 left-0 right-0 z-40 h-16 sm:h-20 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-2 sm:px-4 md:px-6 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] sm:pb-5 bg-gradient-to-t from-black/85 via-black/50 to-transparent'
+            : 'h-16 sm:h-20 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-2 sm:px-4 md:px-6 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] sm:pb-0 mb-1 sm:mb-3'
         }
       >
         <div className='flex items-center justify-start min-w-0 pr-1'>
           {!fullScreen && (
             <div className='flex items-center gap-1 sm:gap-2 min-w-0 max-w-full text-white text-xs sm:text-sm md:text-base font-montserrat'>
               <span className='hidden md:inline font-medium text-white/70 shrink-0'>ID :</span>
-              <span className='truncate text-white/90 font-medium max-w-[55px] xs:max-w-[95px] sm:max-w-[150px] md:max-w-none' title={room_id}>
+              <span className='truncate text-white/90 font-medium max-w-[55px] sm:max-w-[120px] md:max-w-[180px] lg:max-w-none' title={room_id}>
                 {room_id}
               </span>
               <button
@@ -152,7 +152,7 @@ export default function MeetControls({
           )}
         </div>
 
-        <div className='flex items-center justify-center min-w-0 px-0.5 sm:px-1'>
+        <div className='flex items-center justify-center min-w-0 px-1 sm:px-2'>
           <GlassSurface
             width='auto'
             height='auto'
@@ -160,10 +160,10 @@ export default function MeetControls({
             backgroundOpacity={0.16}
             blur={14}
             brightness={45}
-            className='shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] max-w-full'
+            className='shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]'
           >
-            <div className='flex items-center gap-1 sm:gap-2 md:gap-2.5 p-0.5 sm:p-1'>
-              <div className='flex items-center gap-1.5 xs:gap-2.5 sm:gap-4 md:gap-5 px-2 xs:px-2.5 sm:px-3.5 md:px-4 py-1 sm:py-2 rounded-full bg-[#444446]/90'>
+            <div className='flex items-center gap-1.5 sm:gap-2 p-0.5 sm:p-1'>
+              <div className='h-9 sm:h-11 md:h-12 flex items-center gap-1 sm:gap-3 md:gap-4 px-2 sm:px-3.5 md:px-4 rounded-full bg-[#444446]/90 shrink-0'>
                 <button
                   type='button'
                   onClick={onMicToggle || (() => {})}
@@ -200,7 +200,7 @@ export default function MeetControls({
                 </button>
               </div>
 
-              <div className='flex items-center gap-1.5 xs:gap-2.5 sm:gap-4 md:gap-5 px-2 xs:px-2.5 sm:px-3.5 md:px-4 py-1 sm:py-2 rounded-full bg-[#444446]/90'>
+              <div className='h-9 sm:h-11 md:h-12 flex items-center gap-1 sm:gap-3 md:gap-4 px-2 sm:px-3.5 md:px-4 rounded-full bg-[#444446]/90 shrink-0'>
                 <button
                   type='button'
                   onClick={onScreenShareToggle || (() => {})}
@@ -230,7 +230,7 @@ export default function MeetControls({
                 onClick={onLeave || (() => navigate('/'))}
                 aria-label='Leave call'
                 title='Leave call'
-                className='flex items-center justify-center w-8 h-8 sm:w-auto px-0 sm:px-5 md:px-6 py-1 sm:py-2 md:py-2.5 rounded-full bg-[#ea2d24] hover:bg-[#d01f17] text-white transition hover:scale-105 active:scale-90 cursor-pointer shrink-0 shadow-md'
+                className='h-9 sm:h-11 md:h-12 flex items-center justify-center px-3.5 sm:px-5 md:px-6 rounded-full bg-[#ea2d24] hover:bg-[#d01f17] text-white transition hover:scale-105 active:scale-90 cursor-pointer shrink-0 shadow-md'
               >
                 <svg
                   xmlns='http://www.w3.org/2000/svg'
@@ -240,7 +240,7 @@ export default function MeetControls({
                   strokeWidth='2.2'
                   strokeLinecap='round'
                   strokeLinejoin='round'
-                  className='w-[17px] h-[17px] sm:w-[22px] sm:h-[22px] rotate-[135deg]'
+                  className='w-[17px] h-[17px] sm:w-[20px] sm:h-[20px] md:w-[22px] md:h-[22px] rotate-[135deg]'
                 >
                   <path stroke='none' d='M0 0h24v24H0z' fill='none' />
                   <path d='M5 4h4l2 5l-2.5 1.5a11 11 0 0 0 5 5l1.5 -2.5l5 2v4a2 2 0 0 1 -2 2a16 16 0 0 1 -15 -15a2 2 0 0 1 2 -2' />
