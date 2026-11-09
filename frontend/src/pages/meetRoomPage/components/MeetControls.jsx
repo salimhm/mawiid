@@ -148,7 +148,7 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
 
             {translating && (
                 <div
-                    className='fixed w-56 sm:w-60 max-h-[70vh] overflow-y-auto rounded-3xl bg-black/60 backdrop-blur-xl border border-white/24 text-white font-inter z-50 shadow-2xl'
+                    className='fixed w-56 sm:w-60 max-h-[70vh] overflow-y-auto rounded-3xl bg-black/60 backdrop-blur-xl border border-white/24 text-white font-inter z-[65] shadow-2xl'
                     style={{
                         left: popupX,
                         top: menuPos.y - 12,
@@ -165,7 +165,7 @@ export default function MeetControls({ fullScreen, setFullScreen, micOn = false,
 
             {reacting && (
                 <div
-                    className='fixed rounded-full bg-black/60 backdrop-blur-xl border border-white/24 z-50 shadow-2xl flex items-center gap-1 px-2 py-1.5'
+                    className='fixed rounded-full bg-black/60 backdrop-blur-xl border border-white/24 z-[65] shadow-2xl flex items-center gap-1 px-2 py-1.5'
                     style={{
                         left: typeof window !== 'undefined' ? Math.min(Math.max(reactionPos.x, 140), window.innerWidth - 140) : reactionPos.x,
                         top: reactionPos.y - 12,

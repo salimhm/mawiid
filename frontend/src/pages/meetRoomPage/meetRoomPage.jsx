@@ -74,6 +74,7 @@ export default function MeetRoomPage() {
                 participants={room.participants}
                 fullScreen={fullScreen}
             />
+            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} fullScreen={fullScreen} />
             <MeetControls
                 fullScreen={fullScreen}
                 setFullScreen={setFullScreen}
@@ -93,7 +94,6 @@ export default function MeetRoomPage() {
                 roomCode={room.roomCode}
             />
 
-            {room.localUser.translationEnabled && <MeetCaptions captions={room.captions} />}
 
             {overlayMessage && (
                 <div className='fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-black/85 backdrop-blur-sm px-6 text-center'>
