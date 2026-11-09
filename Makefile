@@ -17,6 +17,7 @@ REDIS_CONTAINER   := mawiid-redis
 REDIS_IMAGE       := redis:7
 LIVEKIT_CONTAINER := mawiid-livekit
 LIVEKIT_IMAGE     := livekit/livekit-server
+LIVEKIT_CONFIG    ?= infra/livekit.dev.yaml
 
 .PHONY: help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
         tokens typecheck build test-unit test-ai check smoke test clean
@@ -50,7 +51,7 @@ redis:
 livekit:
 	@docker rm -f $(LIVEKIT_CONTAINER) >/dev/null 2>&1 || true
 	@docker run -d --name $(LIVEKIT_CONTAINER) --network host \
-		-v "$(CURDIR)/infra/livekit.dev.yaml:/etc/livekit.yaml:ro" 	 \
+		-v "$(CURDIR)/$(LIVEKIT_CONFIG):/etc/livekit.yaml:ro" 	 \
 		$(LIVEKIT_IMAGE) --config /etc/livekit.yaml --dev --bind 0.0.0.0 >/dev/null
 	@echo "LiveKit  ws://localhost:7880 (webhooks -> localhost:3000/webhook/livekit)"
 
@@ -120,7 +121,7 @@ ai: ## Run the AI translation worker (live captions; make ai-install first)
 		LIVEKIT_URL="$$livekit_url" \
 		LIVEKIT_API_KEY="$$livekit_key" \
 		LIVEKIT_API_SECRET="$$livekit_secret" \
-		.venv/bin/python -m mawiid_ai.agent dev
+		bash scripts/run-with-cuda.sh .venv/bin/python -m mawiid_ai.agent dev
 
 frontend: ## Build and run the frontend in production on :3100, or FRONTEND_PORT
 	cd $(FRONTEND) && PORT=$(FRONTEND_PORT) BACKEND_URL=$(BACKEND_URL) bun run build && PORT=$(FRONTEND_PORT) BACKEND_URL=$(BACKEND_URL) bun run start
@@ -165,7 +166,7 @@ test-unit: ## Run backend unit tests
 		else echo "No backend unit tests yet (*.test.ts under $(BACKEND)/src)"; fi
 
 test-ai: ## Run the AI worker's tests (make ai-install first; model tests skip without models)
-	cd $(AI) && .venv/bin/python -m pytest -q
+	cd $(AI) && bash scripts/run-with-cuda.sh .venv/bin/python -m pytest -q
 
 check: typecheck test-unit build ## Static checks, no services needed
 

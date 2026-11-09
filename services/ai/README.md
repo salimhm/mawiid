@@ -89,6 +89,8 @@ The model is converted once per machine into `data/models/madlad400-3b-mt-ct2` (
 
 On a GPU, CTranslate2 (Whisper and MADLAD) needs CUDA 12 cuBLAS and cuDNN 9. Without a CUDA toolkit installed, use the pip wheels: `pip install nvidia-cublas-cu12 "nvidia-cudnn-cu12==9.*"`. Then put their library folders on the search path: `site-packages/nvidia/{cublas,cudnn}/lib` on `LD_LIBRARY_PATH` (Linux), or `site-packages\nvidia\{cublas,cudnn,cuda_nvrtc}\bin` on `PATH` (Windows).
 
+On Linux and WSL, `make ai` and `make test-ai` automatically add the NVIDIA library directories from this service's `.venv` to `LD_LIBRARY_PATH`, preserving any existing entries. Restart the worker after installing GPU libraries. For direct script invocations, use `bash scripts/run-with-cuda.sh .venv/bin/python <script>` from `services/ai`. GPU detection and model loading can succeed before the first inference fails with `Library libcublas.so.12 is not found or cannot be loaded`; the library path must be configured before starting Python.
+
 ```sh
 .venv/bin/python scripts/translation_benchmark.py      # chrF quality matrix + latency
 .venv/bin/python scripts/pipeline_benchmark.py         # last word -> every subtitle, real-time

@@ -49,6 +49,7 @@ for (const [index, user] of seed_user.entries()) {
       user_phone: seed_phone(index),
       user_username: user.key,
       user_email: `${user.key}@mawiid.test`,
+      user_email_verified_at: new Date(),
       user_password_hash,
       user_first_name: user.first_name,
       user_last_name: 'Test',

@@ -30,7 +30,7 @@ BACKEND_URL=http://localhost:3000 bun dev   # BACKEND_URL defaults to http://loc
 
 Sign in at `/login` (`/welcome` and `/meet/*` redirect there when signed out) with a username or email and a password, or
 create an account there. The seeded users sign in as `host`, `moderator`, `member`, `viewer`, `guest` or `outsider` (or
-`<name>@mawiid.test`) with the password `mawiid-password`. The "Phone code" tab keeps the phone and 6-digit code flow: with
+`<name>@mawiid.test`) with the password `mawiid-password`. Seeded accounts are already email-verified and do not need verification emails. The "Phone code" tab keeps the phone and 6-digit code flow: with
 the backend in `ENV=dev` the code is filled in for you, and the seeded numbers are `+21355000000` to `+21355000005`.
 
 The access token is kept in memory only. The refresh token is an `HttpOnly` cookie set by the backend, so it is never
