@@ -13,6 +13,7 @@ const LANGUAGE_CODES = {
     // 'Chinese (Simplified)': 'zh-CN',
     // 'Chinese (Traditional)': 'zh-TW',
 };
+// The worker detects the language each person speaks, so only the caption language is picked.
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮'];
 
 export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, language = '', onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, translationEnabled = false, onTranslationToggle, onLanguageChange, onReaction, onLeave, roomCode = '' })

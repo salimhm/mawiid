@@ -318,7 +318,7 @@ Returns `404 participant-not-found` if the target isn't connected and no `block_
   "participant_hand_raised": true, // optional
   "participant_translation_enabled": true, // optional, this participant's own live captions
   "participant_language": "fr", // optional, the language captions are shown in, e.g. "ar", "en-US"
-  "participant_spoken_language": "ar-MA" // optional, the language speech is transcribed in; by default it is detected from the voice
+  "participant_spoken_language": "ar" // optional, the language speech is always transcribed in, or "auto" (the default when unset): the language of each phrase is detected, starting from participant_language
 }
 ```
 
@@ -407,10 +407,10 @@ The first `participant_translation_enabled: true` brings the AI agent into the r
 
 | Topic                   | Sent to                                                       | Text                                    |
 | ----------------------- | ------------------------------------------------------------- | --------------------------------------- |
-| `lk.transcription`      | participants with captions on | what the speaker said, in their language |
+| `lk.transcription`      | participants with captions on who read the spoken language | what the speaker said, in their language |
 | `mawiid.translation.v1` | participants with captions on whose `mawiid.language` is that language    | the translation                         |
 
-Both carry the attributes `lk.segment_id` (one phrase), `lk.transcribed_track_id` (the speaker's microphone track), `lk.transcription_final` (`"true"` or `"false"`) and `mawiid.language` (the caption's language, for example `fr-FR`). A phrase's partial captions and its final one share a segment id; replace the partial with the final, and the original with its translation. Translations also arrive as partials while someone speaks, each replacing the last. Listeners whose language is the spoken one only get the original. Only accept captions whose sender `isAgent`. The language a participant reads is their `mawiid.language` attribute, changed with `PATCH /participant` (`participant_language`: `en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`). The language they speak is detected from their voice for each phrase, among English, French and Arabic, unless `participant_spoken_language` is set. The frontend implementation is `frontend/src/services/roomCaption.js`.
+Both carry the attributes `lk.segment_id` (one phrase), `lk.transcribed_track_id` (the speaker's microphone track), `lk.transcription_final` (`"true"` or `"false"`) and `mawiid.language` (the caption's language, for example `fr-FR`). A phrase's partial captions and its final one share a segment id; replace the partial with the final. Listeners whose language is the spoken one only get the original; the others only get translations, live (`"false"`) while the speaker talks, then final. A translated segment can span several phrases when one ends mid-sentence: its text grows under the same segment id. Only accept captions whose sender `isAgent`. The language a participant speaks and reads is their `mawiid.language` attribute, changed with `PATCH /participant` (`participant_language`: `en`, `fr`, `ar`). The frontend implementation is `frontend/src/services/roomCaption.js`.
 
 ---
 

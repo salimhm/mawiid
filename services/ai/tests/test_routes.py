@@ -1,31 +1,25 @@
-from mawiid_ai.stt.config import AUTO_LANGUAGE, DEFAULT_ROUTES, DETECT_LANGUAGES, LANGUAGES, FailoverSettings
+from mawiid_ai.stt.config import DEFAULT_ROUTES, LANGUAGES, FailoverSettings, _enabled_languages
 from mawiid_ai.stt.router import SttRouter
 
+from conftest import needs_languages
 from test_router import FakeClock, FakeEngine
 
 
 def test_every_route_is_a_known_language():
-    assert set(DEFAULT_ROUTES) <= {*LANGUAGES, AUTO_LANGUAGE}
+    assert set(DEFAULT_ROUTES) <= set(LANGUAGES)
 
 
-def test_detection_only_chooses_languages_it_can_tell_apart():
-    codes = [LANGUAGES[language].model_code for language in DETECT_LANGUAGES]
-    assert len(set(codes)) == len(codes)
+def test_only_arabic_english_and_french_are_on_by_default(monkeypatch):
+    monkeypatch.delenv("MAWIID_LANGUAGES", raising=False)
+    assert list(_enabled_languages()) == ["en-US", "fr-FR", "ar-SA"]
 
 
-def test_only_stock_whisper_detects_the_language():
-    clock = FakeClock()
-    darija = FakeEngine("whisper-darija", clock, languages=["ar-MA"])
-    whisper = FakeEngine("whisper", clock, languages=[*LANGUAGES, AUTO_LANGUAGE])
-    router = SttRouter({"whisper-darija": darija, "whisper": whisper}, DEFAULT_ROUTES, FailoverSettings(), clock=clock)
-
-    assert router.chain_for(AUTO_LANGUAGE) == ["whisper"]
-
-
+@needs_languages("ar-MA")
 def test_darija_prefers_the_darija_model_then_stock_whisper():
     assert DEFAULT_ROUTES["ar-MA"] == ["whisper-darija", "whisper"]
 
 
+@needs_languages("ar-MA")
 def test_darija_model_only_serves_darija():
     clock = FakeClock()
     darija = FakeEngine("whisper-darija", clock, languages=["ar-MA"])
@@ -36,6 +30,7 @@ def test_darija_model_only_serves_darija():
     assert router.chain_for("ar-SA") == ["whisper"]
 
 
+@needs_languages("ar-MA")
 def test_darija_falls_back_to_stock_whisper_when_model_is_missing():
     clock = FakeClock()
     whisper = FakeEngine("whisper", clock, languages=list(LANGUAGES))

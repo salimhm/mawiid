@@ -42,9 +42,6 @@ class SttStream(ABC):
     def flush(self) -> list[Transcript]:
         """Finalize whatever speech is still buffered, e.g. when the speaker leaves."""
 
-    def hint_language(self, language: str) -> None:  # noqa: B027 - optional hook
-        """A likely language to start from, for streams that detect it from the voice."""
-
     def close(self) -> None:  # noqa: B027 - optional hook
         """Release resources held by the stream."""
 
@@ -59,8 +56,10 @@ class SttEngine(ABC):
         """Whether this engine can transcribe the given Mawiid language code."""
 
     @abstractmethod
-    def open_stream(self, language: str, time_offset: float = 0.0) -> SttStream:
-        """Start a stream. ``time_offset`` shifts result timestamps (used when taking over from another engine)."""
+    def open_stream(self, language: str, time_offset: float = 0.0, detect: bool = True) -> SttStream:
+        """Start a stream. ``time_offset`` shifts result timestamps (used when taking over from another engine).
+        ``detect``: ``language`` is only the first guess and engines that can detect each phrase's language
+        do; otherwise every phrase is transcribed in ``language``."""
 
 
 def to_float32(audio: np.ndarray | bytes) -> np.ndarray:

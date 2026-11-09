@@ -23,7 +23,32 @@ const MESSAGE_PAGE = 50
 const MESSAGE_PAGE_MAX = 100
 const CAPTION_VISIBLE_MS = 6000
 const CAPTION_MAX = 3
-const TRANSLATION_WAIT_MS = 5000
+const ROOM_EVENT_MAX = 200
+
+// Why a participant left, as a line in the chat. LiveKit sends the reason with
+// the disconnect; anything not listed reads as a lost connection.
+const LEFT_TEXT = {
+    [DisconnectReason.CLIENT_INITIATED]: 'left',
+    [DisconnectReason.PARTICIPANT_REMOVED]: 'was removed from the meeting',
+    [DisconnectReason.DUPLICATE_IDENTITY]: 'was disconnected: the same account joined from another device',
+    [DisconnectReason.ROOM_DELETED]: 'left: the meeting ended',
+    [DisconnectReason.ROOM_CLOSED]: 'left: the meeting ended',
+    [DisconnectReason.SERVER_SHUTDOWN]: 'was disconnected: the server restarted',
+}
+const leftText = (reason) => LEFT_TEXT[reason] || 'lost the connection'
+
+// What the local person sees when their own connection ends.
+function localStatus(reason) {
+    if (reason === DisconnectReason.PARTICIPANT_REMOVED)
+        return 'removed'
+    if (reason === DisconnectReason.DUPLICATE_IDENTITY)
+        return 'replaced'
+    if (reason === DisconnectReason.ROOM_DELETED || reason === DisconnectReason.ROOM_CLOSED)
+        return 'ended'
+    if (reason === DisconnectReason.CLIENT_INITIATED)
+        return 'disconnected'
+    return 'lost'
+}
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -85,7 +110,8 @@ function trackOwner(room, trackId) {
         .find((participant) => participant.trackPublications.has(trackId)) || null
 }
 
-// A translation replaces the original of the same segment, never the other way round.
+// A translation replaces the original of the same segment, never the other way round:
+// the original final arrives first, its translation a moment later.
 function mergeCaption(current, caption) {
     const existing = current.find((entry) => entry.id === caption.id)
     if (!existing)
@@ -116,15 +142,21 @@ export function useRoom(roomUid, {
     const [reactions, setReactions] = useState([])
     const [settings, setSettings] = useState({ locked: false, lobby: false })
     const [captions, setCaptions] = useState([])
-    // Timers of final originals held back while their translation is on its way, by segment id.
-    const heldOriginals = useRef(new Map())
     const [messages, setMessages] = useState([])
+    // Joins, departures, removals and connection changes seen since joining,
+    // shown in the chat between the messages. Kept only in this tab.
+    const [roomEvents, setRoomEvents] = useState([])
     const [hasOlderMessages, setHasOlderMessages] = useState(false)
     // Newest message_id in the history loaded on join: those count as read.
     const [joinedAtMessageId, setJoinedAtMessageId] = useState(0)
     const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
     const messagesRef = useRef(messages)
     messagesRef.current = messages
+
+    const addRoomEvent = useCallback((text) => {
+        const event = { key: `event:${randomId()}`, text, createdAt: new Date().toISOString() }
+        setRoomEvents((prev) => [...prev, event].slice(-ROOM_EVENT_MAX))
+    }, [])
 
     const addMessages = useCallback((incoming) => {
         if (incoming.length)
@@ -200,39 +232,21 @@ export function useRoom(roomUid, {
         setParticipants([...room.remoteParticipants.values()].filter((p) => !p.isAgent).map((p) => toParticipant(p, false)))
     }, [toParticipant])
 
-    const dropHeldOriginals = useCallback(() => {
-        heldOriginals.current.forEach(clearTimeout)
-        heldOriginals.current.clear()
-    }, [])
-
-    // Readers of another language go straight to the translation. Their original is only
-    // shown when none comes: no model for the language, a failure, or text that needs none.
     const showCaption = useCallback((caption) => {
         const room = roomRef.current
         if (!room)
             return
         const speaker = trackOwner(room, caption.trackId)
         const myLanguage = room.localParticipant.attributes?.[ATTRIBUTE.language]
-        const held = heldOriginals.current
-        const entry = {
+        setCaptions((prev) => mergeCaption(prev, {
             id: caption.segmentId,
             speaker: speaker === room.localParticipant ? 'You' : speaker?.name || speaker?.identity || 'Speaker',
             text: caption.text,
             final: caption.final,
             translated: caption.translated,
             foreign: !caption.translated && Boolean(myLanguage) && baseLanguage(caption.language) !== baseLanguage(myLanguage),
-        }
-        if (entry.foreign) {
-            if (entry.final)
-                held.set(entry.id, setTimeout(() => {
-                    held.delete(entry.id)
-                    setCaptions((prev) => mergeCaption(prev, { ...entry, shownAt: Date.now() }))
-                }, TRANSLATION_WAIT_MS))
-            return
-        }
-        clearTimeout(held.get(entry.id))
-        held.delete(entry.id)
-        setCaptions((prev) => mergeCaption(prev, { ...entry, shownAt: Date.now() }))
+            shownAt: Date.now(),
+        }))
     }, [])
 
     useEffect(() => {
@@ -326,25 +340,48 @@ export function useRoom(roomUid, {
 
         const onDisconnected = (reason) => {
             if (!cancelled)
-                setStatus(reason === DisconnectReason.PARTICIPANT_REMOVED ? 'removed' : 'disconnected')
+                setStatus(localStatus(reason))
+        }
+
+        // The AI translation worker joins as a participant too; the chat leaves it out.
+        const nameOf = (participant) => participant.name || participant.identity
+        const onParticipantConnected = (participant) => {
+            if (!participant.isAgent)
+                addRoomEvent(`${nameOf(participant)} joined`)
+            refresh()
+        }
+        const onParticipantDisconnected = (participant, reason) => {
+            if (!participant.isAgent)
+                addRoomEvent(`${nameOf(participant)} ${leftText(reason)}`)
+            refresh()
+        }
+        const onAttributesChanged = (changed, participant) => {
+            const role = changed[ATTRIBUTE.role]
+            if (role && !participant.isAgent)
+                addRoomEvent(participant.isLocal ? `You are now ${role}` : `${nameOf(participant)} is now ${role}`)
+            refresh()
         }
 
         room
-            .on(RoomEvent.ParticipantConnected, refresh)
-            .on(RoomEvent.ParticipantDisconnected, refresh)
+            .on(RoomEvent.ParticipantConnected, onParticipantConnected)
+            .on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected)
             .on(RoomEvent.TrackSubscribed, onTrackSubscribed)
             .on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed)
             .on(RoomEvent.TrackMuted, refresh)
             .on(RoomEvent.TrackUnmuted, refresh)
             .on(RoomEvent.LocalTrackPublished, refresh)
             .on(RoomEvent.LocalTrackUnpublished, refresh)
-            .on(RoomEvent.ParticipantAttributesChanged, refresh)
+            .on(RoomEvent.ParticipantAttributesChanged, onAttributesChanged)
             .on(RoomEvent.ParticipantNameChanged, refresh)
             .on(RoomEvent.ParticipantPermissionsChanged, refresh)
             .on(RoomEvent.RoomMetadataChanged, onMetadata)
-            .on(RoomEvent.Reconnecting, () => setStatus('reconnecting'))
+            .on(RoomEvent.Reconnecting, () => {
+                setStatus('reconnecting')
+                addRoomEvent('Connection lost, reconnecting…')
+            })
             .on(RoomEvent.Reconnected, () => {
                 setStatus('connected')
+                addRoomEvent('Reconnected')
                 catchUpMessages().catch(() => {})
             })
             .on(RoomEvent.Disconnected, onDisconnected)
@@ -379,6 +416,7 @@ export function useRoom(roomUid, {
                 return
 
             setStatus('connected')
+            addRoomEvent('You joined the meeting')
             api.listMessages(roomUid, { take: MESSAGE_PAGE })
                 .then((page) => {
                     if (cancelled)
@@ -417,6 +455,7 @@ export function useRoom(roomUid, {
         }
 
         setMessages([])
+        setRoomEvents([])
         setCaptions([])
         setHasOlderMessages(false)
         setJoinedAtMessageId(0)
@@ -432,7 +471,6 @@ export function useRoom(roomUid, {
             socket.close()
             signal.close()
             captionFeed.close()
-            dropHeldOriginals()
             signalRef.current = null
             room.removeAllListeners()
             room.disconnect()
@@ -442,7 +480,7 @@ export function useRoom(roomUid, {
                 roomRef.current = null
         }
         // Device choices only apply when joining.
-    }, [roomUid, refresh, showReaction, showCaption, dropHeldOriginals, addMessages, catchUpMessages])
+    }, [roomUid, refresh, showReaction, showCaption, addMessages, addRoomEvent, catchUpMessages])
 
     const runLocal = useCallback(async (action, failure) => {
         const room = roomRef.current
@@ -484,6 +522,8 @@ export function useRoom(roomUid, {
         [updateSelf, localUser.handRaised],
     )
 
+    // The worker detects the language of each phrase someone speaks, so changing
+    // what you read doesn't change how you are heard.
     const setLanguage = useCallback(
         (language) => updateSelf({ participant_language: language }),
         [updateSelf],
@@ -492,12 +532,10 @@ export function useRoom(roomUid, {
     const toggleTranslation = useCallback(() => {
         const enabled = !localUser.translationEnabled
         localStorage.setItem(CAPTIONS_KEY, String(enabled))
-        if (!enabled) {
-            dropHeldOriginals()
+        if (!enabled)
             setCaptions([])
-        }
         return updateSelf({ participant_translation_enabled: enabled })
-    }, [updateSelf, dropHeldOriginals, localUser.translationEnabled])
+    }, [updateSelf, localUser.translationEnabled])
 
     const answerKnock = useCallback(async (userId, admit) => {
         setKnocks((prev) => prev.filter((knock) => knock.userId !== userId))
@@ -612,6 +650,7 @@ export function useRoom(roomUid, {
         typing,
         reactions,
         messages,
+        roomEvents,
         hasOlderMessages,
         joinedAtMessageId,
         loadingOlderMessages,

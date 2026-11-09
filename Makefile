@@ -21,7 +21,8 @@ LIVEKIT_IMAGE     := livekit/livekit-server
 
 # make dev AI_MODELS=0 skips the model conversion on machines without the disk or RAM for it.
 AI_MODELS ?= 1
-AI_MODEL_FILES := $(AI)/data/models/madlad400-3b-mt-ct2/model.bin $(AI)/data/models/whisper-darija-ct2/model.bin
+# Darija is switched off (services/ai/README.md); convert its model by hand when turning it back on.
+AI_MODEL_FILES := $(AI)/data/models/madlad400-3b-mt-ct2/model.bin
 
 .PHONY: setup seed-if-missing ai-models certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
         tokens typecheck build test-unit test-ai check smoke test clean
@@ -53,13 +54,12 @@ ai-install: ## Create the AI worker's Python environment (Python 3.11+: make ai-
 $(AI)/.venv/.installed: $(AI)/pyproject.toml
 	@$(MAKE) --no-print-directory ai-install
 
-ai-models: ## Convert the translation and Darija models if missing (~12 GB downloads, ~9 GB of RAM)
+ai-models: ## Convert the translation model if missing (large download, several GB of RAM)
 	@if ls $(AI_MODEL_FILES) >/dev/null 2>&1; then echo "AI models are ready"; exit 0; fi; \
 		echo "Converting the AI models. This runs once and takes a while; captions start when it finishes."; \
 		cd $(AI) && .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu && \
 		.venv/bin/pip install -e ".[convert]" && \
-		.venv/bin/python scripts/convert_translation_model.py && \
-		.venv/bin/python scripts/convert_darija_model.py --model turbo
+		.venv/bin/python scripts/convert_translation_model.py
 
 # ---------------------------------------------------------------- infrastructure
 

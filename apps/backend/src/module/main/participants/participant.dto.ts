@@ -16,7 +16,7 @@ export const dto_participant = {
       participant_hand_raised: t.Optional(t.Boolean()),
       participant_translation_enabled: t.Optional(t.Boolean()),
       participant_language: t.Optional(t.String({ pattern: '^[a-z]{2,3}(-[A-Z]{2})?$' })),
-      participant_spoken_language: t.Optional(t.String({ pattern: '^[a-z]{2,3}(-[A-Z]{2})?$' })),
+      participant_spoken_language: t.Optional(t.String({ pattern: '^(auto|[a-z]{2,3}(-[A-Z]{2})?)$' })),
     }),
     response: t.Object({
       data: dto_schema_participant,

@@ -1,5 +1,5 @@
-// Subtitles from the AI translation worker, newest last. Captions left in another
-// language (no translation came) or still changing are dimmed.
+// Subtitles from the AI translation worker, newest last. Captions still in another
+// language (the translation is on its way) or still changing are dimmed.
 export default function MeetCaptions({ captions = [] })
 {
     if (!captions.length)

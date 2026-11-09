@@ -68,7 +68,6 @@ class VadSegmenter:
         self._pad = settings.speech_pad_ms * ms
         self._min_speech = settings.min_speech_ms * ms
         self._max_segment = int(settings.max_segment_s * SAMPLE_RATE)
-        self._overlap_windows = settings.overlap_ms * ms // WINDOW
 
         self._leftover = np.zeros(0, dtype=np.float32)
         self._samples_seen = 0  # samples that went through the model
@@ -116,7 +115,6 @@ class VadSegmenter:
         """End the current phrase, e.g. when the speaker leaves the call."""
         segment = self._close_segment(forced=False) if self._in_speech else None
         self._end_phrase()
-        self._preroll.clear()  # whatever comes next doesn't follow on from this audio
         self._leftover = np.zeros(0, dtype=np.float32)
         self._model.reset()
         return [segment] if segment is not None else []
@@ -147,10 +145,9 @@ class VadSegmenter:
             return segment
         if (len(self._windows) + 1) * WINDOW > self._max_segment:
             segment = self._close_segment(forced=True)
-            # Speech continues: the next segment starts with the end of this one, so a word cut
-            # in two is whole in one of them. That audio is not counted as new speech.
-            self._windows = self._windows[-self._overlap_windows :] if self._overlap_windows else []
-            self._segment_start = self._samples_seen - WINDOW * len(self._windows)
+            # Speech continues: the next window starts a new segment right away.
+            self._windows = []
+            self._segment_start = self._samples_seen
             self._voiced = 0
             self._silence = 0
             return segment
@@ -166,11 +163,9 @@ class VadSegmenter:
         return SpeechSegment(audio=audio, start_sample=self._segment_start, forced=forced)
 
     def _end_phrase(self) -> None:
-        # Speech can resume at once: the audio just before it is the end of this phrase.
-        self._preroll.clear()
-        self._preroll.extend(self._windows[-(self._preroll.maxlen or 1) :])
         self._in_speech = False
         self._windows = []
         self._voiced = 0
         self._silence = 0
         self._segment_start = self._samples_seen
+        self._preroll.clear()

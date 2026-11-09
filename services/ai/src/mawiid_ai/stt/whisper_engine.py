@@ -7,21 +7,19 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 import numpy as np
 
 from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind, SttEngine, SttError, SttStream, Transcript, to_float32
-from mawiid_ai.stt.config import AUTO_LANGUAGE, DETECT_LANGUAGES, LANGUAGES, VadSettings, WhisperSettings
-from mawiid_ai.stt.postprocess import clean_text, remove_overlap
+from mawiid_ai.stt.config import ALL_LANGUAGES, LANGUAGES, VadSettings, WhisperSettings
+from mawiid_ai.stt.postprocess import clean_text
 from mawiid_ai.stt.vad import SpeechProbModel, VadSegmenter
 
 log = logging.getLogger(__name__)
 
 # Nudges Whisper toward punctuated Mandarin; without it Chinese output often has no punctuation.
 _PROMPTS = {"zh": "以下是普通话的句子。"}
-# Tells Whisper that speakers mix these languages, so it keeps a switch instead of translating it.
-_MIXED_PROMPT = "Bonjour everyone, merci d'être venus, أهلا وسهلا بكم في هذا الاجتماع, let's get started."
 
 
 # Whisper pads every phrase to 30 s and encodes all of it, so a 2 s phrase costs as much as a
@@ -30,11 +28,6 @@ _MIXED_PROMPT = "Bonjour everyone, merci d'être venus, أهلا وسهلا بك
 _MIN_FRAMES = 1000
 _TRAILING_FRAMES = 300
 _MAX_FRAMES = 3000
-
-_REMEMBERED_WORDS = 6
-# Text this repetitive is a hallucination ("1.1.1.1..."), Whisper's own limit. Finals are retried past
-# it at higher temperatures; partials skip those retries, so theirs are dropped.
-_MAX_COMPRESSION_RATIO = 2.4
 
 
 def pad_to_phrase(features: np.ndarray) -> np.ndarray:
@@ -45,6 +38,35 @@ def pad_to_phrase(features: np.ndarray) -> np.ndarray:
     padding = [(0, 0)] * features.ndim
     padding[-1] = (0, frames - features.shape[-1])
     return np.pad(features, padding)
+
+
+def previous_text(context: str, text: str, limit: int) -> str:
+    """The last ``limit`` characters of what was said, cut at a word boundary."""
+    if limit <= 0:
+        return ""
+    joined = f"{context} {text}".strip()
+    if len(joined) <= limit:
+        return joined
+    tail = joined[-limit:]
+    space = tail.find(" ")
+    return tail[space + 1 :] if 0 <= space < len(tail) - 1 else tail
+
+
+def pick_language(probs: Mapping[str, float], current: str, languages: Iterable[str], switch_prob: float) -> str:
+    """The language of a phrase among ``languages`` (Mawiid codes), from Whisper's probabilities
+    (model codes, e.g. "fr"): ``current``, unless Whisper is at least ``switch_prob`` sure, counting
+    only these languages, that it is another one: a phrase Whisper is unsure about keeps the language."""
+    by_code: dict[str, str] = {}
+    for language in languages:
+        by_code.setdefault(ALL_LANGUAGES[language].model_code, language)
+    by_code[ALL_LANGUAGES[current].model_code] = current  # ar-SA and ar-MA share "ar": keep the speaker's
+    total = sum(probs.get(code, 0.0) for code in by_code)
+    if total <= 0:
+        return current
+    best = max(by_code, key=lambda code: probs.get(code, 0.0))
+    if probs.get(best, 0.0) / total < switch_prob:
+        return current
+    return by_code[best]
 
 
 def _default_cpu_threads() -> int:
@@ -71,11 +93,11 @@ class WhisperEngine(SttEngine):
         name: str = "whisper",
         languages: Iterable[str] | None = None,
     ) -> None:
-        """``languages`` limits a fine-tuned model to what it was trained on (default: all, and detection)."""
+        """``languages`` limits a fine-tuned model to what it was trained on (default: all)."""
         from faster_whisper import WhisperModel
 
         self.name = name
-        self._languages = set(languages) if languages is not None else {*LANGUAGES, AUTO_LANGUAGE}
+        self._languages = set(languages) if languages is not None else set(LANGUAGES)
         self.settings = settings
         self.vad_settings = vad_settings
         self.device, self.compute_type = _resolve_device(settings)
@@ -102,42 +124,40 @@ class WhisperEngine(SttEngine):
         return language in self._languages
 
     def open_stream(
-        self, language: str, time_offset: float = 0.0, vad_model: SpeechProbModel | None = None
+        self, language: str, time_offset: float = 0.0, detect: bool = True, vad_model: SpeechProbModel | None = None
     ) -> SttStream:
         if not self.supports(language):
             raise SttError(f"{self.name} does not support {language}")
-        return WhisperStream(self, language, time_offset, vad_model)
+        return WhisperStream(self, language, time_offset, vad_model, detect=detect)
 
-    def transcribe(self, audio: np.ndarray, language: str, partial: bool = False) -> str:
-        """Transcribe one phrase of 16 kHz float32 audio."""
+    def transcribe(self, audio: np.ndarray, language: str, partial: bool = False, context: str = "") -> str:
+        """Transcribe one phrase of 16 kHz float32 audio. ``context``: what the speaker said just before."""
         code = LANGUAGES[language].model_code
         try:
             if self._lock is not None:
                 with self._lock:
-                    return self._transcribe(audio, language, code, partial)
-            return self._transcribe(audio, language, code, partial)
+                    return self._transcribe(audio, language, code, partial, context)
+            return self._transcribe(audio, language, code, partial, context)
         except Exception as exc:
             raise SttError(f"{self.name} failed: {exc}") from exc
 
-    def detect_language(self, audio: np.ndarray) -> str:
-        """The likeliest of DETECT_LANGUAGES for one chunk; Whisper's other languages are ignored."""
+    def language_probs(self, audio: np.ndarray) -> dict[str, float]:
+        """Whisper's probability, per model language code ("fr", "ar", ...), that the phrase is in it."""
         try:
             if self._lock is not None:
                 with self._lock:
-                    _, _, probabilities = self._model.detect_language(audio=audio)
+                    _, _, probs = self._model.detect_language(audio)
             else:
-                _, _, probabilities = self._model.detect_language(audio=audio)
+                _, _, probs = self._model.detect_language(audio)
         except Exception as exc:
             raise SttError(f"{self.name} language detection failed: {exc}") from exc
-        by_code = dict(probabilities)
-        return max(DETECT_LANGUAGES, key=lambda language: by_code.get(LANGUAGES[language].model_code, 0.0))
+        return dict(probs)
 
-    def _transcribe(self, audio: np.ndarray, language: str, code: str, partial: bool) -> str:
+    def _transcribe(self, audio: np.ndarray, language: str, code: str, partial: bool, context: str) -> str:
         s = self.settings
         segments, _ = self._model.transcribe(
             audio,
             language=code,
-            task="transcribe",  # never let Whisper translate what it hears
             beam_size=s.partial_beam_size if partial else s.beam_size,
             # Retrying at higher temperatures fixes bad finals but is too slow for partials.
             temperature=0.0 if partial else [0.0, 0.2, 0.4, 0.6],
@@ -146,11 +166,8 @@ class WhisperEngine(SttEngine):
             without_timestamps=True,
             no_speech_threshold=s.max_no_speech_prob,
             log_prob_threshold=s.min_avg_logprob,
-            initial_prompt=_PROMPTS.get(code, _MIXED_PROMPT),
+            initial_prompt=" ".join(p for p in (_PROMPTS.get(code), context) if p) or None,
         )
-        segments = list(segments)
-        if partial and any(segment.compression_ratio > _MAX_COMPRESSION_RATIO for segment in segments):
-            return ""
         return clean_text("".join(segment.text for segment in segments), language)
 
 
@@ -161,24 +178,24 @@ class WhisperStream(SttStream):
         language: str,
         time_offset: float,
         vad_model: SpeechProbModel | None = None,
+        detect: bool = True,
     ) -> None:
         self._engine = engine
-        self._detects = language == AUTO_LANGUAGE
-        self._language = None if self._detects else language  # detecting: the last language heard
+        self._language = language
         self._offset = time_offset
         self._vad = VadSegmenter(engine.vad_settings, vad_model)
         self._partial_every = int(engine.settings.partial_interval_s * SAMPLE_RATE)
         self._last_partial_at = 0
         self._last_partial_text = ""
         self._partial_segment = -1
-        self._detected_segment = -1
-        self._previous_words: list[str] = []  # the end of the last final, to spot repeated overlap
-        self._previous_end = 0
         self._next_partial_at = 0.0
-
-    def hint_language(self, language: str) -> None:
-        if self._detects and self._language is None:
-            self._language = language
+        self._context = ""  # the end of the previous final, prompted to Whisper
+        settings = engine.settings
+        candidates = [code for code in LANGUAGES if engine.supports(code)] if detect and settings.detect_language else []
+        # Detection only makes sense between languages the model tells apart.
+        self._candidates = candidates if len({LANGUAGES[c].model_code for c in candidates}) > 1 else []
+        self._detect_min = int(settings.detect_min_s * SAMPLE_RATE)
+        self._partial_language: str | None = None  # detected for the phrase being spoken
 
     def push_audio(self, audio: np.ndarray | bytes) -> list[Transcript]:
         results = [r for seg in self._vad.feed(to_float32(audio)) if (r := self._final(seg.audio, seg.start_sample))]
@@ -190,17 +207,31 @@ class WhisperStream(SttStream):
     def flush(self) -> list[Transcript]:
         return [r for seg in self._vad.flush() if (r := self._final(seg.audio, seg.start_sample))]
 
+    @property
+    def language(self) -> str:
+        """The language the speaker is speaking now: the one picked, until another is detected."""
+        return self._language
+
+    def _detect(self, audio: np.ndarray) -> str:
+        if not self._candidates or len(audio) < self._detect_min:
+            return self._language
+        probs = self._engine.language_probs(audio)
+        return pick_language(probs, self._language, self._candidates, self._engine.settings.detect_switch_prob)
+
     def _final(self, audio: np.ndarray, start_sample: int) -> Transcript | None:
         self._last_partial_text = ""
-        self._detect(audio, self._engine.settings.detect_min_audio_s)
-        text = self._engine.transcribe(audio, self._language)
-        if text:
-            text = self._without_overlap(text, start_sample, final=True)
+        self._partial_language = None
+        # The whole phrase tells the language better than the start the partials heard.
+        language = self._detect(audio)
+        if language != self._language:
+            log.info("stt: speaker switched %s -> %s", self._language, language)
+            self._language = language
+            self._context = ""  # text in another language would push Whisper back to it
+        text = self._engine.transcribe(audio, language, context=self._context)
         if not text:
             return None
-        self._previous_words = [*self._previous_words, *text.split()][-_REMEMBERED_WORDS:]
-        self._previous_end = start_sample + len(audio)
-        return self._result(ResultKind.FINAL, text, start_sample, start_sample + len(audio))
+        self._context = previous_text(self._context, text, self._engine.settings.context_chars)
+        return self._result(ResultKind.FINAL, text, language, start_sample, start_sample + len(audio))
 
     def _maybe_partial(self) -> Transcript | None:
         if not self._engine.partials or not self._vad.in_speech:
@@ -210,48 +241,30 @@ class WhisperStream(SttStream):
             self._partial_segment = start
             self._last_partial_at = start
             self._last_partial_text = ""
+            self._partial_language = None
         now = self._vad.samples_seen
         if now - self._last_partial_at < self._partial_every or time.monotonic() < self._next_partial_at:
             return None
         self._last_partial_at = now
         audio = self._vad.current_audio()
         started = time.monotonic()
-        # Encoding is the slow part: once per phrase is enough here.
-        if self._detected_segment != start and self._detect(audio, self._engine.settings.detect_partial_min_audio_s):
-            self._detected_segment = start
-        text = self._engine.transcribe(audio, self._language, partial=True)
-        if text:
-            text = self._without_overlap(text, start)
+        if self._partial_language is None and len(audio) >= self._detect_min:
+            self._partial_language = self._detect(audio)  # once per phrase; the final checks again
+        language = self._partial_language or self._language
+        context = self._context if language == self._language else ""
+        text = self._engine.transcribe(audio, language, partial=True, context=context)
         finished = time.monotonic()
         self._next_partial_at = finished + (finished - started) * (1 / self._engine.settings.partial_max_load - 1)
         if not text or text == self._last_partial_text:
             return None
         self._last_partial_text = text
-        return self._result(ResultKind.PARTIAL, text, start, start + len(audio))
+        return self._result(ResultKind.PARTIAL, text, language, start, start + len(audio))
 
-    def _detect(self, audio: np.ndarray, min_audio_s: float) -> bool:
-        """Update the language from this audio; False when it stays as it is without looking."""
-        if not self._detects:
-            return False
-        if self._language is not None and len(audio) < min_audio_s * SAMPLE_RATE:
-            return False
-        self._language = self._engine.detect_language(audio)
-        return True
-
-    def _without_overlap(self, text: str, start_sample: int, final: bool = False) -> str:
-        # Chunks that don't share audio can't share words: a repeat there was really said twice.
-        if start_sample >= self._previous_end:
-            return text
-        text, dropped = remove_overlap(self._previous_words, text)
-        if dropped and final:
-            log.info("removed overlap words: %s", " ".join(dropped))
-        return text
-
-    def _result(self, kind: ResultKind, text: str, start_sample: int, end_sample: int) -> Transcript:
+    def _result(self, kind: ResultKind, text: str, language: str, start_sample: int, end_sample: int) -> Transcript:
         return Transcript(
             kind=kind,
             text=text,
-            language=self._language,
+            language=language,
             start=self._offset + start_sample / SAMPLE_RATE,
             end=self._offset + end_sample / SAMPLE_RATE,
             engine=self._engine.name,

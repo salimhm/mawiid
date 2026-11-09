@@ -18,7 +18,7 @@ from collections.abc import Callable, Mapping
 import numpy as np
 
 from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind, SttEngine, SttError, SttStream, Transcript, to_float32
-from mawiid_ai.stt.config import AUTO_LANGUAGE, LANGUAGES, FailoverSettings
+from mawiid_ai.stt.config import LANGUAGES, FailoverSettings
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class SttRouter:
 
     def chain_for(self, language: str) -> list[str]:
         """Loaded engines that support the language, in preference order."""
-        if language != AUTO_LANGUAGE and language not in LANGUAGES:
+        if language not in LANGUAGES:
             raise SttError(f"unsupported language: {language}")
         return [
             name
@@ -68,17 +68,19 @@ class SttRouter:
             if name in self.engines and self.engines[name].supports(language)
         ]
 
-    def open_stream(self, language: str) -> FailoverStream:
+    def open_stream(self, language: str, detect: bool = True) -> FailoverStream:
+        """``detect``: ``language`` is only the first guess; each phrase's language is detected."""
         chain = self.chain_for(language)
         if not chain:
             raise SttError(f"no speech-to-text engine loaded for {language}")
-        return FailoverStream(self, language, chain)
+        return FailoverStream(self, language, chain, detect)
 
 
 class FailoverStream(SttStream):
-    def __init__(self, router: SttRouter, language: str, chain: list[str]) -> None:
+    def __init__(self, router: SttRouter, language: str, chain: list[str], detect: bool = True) -> None:
         self._router = router
         self._language = language
+        self._detect = detect
         self._chain = chain
         self._max_replay = int(router.settings.max_replay_s * SAMPLE_RATE)
         # Audio since the last final result, as (start_sample, chunk).
@@ -86,7 +88,6 @@ class FailoverStream(SttStream):
         self._replay_samples = 0
         self._samples_seen = 0
         self._switch_back_to: int | None = None
-        self._language_hint: str | None = None
         self._index = self._first_available(0)
         self._stream = self._open(self._index, time_offset=0.0)
 
@@ -105,10 +106,6 @@ class FailoverStream(SttStream):
         self._replay.clear()
         self._replay_samples = 0
         return results
-
-    def hint_language(self, language: str) -> None:
-        self._language_hint = language
-        self._stream.hint_language(language)
 
     def close(self) -> None:
         self._stream.close()
@@ -200,10 +197,8 @@ class FailoverStream(SttStream):
         return True
 
     def _open(self, index: int, time_offset: float) -> SttStream:
-        stream = self._router.engines[self._chain[index]].open_stream(self._language, time_offset=time_offset)
-        if self._language_hint is not None:
-            stream.hint_language(self._language_hint)
-        return stream
+        engine = self._router.engines[self._chain[index]]
+        return engine.open_stream(self._language, time_offset=time_offset, detect=self._detect)
 
     def _first_available(self, start: int, required: bool = True, exclude: int | None = None) -> int | None:
         for i in range(start, len(self._chain)):
