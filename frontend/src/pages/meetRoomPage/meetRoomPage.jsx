@@ -12,6 +12,9 @@ const STATUS_MESSAGES = {
     waiting: 'Waiting for the host to let you in…',
     disconnected: 'You left the mawiid.',
     removed: 'You were removed from the mawiid.',
+    replaced: 'You were disconnected because your account joined this mawiid from another device or tab.',
+    ended: 'The mawiid has ended.',
+    lost: 'You lost the connection to the mawiid.',
 }
 
 export default function MeetRoomPage() {
@@ -58,6 +61,7 @@ export default function MeetRoomPage() {
                 typing={room.typing}
                 onTyping={room.sendTyping}
                 messages={room.messages}
+                roomEvents={room.roomEvents}
                 hasOlderMessages={room.hasOlderMessages}
                 joinedAtMessageId={room.joinedAtMessageId}
                 loadingOlderMessages={room.loadingOlderMessages}
@@ -96,7 +100,7 @@ export default function MeetRoomPage() {
             {overlayMessage && (
                 <div className='fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-black/85 backdrop-blur-sm px-6 text-center'>
                     <p className='text-primary-white font-montserrat text-lg sm:text-2xl'>{overlayMessage}</p>
-                    {(room.status === 'error' || room.status === 'disconnected' || room.status === 'removed' || room.status === 'waiting') && (
+                    {['error', 'disconnected', 'removed', 'replaced', 'ended', 'lost', 'waiting'].includes(room.status) && (
                         <button className='rounded-full border border-white/30 px-6 py-2 text-white hover:bg-white/10 transition cursor-pointer' onClick={() => navigate('/')}>
                             Back to home
                         </button>
