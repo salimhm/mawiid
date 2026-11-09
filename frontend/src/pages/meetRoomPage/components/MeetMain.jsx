@@ -1,30 +1,34 @@
-import { useEffect } from 'react'
+
 import ParticipantTile from './ParticipantTile'
 import './meet-room-refresh.css'
 
-export default function MeetMain({ localUser = {}, participants = [], fullScreen = false }) {
-  const people = [
+export default function MeetMain({
+  localUser = {},
+  participants = [],
+  fullScreen = false,
+}) {
+  const users = [
     { ...localUser, isLocal: true },
-    ...participants.map((participant) => ({ ...participant, isLocal: false })),
-  ].filter((person) => person.id || person.name)
+    ...participants.map((participant) => ({
+      ...participant,
+      isLocal: false,
+    })),
+  ].filter((person) => person.id || person.userId || person.name)
 
-  const waiting_for_guest = people.length === 1
-  const users = waiting_for_guest
-    ? [...people, { id: 'mawiid-waiting-guest', name: 'Waiting for guest', isWaiting: true }]
-    : people
+  const count = users.length
 
-  const is_featured_call = users.length <= 2
-
-  useEffect(() => {
-    console.log("users : ", users)
-    console.log("localUser : ", localUser)
-    console.log("participants : ", participants)
-    console.log("fullScreen : ", fullScreen)
-  }, [users])
+  const layoutClass =
+    count === 1
+      ? 'meet-stage__single'
+      : count === 2
+        ? 'meet-stage__featured'
+        : 'meet-stage__grid'
 
   return (
-    <main className={`meet-stage ${fullScreen ? 'meet-stage--fullscreen' : ''}`}>
-      <div className={is_featured_call ? 'meet-stage__featured' : 'meet-stage__grid'}>
+    <main
+      className={`meet-stage ${fullScreen ? 'meet-stage--fullscreen' : ''}`}
+    >
+      <div className={layoutClass}>
         {users.map((user, index) => (
           <ParticipantTile
             key={user.id || user.userId || index}
@@ -34,8 +38,9 @@ export default function MeetMain({ localUser = {}, participants = [], fullScreen
             isCamOn={Boolean(user.isCamOn)}
             isMicOn={Boolean(user.isMicOn)}
             handRaised={Boolean(user.handRaised)}
+            language={user.language}
             isLocal={Boolean(user.isLocal)}
-            isWaiting={Boolean(user.isWaiting)}
+            colorIndex={index}
           />
         ))}
       </div>
