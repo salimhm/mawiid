@@ -63,11 +63,11 @@ def _env(name: str, default: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class VadSettings:
-    threshold: float = 0.5  # speech probability that starts speech
+    threshold: float = 0.6  # speech probability that starts speech (breathing and noise often reach 0.5)
     neg_threshold: float = 0.35  # probability below which a window counts as silence
     min_silence_ms: int = 500  # pause length that ends a phrase
     speech_pad_ms: int = 200  # audio kept before speech starts so first syllables aren't cut
-    min_speech_ms: int = 250  # shorter blips are dropped (coughs, clicks)
+    min_speech_ms: int = 400  # shorter blips are dropped (coughs, clicks, breaths); Whisper makes up text for them
     max_segment_s: float = 6.0  # non-stop speech is cut so it shows up without waiting for a pause
 
 
@@ -83,7 +83,8 @@ class WhisperSettings:
     partials: str = field(default_factory=lambda: _env("PARTIALS", "1"))  # 1 | 0
     # Partials use at most this share of the time, so a slow machine shows fewer instead of falling behind.
     partial_max_load: float = 0.5
-    # Results Whisper is unsure about are dropped; this is where its "Thank you." hallucinations live.
+    # Phrases Whisper thinks are probably not speech are dropped, however sure it is of the text:
+    # its made-up "Thank you." / "I don't know." over silence are confident.
     max_no_speech_prob: float = 0.6
     min_avg_logprob: float = -1.0
     # The end of the speaker's previous phrase is given to Whisper as a prompt, so a phrase cut in

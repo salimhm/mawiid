@@ -13,10 +13,16 @@ import numpy as np
 
 from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind, SttEngine, SttError, SttStream, Transcript, to_float32
 from mawiid_ai.stt.config import LANGUAGES, VadSettings, WhisperSettings
-from mawiid_ai.stt.postprocess import clean_text
+from mawiid_ai.stt.postprocess import clean_text, is_hallucination, repeats_context
 from mawiid_ai.stt.vad import SpeechProbModel, VadSegmenter
 
 log = logging.getLogger(__name__)
+
+# Whisper's own measure of a decoding stuck in a loop ("Sssss...", one word repeated).
+_MAX_COMPRESSION_RATIO = 2.4
+# Shorter finals are not given to the next phrase as a prompt: a few words ("I don't know.")
+# are the easiest for Whisper to echo back over silence.
+_MIN_CONTEXT_CHARS = 15
 
 # Nudges Whisper toward punctuated Mandarin; without it Chinese output often has no punctuation.
 _PROMPTS = {"zh": "以下是普通话的句子。"}
@@ -139,7 +145,17 @@ class WhisperEngine(SttEngine):
             log_prob_threshold=s.min_avg_logprob,
             initial_prompt=" ".join(p for p in (_PROMPTS.get(code), context) if p) or None,
         )
-        return clean_text("".join(segment.text for segment in segments), language)
+        # faster-whisper drops a segment only when it is both likely silence and low-confidence;
+        # its made-up phrases are confident, so either sign alone is enough here.
+        kept = (
+            segment.text
+            for segment in segments
+            if segment.no_speech_prob <= s.max_no_speech_prob and segment.compression_ratio <= _MAX_COMPRESSION_RATIO
+        )
+        text = clean_text("".join(kept), language)
+        if not text or is_hallucination(text) or repeats_context(text, context):
+            return ""
+        return text
 
 
 class WhisperStream(SttStream):
@@ -176,7 +192,8 @@ class WhisperStream(SttStream):
         text = self._engine.transcribe(audio, self._language, context=self._context)
         if not text:
             return None
-        self._context = previous_text(self._context, text, self._engine.settings.context_chars)
+        if len(text) >= _MIN_CONTEXT_CHARS:
+            self._context = previous_text(self._context, text, self._engine.settings.context_chars)
         return self._result(ResultKind.FINAL, text, start_sample, start_sample + len(audio))
 
     def _maybe_partial(self) -> Transcript | None:
