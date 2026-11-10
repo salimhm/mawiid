@@ -1,53 +1,130 @@
 import { useEffect, useRef } from 'react'
 import * as icons from '../../../assets/icons'
 import { NEUTRAL_COLOR } from '../../../lib/participantColor'
+import './meet-room-refresh.css'
 
-export default function ParticipantTile({ name, stream, isCamOn, isMicOn, handRaised, color })
-{
-    const videoElement = useRef(null)
+function initials(name = '') {
+  return name
+    .replace(/\s*\(You\)\s*/i, '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] || '')
+    .join('')
+    .toUpperCase() || 'M'
+}
 
-    useEffect(() => {
-        if (!videoElement.current)
-            return
-        if (stream && isCamOn)
-            videoElement.current.srcObject = stream
-        else
-            videoElement.current.srcObject = null
-    }, [stream, isCamOn])
+const languageCodes = {
+  en: 'English',
+  ar: 'Arabic',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Portuguese',
+  r: 'Russian',
+  'ar-MA': 'Arabic (Moroccan)',
+  'zh-CN': 'Chinese (Simplified)',
+  'zh-TW': 'Chinese (Traditional)',
+}
 
-    const background = (color || NEUTRAL_COLOR).background
-    const showVideo = isCamOn && stream
+function LanguageDisplay({ language }) {
+  const languageName = languageCodes[language] || language || 'Unknown'
 
-    return (
-        <div className='relative w-full h-full min-h-0 rounded-2xl overflow-hidden flex items-center justify-center' style={{ backgroundImage: background }}>
+  return (
+    <span className="meet-person__language">
+      {languageName}
+    </span>
+  )
+}
 
-            {showVideo ? (
-                <video ref={videoElement} autoPlay muted playsInline className='absolute inset-0 w-full h-full object-cover' />
-            ) : (
-                <>
-                    <div className='absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.25),transparent_60%)]'></div>
-                    <div className='absolute inset-0 bg-black/30'></div>
-                    <span className='relative text-white text-xl font-bold'>
-                        {name}
-                    </span>
-                </>
-            )}
+export default function ParticipantTile({
+  id,
+  name,
+  stream,
+  isCamOn,
+  isMicOn,
+  handRaised,
+  language,
+  isLocal = false,
+  color,
+}) {
+  const videoElement = useRef(null)
+  const showVideo = Boolean(stream && isCamOn)
 
-            {showVideo && <div className='absolute inset-0 bg-black/10'></div>}
+  useEffect(() => {
+    const video = videoElement.current
+    if (!video) return
 
-            <div className='absolute left-3 bottom-3 flex items-center gap-2'>
-                <span className='rounded-md bg-black/60 px-2 py-1 text-sm text-white'>
-                    {name}
-                </span>
-                {handRaised && (
-                    <span className='rounded-md bg-yellow-400/90 px-1.5 py-0.5 text-sm' title='Hand raised'>✋</span>
-                )}
-                {!isMicOn && (
-                    <span className='rounded-md bg-red-500/80 px-1.5 py-1'>
-                        {icons.micOffIcon(16, 16)}
-                    </span>
-                )}
-            </div>
+    video.srcObject = showVideo ? stream : null
+
+    return () => {
+      video.srcObject = null
+    }
+  }, [stream, showVideo])
+
+  return (
+    <section
+      className={[
+        'meet-person',
+        showVideo ? 'meet-person--video' : '',
+      ].filter(Boolean).join(' ')}
+      style={{ backgroundImage: (color || NEUTRAL_COLOR).background }}
+      aria-label={`${name}${isLocal ? ', you' : ''}`}
+    >
+      {showVideo && (
+        <video
+          ref={videoElement}
+          autoPlay
+          playsInline
+          muted={isLocal}
+          className="meet-person__video"
+        />
+      )}
+
+      <div className="meet-person__shade" aria-hidden="true" />
+
+      <div className="meet-person__top">
+        <span className="meet-person__name">
+          {name.replace(/\s*\(You\)\s*/gi, '').trim() || (isLocal ? 'You' : 'Guest')}
+          {isLocal && ' (You)'}
+        </span>
+
+        <LanguageDisplay language={language} />
+      </div>
+
+      {!showVideo && (
+        <div className="meet-person__identity">
+          <div className="meet-person__avatar">
+            {initials(name)}
+          </div>
         </div>
-    )
+      )}
+
+      <div className="meet-person__footer">
+        <div className="meet-person__speaking">
+          <span
+            className={`meet-person__audio-dot ${isMicOn ? 'is-on' : ''}`}
+          />
+          <span>
+            {isMicOn ? 'Microphone on' : 'Microphone off'}
+          </span>
+        </div>
+
+        <div className="meet-person__indicators">
+          {handRaised && (
+            <span className="meet-person__hand" title="Hand raised">
+              ✋
+            </span>
+          )}
+
+          {!isMicOn && (
+            <span className="meet-person__muted" title="Microphone muted">
+              {icons.micOffIcon(16, 16)}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
+  )
 }

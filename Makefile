@@ -77,12 +77,20 @@ redis:
 # which matches postman/.env.postman. infra/livekit.dev.yaml sends webhooks to the
 # backend on :3000, so participants who bypass a ban or removal are disconnected.
 # The container is recreated each time so config changes always apply.
+
 livekit:
 	@docker rm -f $(LIVEKIT_CONTAINER) >/dev/null 2>&1 || true
-	@docker run -d --name $(LIVEKIT_CONTAINER) --network host \
-		-v "$(CURDIR)/infra/livekit.dev.yaml:/etc/livekit.yaml:ro" 	 \
-		$(LIVEKIT_IMAGE) --config /etc/livekit.yaml --dev --bind 0.0.0.0 >/dev/null
-	@echo "LiveKit  ws://localhost:7880 (webhooks -> localhost:3000/webhook/livekit)"
+	@docker run -d --name $(LIVEKIT_CONTAINER) \
+		-p 7880:7880/tcp \
+		-p 7881:7881/tcp \
+		-p 7882:7882/udp \
+		-v "$(CURDIR)/infra/livekit.dev.yaml:/etc/livekit.yaml:ro" \
+		$(LIVEKIT_IMAGE) \
+		--config /etc/livekit.yaml --dev --bind 0.0.0.0 >/dev/null
+	@echo "LiveKit ws://localhost:7880"
+	@echo "LiveKit TCP RTC localhost:7881"
+	@echo "LiveKit UDP RTC localhost:7882"
+
 
 infra-down: ## Stop Redis and LiveKit
 	-docker stop $(LIVEKIT_CONTAINER) $(REDIS_CONTAINER)
