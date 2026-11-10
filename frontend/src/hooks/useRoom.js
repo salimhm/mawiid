@@ -22,9 +22,11 @@ const REACTION_VISIBLE_MS = 4000
 const STAFF_ROLES = ['host', 'moderator']
 const MESSAGE_PAGE = 50
 const MESSAGE_PAGE_MAX = 100
-// Captions stay until they scroll out of this history, so a long speech or several
-// people talking at once can still be read back.
-const CAPTION_MAX = 200
+// Captions are kept as one entry per speaker (their current turn); at most this many
+// speakers are on screen, the one who spoke longest ago drops out first.
+const CAPTION_MAX = 10
+// Pieces kept in one turn, so a long monologue does not grow without end.
+const TURN_SEGMENT_MAX = 50
 const ROOM_EVENT_MAX = 200
 
 // Why a participant left, as a line in the chat. LiveKit sends the reason with
@@ -112,15 +114,44 @@ function trackOwner(room, trackId) {
         .find((participant) => participant.trackPublications.has(trackId)) || null
 }
 
-// A translation replaces the original of the same segment, never the other way round:
-// the original final arrives first, its translation a moment later.
-function mergeCaption(current, caption) {
-    const existing = current.find((entry) => entry.id === caption.id)
-    if (!existing)
-        return [...current, caption].slice(-CAPTION_MAX)
-    if (existing.translated && !caption.translated)
-        return current
-    return current.map((entry) => (entry.id === caption.id ? caption : entry))
+// Captions state: one turn per speaker, oldest first.
+//   turn = { id, speakerId, speaker, segments: [caption], replaced: [segment ids] }
+// - An update to a segment already on screen (a partial growing, or its translation)
+//   changes it in place. A translation replaces the original, never the other way round:
+//   the original final arrives first, its translation a moment later.
+// - A new segment from the person who spoke last joins their turn.
+// - A new segment from anyone else starts a new turn at the bottom. If that person
+//   already had a turn on screen, it is removed: their old text is replaced by the new.
+// - Late updates for segments of a replaced turn are ignored.
+function mergeCaption(turns, caption) {
+    const turnIndex = turns.findIndex((turn) => turn.segments.some((segment) => segment.id === caption.id))
+    if (turnIndex !== -1) {
+        const turn = turns[turnIndex]
+        const existing = turn.segments.find((segment) => segment.id === caption.id)
+        if (existing.translated && !caption.translated)
+            return turns
+        const segments = turn.segments.map((segment) => (segment.id === caption.id ? caption : segment))
+        return turns.map((entry, index) => (index === turnIndex ? { ...turn, segments } : entry))
+    }
+    if (turns.some((turn) => turn.replaced.includes(caption.id)))
+        return turns
+
+    const last = turns[turns.length - 1]
+    if (last && last.speakerId === caption.speakerId) {
+        const segments = [...last.segments, caption].slice(-TURN_SEGMENT_MAX)
+        return [...turns.slice(0, -1), { ...last, speaker: caption.speaker, segments }]
+    }
+
+    const previous = turns.find((turn) => turn.speakerId === caption.speakerId)
+    const others = turns.filter((turn) => turn !== previous)
+    const turn = {
+        id: caption.id,
+        speakerId: caption.speakerId,
+        speaker: caption.speaker,
+        segments: [caption],
+        replaced: previous ? previous.segments.map((segment) => segment.id) : [],
+    }
+    return [...others, turn].slice(-CAPTION_MAX)
 }
 
 export function useRoom(roomUid, {
