@@ -4,13 +4,14 @@ import { participantColor } from '../../../lib/participantColor'
 // How close to the bottom (px) still counts as "reading the latest".
 const STICK_THRESHOLD = 24
 
-// Subtitles from the AI translation worker, newest last. Captions still in another
-// language (the translation is on its way) or still changing are dimmed.
-// Captions do not disappear: the box scrolls, following the newest caption unless
-// the reader has scrolled up to read an earlier one.
-// The box takes its own room below the video tiles: while `open` it slides open and the
-// tiles shrink with it, so it never covers anyone. In full screen it floats over the video.
-export default function MeetCaptions({ captions = [], open = false, fullScreen = false })
+// Subtitles from the AI translation worker: one entry per speaker, the most recent
+// speaker last (see mergeCaption in useRoom). Text still in another language (the
+// translation is on its way) or still changing is dimmed.
+// The box scrolls, following the newest text unless the reader has scrolled up.
+// It spans the width of the video area (same side margins as the tiles) and takes its
+// own room below them: while `open` it slides open and the tiles shrink with it, so it
+// never covers anyone. In full screen it floats over the video.
+export default function MeetCaptions({ captions = [], open = false, fullScreen = false, colorOf = participantColor })
 {
     const listRef = useRef(null)
     const [following, setFollowing] = useState(true)
@@ -69,10 +70,15 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
                     {!captions.length && (
                         <p className='text-sm sm:text-base text-white/50 italic'>Captions appear here when someone speaks.</p>
                     )}
-                    {captions.map((caption) => (
-                        <p key={caption.id} className='text-sm sm:text-lg leading-snug'>
-                            <span className={`font-semibold ${participantColor(caption.speakerId).text}`}>{caption.speaker}: </span>
-                            <span dir='auto' className={caption.final && !caption.foreign ? '' : 'text-white/70 italic'}>{caption.text}</span>
+                    {captions.map((turn) => (
+                        <p key={turn.id} className='text-sm sm:text-lg leading-snug'>
+                            <span className='font-semibold' style={{ color: colorOf(turn.speakerId).text }}>{turn.speaker}: </span>
+                            {turn.segments.map((caption, index) => (
+                                <span key={caption.id}>
+                                    {index > 0 && ' '}
+                                    <span dir='auto' className={caption.final && !caption.foreign ? '' : 'text-white/70 italic'}>{caption.text}</span>
+                                </span>
+                            ))}
                         </p>
                     ))}
                 </div>
@@ -90,7 +96,7 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
 
     if (fullScreen)
         return (
-            <div className='fixed bottom-36 left-1/2 z-[55] w-[calc(100vw-32px)] max-w-3xl -translate-x-1/2'>
+            <div className='fixed bottom-36 inset-x-2 sm:inset-x-6 lg:inset-x-8 z-[55]'>
                 {box}
             </div>
         )
@@ -102,7 +108,7 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
             inert={!open}
         >
             <div className='min-h-0 overflow-hidden'>
-                <div className='mx-auto w-[calc(100vw-32px)] max-w-3xl pt-2 sm:pt-3'>
+                <div className='w-full px-2 sm:px-6 md:px-12 lg:px-20 pt-2 sm:pt-3'>
                     {box}
                 </div>
             </div>

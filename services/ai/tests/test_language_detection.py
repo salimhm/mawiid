@@ -49,7 +49,7 @@ class DetectingEngine:
 
     def transcribe(self, audio, language, partial=False, context=""):
         self.calls.append((language, context))
-        return f"phrase {len(self.calls)}"
+        return f"this is phrase number {len(self.calls)}"
 
 
 def speak(stream, *parts):
@@ -69,7 +69,7 @@ def test_each_phrase_is_transcribed_in_the_language_detected(monkeypatch):
 
     assert [r.language for r in results] == ["fr-FR", "ar-SA", "ar-SA"]
     # The French context is not prompted to the first Arabic phrase.
-    assert engine.calls == [("fr-FR", ""), ("ar-SA", ""), ("ar-SA", "phrase 2")]
+    assert engine.calls == [("fr-FR", ""), ("ar-SA", ""), ("ar-SA", "this is phrase number 2")]
     assert stream.language == "ar-SA"
 
 

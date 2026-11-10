@@ -24,7 +24,7 @@ class RecordingEngine:
 
     def transcribe(self, audio, language, partial=False, context=""):
         self.contexts.append(context)
-        return f"phrase {len(self.contexts)}"
+        return f"this is phrase number {len(self.contexts)}"
 
 
 def test_each_phrase_is_transcribed_with_what_the_speaker_said_before():
@@ -35,4 +35,21 @@ def test_each_phrase_is_transcribed_with_what_the_speaker_said_before():
     for i in range(0, len(speech), 320):
         stream.push_audio(speech[i : i + 320])
 
-    assert engine.contexts == ["", "phrase 1", "phrase 1 phrase 2"]
+    assert engine.contexts == ["", "this is phrase number 1", "this is phrase number 1 this is phrase number 2"]
+
+
+class ShortEngine(RecordingEngine):
+    def transcribe(self, audio, language, partial=False, context=""):
+        self.contexts.append(context)
+        return "Okay." if len(self.contexts) == 1 else "And then we went home."
+
+
+def test_short_finals_are_not_used_as_a_prompt():
+    engine = ShortEngine()
+    stream = WhisperStream(engine, "en-US", 0.0, ScriptedVad())
+    speech = audio(("speech", 1), ("silence", 1), ("speech", 1), ("silence", 1), ("speech", 1), ("silence", 1))
+
+    for i in range(0, len(speech), 320):
+        stream.push_audio(speech[i : i + 320])
+
+    assert engine.contexts == ["", "", "And then we went home."]

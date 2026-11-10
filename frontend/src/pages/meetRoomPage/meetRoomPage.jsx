@@ -2,9 +2,10 @@ import MeetHeader from './components/MeetHeader'
 import MeetMain from './components/MeetMain'
 import MeetControls from './components/MeetControls'
 import MeetCaptions from './components/MeetCaptions'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useRoom } from '../../hooks/useRoom'
+import { createColorAllocator } from '../../lib/participantColor'
 
 const STATUS_MESSAGES = {
     connecting: 'Joining the mawiid…',
@@ -33,6 +34,12 @@ export default function MeetRoomPage() {
 
     const [fullScreen, setFullScreen] = useState(false)
     const { notice, clearNotice } = room
+    // Lives as long as the page, so people keep their color while they stay.
+    const [colorAllocator] = useState(createColorAllocator)
+    const colorOf = useMemo(
+        () => colorAllocator.assign([room.localUser, ...room.participants]),
+        [colorAllocator, room.localUser, room.participants],
+    )
 
     useEffect(() => {
         if (!notice)
@@ -73,8 +80,9 @@ export default function MeetRoomPage() {
                 localUser={room.localUser}
                 participants={room.participants}
                 fullScreen={fullScreen}
+                colorOf={colorOf}
             />
-            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} fullScreen={fullScreen} />
+            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} fullScreen={fullScreen} colorOf={colorOf} />
             <MeetControls
                 fullScreen={fullScreen}
                 setFullScreen={setFullScreen}
@@ -93,7 +101,6 @@ export default function MeetRoomPage() {
                 onLeave={handleLeave}
                 roomCode={room.roomCode}
             />
-
 
             {overlayMessage && (
                 <div className='fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-black/85 backdrop-blur-sm px-6 text-center'>
