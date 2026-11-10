@@ -4,6 +4,19 @@ import { participantColor } from '../../../lib/participantColor'
 // How close to the bottom (px) still counts as "reading the latest".
 const STICK_THRESHOLD = 24
 
+const RTL_LETTERS = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/g
+const LTR_LETTERS = /[A-Za-z\u00C0-\u024F]/g
+
+// A speaker's line reads right to left when most of its letters are Arabic (or Hebrew).
+// Set on the whole line, not per piece: pieces each with their own direction are laid out
+// left to right by the line around them, so new Arabic text would land on the wrong side.
+function turnDirection(turn) {
+    const text = turn.segments.map((segment) => segment.text).join(' ')
+    const rtl = (text.match(RTL_LETTERS) || []).length
+    const ltr = (text.match(LTR_LETTERS) || []).length
+    return rtl > ltr ? 'rtl' : 'ltr'
+}
+
 // Subtitles from the AI translation worker: one entry per speaker, the most recent
 // speaker last (see mergeCaption in useRoom). Text still in another language (the
 // translation is on its way) or still changing is dimmed.
@@ -71,12 +84,13 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
                         <p className='text-sm sm:text-base text-white/50 italic'>Captions appear here when someone speaks.</p>
                     )}
                     {captions.map((turn) => (
-                        <p key={turn.id} className='text-sm sm:text-lg leading-snug'>
-                            <span className='font-semibold' style={{ color: colorOf(turn.speakerId).text }}>{turn.speaker}: </span>
+                        <p key={turn.id} dir={turnDirection(turn)} className='text-sm sm:text-lg leading-snug'>
+                            {/* bdi: a Latin name keeps its own order inside an Arabic line */}
+                            <span className='font-semibold' style={{ color: colorOf(turn.speakerId).text }}><bdi>{turn.speaker}</bdi>: </span>
                             {turn.segments.map((caption, index) => (
                                 <span key={caption.id}>
                                     {index > 0 && ' '}
-                                    <span dir='auto' className={caption.final && !caption.foreign ? '' : 'text-white/70 italic'}>{caption.text}</span>
+                                    <span className={caption.final && !caption.foreign ? '' : 'text-white/70 italic'}>{caption.text}</span>
                                 </span>
                             ))}
                         </p>
