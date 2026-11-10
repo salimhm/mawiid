@@ -602,3 +602,66 @@ def test_switching_between_auto_and_a_picked_language_reopens_the_stream():
     room.speak("user_1", 3, between=switch)
 
     assert [(s.language, s.detect) for s in room.router.streams] == [("fr-FR", False), ("fr-FR", True)]
+
+
+def _switch(room: Room, identity: str, code: str) -> None:
+    """Change someone's language inside an event loop, as the worker does, and wait for the re-send."""
+
+    async def run():
+        room.pipeline.set_language(identity, code)
+        await asyncio.gather(*room.pipeline._resending.values())
+
+    asyncio.run(run())
+
+
+def test_changing_language_resends_recent_subtitles_in_the_new_language():
+    room = Room()
+    room.router.punctuate = True  # each final closes its subtitle
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "ar")
+    room.speak("user_1", PHRASE_CHUNKS * 2)
+    unit_ids = [sent.attributes[SEGMENT_ATTRIBUTE] for sent in room.topic(TRANSLATION_TOPIC)]
+    room.sent.clear()
+
+    _switch(room, "user_2", "en")
+
+    assert [(s.text, s.topic, s.identities, s.attributes[LANGUAGE_ATTRIBUTE]) for s in room.sent] == [
+        ("<en-US>fr-FR final 1.", TRANSLATION_TOPIC, ["user_2"], "en-US"),
+        ("<en-US>fr-FR final 2.", TRANSLATION_TOPIC, ["user_2"], "en-US"),
+    ]
+    # Same subtitle ids, in order, all final: the new text replaces the old one.
+    assert [s.attributes[SEGMENT_ATTRIBUTE] for s in room.sent] == unit_ids
+    assert all(s.attributes[FINAL_ATTRIBUTE] == "true" for s in room.sent)
+
+
+def test_changing_to_the_spoken_language_resends_the_original():
+    room = Room()
+    room.router.punctuate = True
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "ar")
+    room.speak("user_1", PHRASE_CHUNKS)
+    room.sent.clear()
+
+    _switch(room, "user_2", "fr")
+
+    assert [(s.text, s.topic, s.attributes[LANGUAGE_ATTRIBUTE]) for s in room.sent] == [
+        ("fr-FR final 1.", TRANSCRIPTION_TOPIC, "fr-FR")
+    ]
+
+
+def test_nothing_is_resent_when_the_language_does_not_change_or_captions_are_off():
+    room = Room()
+    room.router.punctuate = True
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "ar")
+    room.speak("user_1", PHRASE_CHUNKS)
+    room.sent.clear()
+
+    _switch(room, "user_2", "ar")
+    room.pipeline.set_captions("user_2", False)
+
+    async def captions_off_switch():
+        RoomPipeline.set_language(room.pipeline, "user_2", "en")  # without turning captions on
+
+    asyncio.run(captions_off_switch())
+    assert room.sent == []

@@ -163,6 +163,9 @@ export function useRoom(roomUid, {
     const roomRef = useRef(null)
     const signalRef = useRef(null)
     const streamCache = useRef(new Map())
+    // The caption language just picked, until the worker sees it: translations still on their
+    // way in the previous language are dropped instead of mixed in.
+    const pickedLanguageRef = useRef('')
 
     const [status, setStatus] = useState('connecting')
     const [error, setError] = useState('')
@@ -271,7 +274,9 @@ export function useRoom(roomUid, {
         if (!room)
             return
         const speaker = trackOwner(room, caption.trackId)
-        const myLanguage = room.localParticipant.attributes?.[ATTRIBUTE.language]
+        const myLanguage = pickedLanguageRef.current || room.localParticipant.attributes?.[ATTRIBUTE.language]
+        if (caption.translated && pickedLanguageRef.current && baseLanguage(caption.language) !== baseLanguage(pickedLanguageRef.current))
+            return
         setCaptions((prev) => mergeCaption(prev, {
             id: caption.segmentId,
             speaker: speaker === room.localParticipant ? 'You' : speaker?.name || speaker?.identity || 'Speaker',
@@ -545,10 +550,13 @@ export function useRoom(roomUid, {
 
     // The worker detects the language of each phrase someone speaks, so changing
     // what you read doesn't change how you are heard.
-    const setLanguage = useCallback(
-        (language) => updateSelf({ participant_language: language }),
-        [updateSelf],
-    )
+    // The worker sends the recent captions again in the new language, so the old ones are
+    // cleared rather than left in the previous language and direction.
+    const setLanguage = useCallback((language) => {
+        pickedLanguageRef.current = language
+        setCaptions([])
+        return updateSelf({ participant_language: language })
+    }, [updateSelf])
 
     const toggleTranslation = useCallback(() => {
         const enabled = !localUser.translationEnabled
