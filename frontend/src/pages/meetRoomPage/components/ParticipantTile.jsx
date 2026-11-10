@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as icons from '../../../assets/icons'
+import { NEUTRAL_COLOR } from '../../../lib/participantColor'
 
 export default function ParticipantTile({ name, stream, isCamOn, isMicOn, handRaised, color })
 {
@@ -14,11 +15,11 @@ export default function ParticipantTile({ name, stream, isCamOn, isMicOn, handRa
             videoElement.current.srcObject = null
     }, [stream, isCamOn])
 
-    const gradient = color?.gradient || 'from-slate-400 via-slate-600 to-slate-900'
+    const background = (color || NEUTRAL_COLOR).background
     const showVideo = isCamOn && stream
 
     return (
-        <div className={`relative w-full h-full min-h-0 rounded-2xl overflow-hidden bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+        <div className='relative w-full h-full min-h-0 rounded-2xl overflow-hidden flex items-center justify-center' style={{ backgroundImage: background }}>
 
             {showVideo ? (
                 <video ref={videoElement} autoPlay muted playsInline className='absolute inset-0 w-full h-full object-cover' />

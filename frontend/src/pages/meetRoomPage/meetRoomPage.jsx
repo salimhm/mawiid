@@ -5,7 +5,7 @@ import MeetCaptions from './components/MeetCaptions'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useRoom } from '../../hooks/useRoom'
-import { assignParticipantColors } from '../../lib/participantColor'
+import { createColorAllocator } from '../../lib/participantColor'
 
 const STATUS_MESSAGES = {
     connecting: 'Joining the mawiid…',
@@ -34,9 +34,11 @@ export default function MeetRoomPage() {
 
     const [fullScreen, setFullScreen] = useState(false)
     const { notice, clearNotice } = room
+    // Lives as long as the page, so people keep their color while they stay.
+    const [colorAllocator] = useState(createColorAllocator)
     const colorOf = useMemo(
-        () => assignParticipantColors([room.localUser, ...room.participants]),
-        [room.localUser, room.participants],
+        () => colorAllocator.assign([room.localUser, ...room.participants]),
+        [colorAllocator, room.localUser, room.participants],
     )
 
     useEffect(() => {

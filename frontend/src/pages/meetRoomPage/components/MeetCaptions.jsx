@@ -72,7 +72,7 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
                     )}
                     {captions.map((turn) => (
                         <p key={turn.id} className='text-sm sm:text-lg leading-snug'>
-                            <span className={`font-semibold ${colorOf(turn.speakerId).text}`}>{turn.speaker}: </span>
+                            <span className='font-semibold' style={{ color: colorOf(turn.speakerId).text }}>{turn.speaker}: </span>
                             {turn.segments.map((caption, index) => (
                                 <span key={caption.id}>
                                     {index > 0 && ' '}
