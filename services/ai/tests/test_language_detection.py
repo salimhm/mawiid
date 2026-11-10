@@ -29,6 +29,12 @@ def test_languages_sharing_a_model_code_keep_the_speakers_pick():
     assert pick_language({"ar": 0.95, "fr": 0.05}, "fr-FR", languages, 0.7) == "ar-SA"
 
 
+def test_detection_never_switches_between_arabic_variants():
+    languages = ["en-US", "fr-FR", "ar-SA", "ar-MA"]
+    assert pick_language({"ar": 0.99}, "ar-SA", languages, 0.7) == "ar-SA"
+    assert pick_language({"ar": 0.99}, "ar-MA", languages, 0.7) == "ar-MA"
+
+
 class DetectingEngine:
     """Stands in for WhisperEngine: each phrase "is" in the next scripted language."""
 
@@ -68,8 +74,8 @@ def test_each_phrase_is_transcribed_in_the_language_detected(monkeypatch):
     results = speak(stream, ("speech", 1), ("silence", 1), ("speech", 1), ("silence", 1), ("speech", 1), ("silence", 1))
 
     assert [r.language for r in results] == ["fr-FR", "ar-SA", "ar-SA"]
-    # The French context is not prompted to the first Arabic phrase.
-    assert engine.calls == [("fr-FR", ""), ("ar-SA", ""), ("ar-SA", "this is phrase number 2")]
+    # The French context is not prompted to the first Arabic phrase, and Arabic gets no prompt at all.
+    assert engine.calls == [("fr-FR", ""), ("ar-SA", ""), ("ar-SA", "")]
     assert stream.language == "ar-SA"
 
 

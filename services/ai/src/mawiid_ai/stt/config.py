@@ -11,23 +11,31 @@ from pathlib import Path
 class Language:
     model_code: str  # code the models expect ("fr", "zh", ...)
     script: str | None = None  # forced Chinese script: "simplified" or "traditional"
+    # Give Whisper the end of the speaker's previous phrase as a prompt (WhisperSettings.context_chars).
+    # Off for Arabic: on unsure dialect audio Whisper continues the prompt in Standard Arabic instead
+    # of transcribing, and each made-up phrase becomes the prompt for the next one.
+    context_prompt: bool = True
+    # Drop a segment whose average log probability is below this, even after the temperature
+    # retries. None: keep it (faster-whisper's default). Set for Arabic, where a failed decoding
+    # still reads as fluent Standard Arabic.
+    min_segment_logprob: float | None = None
 
 
 # Every language the code can handle, by Mawiid language code.
 ALL_LANGUAGES: dict[str, Language] = {
     "en-US": Language("en"),
     "fr-FR": Language("fr"),
-    "ar-SA": Language("ar"),
+    "ar-SA": Language("ar", context_prompt=False, min_segment_logprob=-1.0),
     "zh-CN": Language("zh", script="simplified"),
     "zh-TW": Language("zh", script="traditional"),
     # Whisper has no Darija token; Darija models are trained under "ar".
-    "ar-MA": Language("ar"),
+    "ar-MA": Language("ar", context_prompt=False, min_segment_logprob=-1.0),
 }
 
-# The languages switched on, matching the "Speak:" dropdown in the apps. Chinese and Darija are
-# off for now; add them back with MAWIID_LANGUAGES=en-US,fr-FR,ar-SA,zh-CN,zh-TW,ar-MA (and the
-# commented-out entries in the frontend's MeetControls.jsx).
-_DEFAULT_ENABLED = "en-US,fr-FR,ar-SA"
+# The languages switched on, matching the language lists in the frontend's MeetControls.jsx.
+# Chinese is off for now; add it back with MAWIID_LANGUAGES=en-US,fr-FR,ar-SA,ar-MA,zh-CN,zh-TW
+# (and the commented-out entries in MeetControls.jsx).
+_DEFAULT_ENABLED = "en-US,fr-FR,ar-SA,ar-MA"
 
 
 def _enabled_languages() -> dict[str, Language]:
@@ -48,8 +56,10 @@ ALL_ROUTES: dict[str, list[str]] = {
     "ar-SA": ["voxtral", "whisper"],
     "zh-CN": ["voxtral", "whisper"],
     "zh-TW": ["voxtral", "whisper"],
-    # Stock Whisper only as a last resort: it hears Darija as Arabic and misses most dialect words.
-    "ar-MA": ["whisper-darija", "whisper"],
+    # Stock Whisper first so the language is still detected; it hands Arabic phrases to the
+    # Darija model when that is loaded (WhisperEngine.dialect_engine). The Darija model alone
+    # is the backup.
+    "ar-MA": ["whisper", "whisper-darija"],
 }
 DEFAULT_ROUTES: dict[str, list[str]] = {code: route for code, route in ALL_ROUTES.items() if code in LANGUAGES}
 
@@ -119,5 +129,9 @@ class SttSettings:
     vad: VadSettings = field(default_factory=VadSettings)
     whisper: WhisperSettings = field(default_factory=WhisperSettings)
     darija: WhisperSettings = field(default_factory=_darija_settings)
+    # Send every Arabic phrase to the Darija model and tell Darija from Standard Arabic by its
+    # words (stt/dialect.py). Costs about 4x the compute of Whisper small for Arabic speech on CPU.
+    # 0: Darija only for people who read captions in Darija, the rest of Arabic on stock Whisper.
+    detect_darija: bool = field(default_factory=lambda: _env("DETECT_DARIJA", "1") == "1")
     failover: FailoverSettings = field(default_factory=FailoverSettings)
     routes: dict[str, list[str]] = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_ROUTES.items()})

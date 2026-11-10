@@ -8,12 +8,13 @@ import * as icons from '../../../assets/icons';
 const LANGUAGE_CODES = {
     English: 'en',
     Arabic: 'ar',
-    // 'Darija (Moroccan Arabic)': 'ar-MA',
+    'Darija (Moroccan Arabic)': 'ar-MA',
     French: 'fr',
     // 'Chinese (Simplified)': 'zh-CN',
     // 'Chinese (Traditional)': 'zh-TW',
 };
-// The worker detects the language each person speaks, so only the caption language is picked.
+// The worker detects the language each person speaks, Darija included, so only the
+// caption language is picked.
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮'];
 
 export default function MeetControls({ fullScreen, setFullScreen, micOn = false, camOn = false, handRaised = false, language = '', onMicToggle, onCamToggle, onScreenShareToggle, onHandToggle, translationEnabled = false, onTranslationToggle, onLanguageChange, onReaction, onLeave, roomCode = '' })

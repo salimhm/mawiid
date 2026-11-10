@@ -159,6 +159,12 @@ def test_languages_switched_off_map_to_what_is_on(monkeypatch):
     assert mawiid_language("zh") is None
 
 
+def test_darija_is_its_own_language_when_enabled(monkeypatch):
+    monkeypatch.setattr(pipeline, "LANGUAGES", {code: ALL_LANGUAGES[code] for code in ("en-US", "fr-FR", "ar-SA", "ar-MA")})
+    assert mawiid_language("ar-MA") == "ar-MA"
+    assert mawiid_language("ar") == "ar-SA"
+
+
 def test_original_goes_only_to_readers_of_the_spoken_language_and_partial_and_final_share_a_segment():
     room = Room()
     room.pipeline.set_language("user_1", "fr")

@@ -24,7 +24,7 @@ AI_MODELS ?= 1
 # Darija is switched off (services/ai/README.md); convert its model by hand when turning it back on.
 AI_MODEL_FILES := $(AI)/data/models/madlad400-3b-mt-ct2/model.bin
 
-.PHONY: setup seed-if-missing ai-models certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
+.PHONY: setup seed-if-missing ai-models ai-models-darija certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
         tokens typecheck build test-unit test-ai check smoke test clean
 
 help: ## Show this help
@@ -60,6 +60,13 @@ ai-models: ## Convert the translation model if missing (large download, several 
 		cd $(AI) && .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu && \
 		.venv/bin/pip install -e ".[convert]" && \
 		.venv/bin/python scripts/convert_translation_model.py
+
+ai-models-darija: ## Convert the Darija speech model if missing (needed while ar-MA is on)
+	@if ls $(AI)/data/models/whisper-darija-ct2/model.bin >/dev/null 2>&1; then echo "Darija model is ready"; exit 0; fi; \
+		echo "Converting the Darija model. This runs once and takes a while."; \
+		cd $(AI) && .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu && \
+		.venv/bin/pip install -e ".[convert]" && \
+		.venv/bin/python scripts/convert_darija_model.py --model turbo
 
 # ---------------------------------------------------------------- infrastructure
 
