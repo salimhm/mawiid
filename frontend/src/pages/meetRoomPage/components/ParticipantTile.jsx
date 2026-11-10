@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as icons from '../../../assets/icons'
-import { participantColor } from '../../../lib/participantColor'
 
-export default function ParticipantTile({ name, stream, isCamOn, isMicOn, handRaised, id })
+export default function ParticipantTile({ name, stream, isCamOn, isMicOn, handRaised, color })
 {
     const videoElement = useRef(null)
 
@@ -15,7 +14,7 @@ export default function ParticipantTile({ name, stream, isCamOn, isMicOn, handRa
             videoElement.current.srcObject = null
     }, [stream, isCamOn])
 
-    const gradient = participantColor(id || 'default').gradient
+    const gradient = color?.gradient || 'from-slate-400 via-slate-600 to-slate-900'
     const showVideo = isCamOn && stream
 
     return (

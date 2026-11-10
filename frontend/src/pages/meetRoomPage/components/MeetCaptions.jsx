@@ -10,7 +10,7 @@ const STICK_THRESHOLD = 24
 // the reader has scrolled up to read an earlier one.
 // The box takes its own room below the video tiles: while `open` it slides open and the
 // tiles shrink with it, so it never covers anyone. In full screen it floats over the video.
-export default function MeetCaptions({ captions = [], open = false, fullScreen = false })
+export default function MeetCaptions({ captions = [], open = false, fullScreen = false, colorOf = participantColor })
 {
     const listRef = useRef(null)
     const [following, setFollowing] = useState(true)
@@ -71,7 +71,7 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
                     )}
                     {captions.map((caption) => (
                         <p key={caption.id} className='text-sm sm:text-lg leading-snug'>
-                            <span className={`font-semibold ${participantColor(caption.speakerId).text}`}>{caption.speaker}: </span>
+                            <span className={`font-semibold ${colorOf(caption.speakerId).text}`}>{caption.speaker}: </span>
                             <span dir='auto' className={caption.final && !caption.foreign ? '' : 'text-white/70 italic'}>{caption.text}</span>
                         </p>
                     ))}

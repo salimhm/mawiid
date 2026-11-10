@@ -2,9 +2,10 @@ import MeetHeader from './components/MeetHeader'
 import MeetMain from './components/MeetMain'
 import MeetControls from './components/MeetControls'
 import MeetCaptions from './components/MeetCaptions'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useRoom } from '../../hooks/useRoom'
+import { assignParticipantColors } from '../../lib/participantColor'
 
 const STATUS_MESSAGES = {
     connecting: 'Joining the mawiid…',
@@ -33,6 +34,10 @@ export default function MeetRoomPage() {
 
     const [fullScreen, setFullScreen] = useState(false)
     const { notice, clearNotice } = room
+    const colorOf = useMemo(
+        () => assignParticipantColors([room.localUser, ...room.participants]),
+        [room.localUser, room.participants],
+    )
 
     useEffect(() => {
         if (!notice)
@@ -73,8 +78,9 @@ export default function MeetRoomPage() {
                 localUser={room.localUser}
                 participants={room.participants}
                 fullScreen={fullScreen}
+                colorOf={colorOf}
             />
-            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} fullScreen={fullScreen} />
+            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} fullScreen={fullScreen} colorOf={colorOf} />
             <MeetControls
                 fullScreen={fullScreen}
                 setFullScreen={setFullScreen}

@@ -204,6 +204,8 @@ export function useRoom(roomUid, {
         return {
             id: participant.identity,
             userId: userIdOf(participant.identity, attributes),
+            // Same on every client: orders people for their tile/caption color.
+            joinedAt: participant.joinedAt?.getTime() || 0,
             name: isLocal ? `${participant.name || 'You'} (You)` : participant.name || participant.identity,
             role: attributes[ATTRIBUTE.role] || '',
             language: attributes[ATTRIBUTE.language] || '',
