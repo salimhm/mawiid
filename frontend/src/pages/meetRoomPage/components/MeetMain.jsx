@@ -1,47 +1,54 @@
+
 import ParticipantTile from './ParticipantTile'
 import { participantColor } from '../../../lib/participantColor'
 
-export default function MeetMain({ localUser = {}, participants = [], fullScreen = false, colorOf = participantColor })
-{
-    const allUsers = [localUser, ...participants]
-    const count = Math.max(allUsers.length, 1)
-    const columns = Math.ceil(Math.sqrt(count))
-    const rows = Math.ceil(count / columns)
+export default function MeetMain({
+  localUser = {},
+  participants = [],
+  fullScreen = false,
+  colorOf = participantColor,
+}) {
+  const users = [
+    { ...localUser, isLocal: true },
+    ...participants.map((participant) => ({
+      ...participant,
+      isLocal: false,
+    })),
+  ].filter((person) => person.id || person.userId || person.name)
 
-    const isSingleUser = count === 1
-    const isTwoUsers = count === 2
+  const count = users.length
 
-    return (
-        <main className={fullScreen ? 'flex-1 h-screen bg-black py-4 sm:py-8 lg:py-16 px-2 sm:px-6 lg:px-8 mt-0 min-h-0' : 'flex-1 bg-black py-2 sm:py-4 px-2 sm:px-6 md:px-12 lg:px-20 mt-1 sm:mt-4 min-h-0'}>
-            <div
-                className={`grid h-full w-full gap-2 sm:gap-4 ${
-                    isSingleUser
-                        ? 'grid-cols-1 grid-rows-1'
-                        : isTwoUsers
-                        ? 'grid-cols-1 sm:grid-cols-2'
-                        : `grid-cols-1 sm:grid-cols-2 lg:grid-cols-${columns}`
-                }`}
-                style={
-                    !isSingleUser && !isTwoUsers
-                        ? {
-                              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                              gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
-                          }
-                        : undefined
-                }
-            >
-                {allUsers.map((user, i) => (
-                    <ParticipantTile
-                        key={user.id || i}
-                        color={colorOf(user.id || 'local')}
-                        name={user.name || 'Guest'}
-                        stream={user.stream || null}
-                        isCamOn={user.isCamOn || false}
-                        isMicOn={user.isMicOn || false}
-                        handRaised={user.handRaised || false}
-                    />
-                ))}
-            </div>
-        </main>
-    )
+  const layout_class =
+    count === 1
+      ? 'w-full min-h-0 grid grid-cols-1 grid-rows-1'
+      : count === 2
+        ? 'w-full min-h-0 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 gap-2.5 md:gap-5'
+        : 'w-full min-h-0 grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] auto-rows-[minmax(220px,1fr)] md:auto-rows-[minmax(280px,1fr)] gap-2.5 md:gap-4'
+
+  const stage_class = [
+    'flex-1 min-h-0 w-full flex',
+    'px-[clamp(8px,2vw,16px)] md:px-[clamp(12px,2.5vw,40px)]',
+    fullScreen
+      ? 'pt-[66px] pb-[82px] md:pt-[76px] md:pb-[92px]'
+      : 'pt-[6px] pb-[12px] md:pt-[10px] md:pb-[18px]',
+  ].join(' ')
+
+  return (
+    <main className={stage_class}>
+      <div className={layout_class}>
+        {users.map((user, index) => (
+          <ParticipantTile
+            key={user.id || user.userId || index}
+            color={colorOf(user.id)}
+            name={user.name || (user.isLocal ? 'You' : 'Guest')}
+            stream={user.stream || null}
+            isCamOn={Boolean(user.isCamOn)}
+            isMicOn={Boolean(user.isMicOn)}
+            handRaised={Boolean(user.handRaised)}
+            isLocal={Boolean(user.isLocal)}
+          />
+        ))}
+      </div>
+    </main>
+  )
 }

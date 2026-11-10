@@ -1,4 +1,4 @@
 webhook:
   api_key: devkey
   urls:
-    - http://localhost:3000/webhook/livekit
+    - http://host.docker.internal:3000/webhook/livekit
