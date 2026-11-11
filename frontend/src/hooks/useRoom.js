@@ -584,11 +584,15 @@ export function useRoom(roomUid, {
     // what you read doesn't change how you are heard.
     // The worker sends the recent captions again in the new language, so the old ones are
     // cleared rather than left in the previous language and direction.
+    // Picking a language means wanting captions in it, so captions are switched on too.
     const setLanguage = useCallback((language) => {
         pickedLanguageRef.current = language
         setCaptions([])
-        return updateSelf({ participant_language: language })
-    }, [updateSelf])
+        if (localUser.translationEnabled)
+            return updateSelf({ participant_language: language })
+        localStorage.setItem(CAPTIONS_KEY, 'true')
+        return updateSelf({ participant_language: language, participant_translation_enabled: true })
+    }, [updateSelf, localUser.translationEnabled])
 
     const toggleTranslation = useCallback(() => {
         const enabled = !localUser.translationEnabled

@@ -6,7 +6,7 @@ import html
 import re
 
 from mawiid_ai.stt.config import ALL_LANGUAGES as LANGUAGES
-from mawiid_ai.stt.postprocess import normalize_script
+from mawiid_ai.stt.postprocess import collapse_repeats, normalize_script
 
 # MADLAD learned Moses-escaped text: "n &apos; a" for "n'a".
 _SPACED_APOSTROPHE = re.compile(r"\s*&apos;\s*")
@@ -17,7 +17,7 @@ _FULL_WIDTH = str.maketrans({",": "，", "?": "？", "!": "！", ":": "：", ";"
 
 def clean_translation(text: str, language: str) -> str:
     text = html.unescape(_SPACED_APOSTROPHE.sub("'", text))
-    text = " ".join(text.split())
+    text = collapse_repeats(text)
     if language in LANGUAGES and LANGUAGES[language].model_code == "zh":
         text = _CHINESE_THEN_PUNCTUATION.sub(lambda m: m.group().translate(_FULL_WIDTH), text)
     return normalize_script(text, language)

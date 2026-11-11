@@ -16,6 +16,7 @@ from mawiid_ai.stt.config import LANGUAGES
 from mawiid_ai.stt.router import CircuitBreaker, Clock
 from mawiid_ai.translation.base import Subtitle, TranslationEngine, TranslationError
 from mawiid_ai.translation.config import TranslationSettings
+from mawiid_ai.translation.darija import prepare_source
 from mawiid_ai.translation.postprocess import clean_translation
 
 PASSTHROUGH = "passthrough"
@@ -56,7 +57,9 @@ class SubtitleTranslator:
         engine = PASSTHROUGH
         if groups:
             representatives = [listeners[0] for listeners in groups.values()]
-            outputs, engine = self._translate(text, transcript.language, representatives)
+            # Darija is rewritten toward Standard Arabic first; the original is kept for passthrough.
+            source = prepare_source(text, transcript.language)
+            outputs, engine = self._translate(source, transcript.language, representatives)
             for listeners, output in zip(groups.values(), outputs):
                 translated.update(dict.fromkeys(listeners, output))
 

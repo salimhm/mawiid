@@ -19,7 +19,7 @@ function turnDirection(turn) {
 
 // At most this many characters of a speaker's line are shown, like TV subtitles: the
 // latest words stay, older ones drop off the front. The full text stays in the transcript.
-const CAPTION_VISIBLE_CHARS = 100
+const CAPTION_VISIBLE_CHARS = 200
 
 // The latest pieces of a turn that fit in CAPTION_VISIBLE_CHARS (the spaces between them
 // count). The oldest piece shown may be cut, at the start of a word when it has spaces.
