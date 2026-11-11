@@ -1,28 +1,33 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import GlassSurface from '../../../components/GlassSurface'
+import { copyText } from '../../../lib/utils'
 import * as icons from '../../../assets/icons'
+import { BiGridAlt, BiUserVoice } from 'react-icons/bi'
 
 // The languages the AI translation worker handles (services/ai/README.md).
 const LANGUAGE_CODES = {
   English: 'en',
   Arabic: 'ar',
-  // 'Darija (Moroccan Arabic)': 'ar-MA',
+  'Darija (Moroccan Arabic)': 'ar-MA',
   French: 'fr',
   // 'Chinese (Simplified)': 'zh-CN',
   // 'Chinese (Traditional)': 'zh-TW',
 }
+// The worker detects the language each person speaks, Darija included, so only the
+// caption language is picked.
 
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮']
 
 export default function MeetControls({
   fullScreen,
   setFullScreen,
+  layout = 'grid',
+  onLayoutChange,
   micOn = false,
   camOn = false,
   handRaised = false,
   language = '',
-  spokenLanguage = '',
   onMicToggle,
   onCamToggle,
   onScreenShareToggle,
@@ -30,7 +35,6 @@ export default function MeetControls({
   translationEnabled = false,
   onTranslationToggle,
   onLanguageChange,
-  onSpokenLanguageChange,
   onReaction,
   onLeave,
   roomCode = '',
@@ -41,7 +45,6 @@ export default function MeetControls({
   const [copied, set_copied] = useState(false)
   const [menu_pos, set_menu_pos] = useState({ x: 0, y: 0 })
   const [picked_language, set_picked_language] = useState('')
-  const [picked_spoken_language, set_picked_spoken_language] = useState('')
 
   const navigate = useNavigate()
   const languages = Object.keys(LANGUAGE_CODES)
@@ -50,7 +53,6 @@ export default function MeetControls({
     languages.find((name) => LANGUAGE_CODES[name] === code.split('-')[0]) ||
     'English'
   const curr_language = picked_language || language_name(language)
-  const curr_spoken_language = picked_spoken_language || language_name(spokenLanguage || language)
   const room_id = roomCode
 
   useEffect(() => {
@@ -94,56 +96,10 @@ export default function MeetControls({
     onLanguageChange?.(LANGUAGE_CODES[name])
   }
 
-  const handle_spoken_language_change = (name) => {
-    set_picked_spoken_language(name)
-    onSpokenLanguageChange?.(LANGUAGE_CODES[name])
-  }
-
-  const language_section = (title, current, on_pick) => (
-    <>
-      <div className='px-4 py-2 border-b border-white/24 text-sm sm:text-base text-white bg-white/20 flex items-center gap-2 font-medium'>
-        {icons.translateIcon(24, 24, 1)} {title}
-      </div>
-      {languages.map((name) => (
-        <button
-          key={name}
-          type='button'
-          className={
-            name === current
-              ? 'w-full py-2 hover:bg-white/40 border-white/20 border-b text-white font-semibold text-sm sm:text-base bg-blue-600/50 cursor-default'
-              : 'w-full py-2 hover:bg-white/10 border-white/20 border-b text-sm sm:text-base cursor-pointer'
-          }
-          onClick={() => on_pick(name)}
-        >
-          {name}
-        </button>
-      ))}
-    </>
-  )
-
-  const copy_to_clipboard = async (text) => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-      return
-    }
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.style.position = 'fixed'
-    textarea.style.left = '-9999px'
-    textarea.style.top = '0'
-    textarea.setAttribute('readonly', '')
-    document.body.appendChild(textarea)
-    textarea.select()
-    textarea.setSelectionRange(0, textarea.value.length)
-    const success = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    if (!success) throw new Error('Copy failed')
-  }
-
   const handle_copy_click = async () => {
     if (!room_id) return
     try {
-      await copy_to_clipboard(room_id)
+      await copyText(room_id)
       set_copied(true)
       setTimeout(() => set_copied(false), 1500)
     } catch (error) {
@@ -225,9 +181,11 @@ export default function MeetControls({
                 <button
                   type='button'
                   onClick={handle_translate_click}
-                  aria-label='Select language'
-                  title='Your language'
-                  className='w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-white transition hover:scale-110 active:scale-90 cursor-pointer rounded-full hover:text-white/80'
+                  aria-label='Captions and translation'
+                  title='Captions and translation'
+                  className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center transition hover:scale-110 active:scale-90 cursor-pointer rounded-full ${
+                    translationEnabled ? 'text-red-400' : 'text-white hover:text-white/80'
+                  }`}
                 >
                   <span className='hidden sm:inline'>{icons.translateIcon(22, 22, 2)}</span>
                   <span className='sm:hidden'>{icons.translateIcon(17, 17, 2)}</span>
@@ -294,7 +252,30 @@ export default function MeetControls({
           </GlassSurface>
         </div>
 
-        <div className='flex items-center justify-end min-w-0 pl-1'>
+        <div className='flex items-center justify-end gap-1.5 sm:gap-2 min-w-0 pl-1'>
+          {onLayoutChange && (
+            <GlassSurface
+              width='auto'
+              height='auto'
+              borderRadius={999}
+              backgroundOpacity={0.12}
+              blur={12}
+              className='shadow-lg shrink-0'
+            >
+              <button
+                type='button'
+                onClick={() => onLayoutChange(layout === 'speaker' ? 'grid' : 'speaker')}
+                title={layout === 'speaker' ? 'Show everyone in a grid' : 'Feature whoever is talking'}
+                aria-label={layout === 'speaker' ? 'Switch to grid layout' : 'Switch to speaker layout'}
+                className='text-white p-1.5 sm:p-2 hover:scale-110 active:scale-90 transition cursor-pointer flex items-center justify-center'
+              >
+                {/* The icon shows the layout a click switches to. */}
+                {layout === 'speaker'
+                  ? <BiGridAlt className='w-4 h-4 sm:w-5 sm:h-5' />
+                  : <BiUserVoice className='w-4 h-4 sm:w-5 sm:h-5' />}
+              </button>
+            </GlassSurface>
+          )}
           <GlassSurface
             width='auto'
             height='auto'
@@ -341,8 +322,23 @@ export default function MeetControls({
               {translationEnabled ? 'On' : 'Off'}
             </span>
           </button>
-          {language_section('I speak', curr_spoken_language, handle_spoken_language_change)}
-          {language_section('Show captions in', curr_language, handle_language_change)}
+          <div className='px-4 py-2 border-b border-white/24 text-sm sm:text-base text-white bg-white/20 flex items-center gap-2 font-medium'>
+            {icons.translateIcon(24, 24, 1)} Show captions in
+          </div>
+          {languages.map((language_name) => (
+            <button
+              key={language_name}
+              type='button'
+              className={
+                language_name === curr_language
+                  ? 'w-full py-2 hover:bg-white/40 border-white/20 border-b last:border-b-0 text-white font-semibold text-sm sm:text-base bg-blue-600/50 cursor-default'
+                  : 'w-full py-2 hover:bg-white/10 border-white/20 border-b last:border-b-0 text-sm sm:text-base cursor-pointer'
+              }
+              onClick={() => handle_language_change(language_name)}
+            >
+              {language_name}
+            </button>
+          ))}
         </div>
       )}
 

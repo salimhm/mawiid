@@ -1,7 +1,9 @@
 """Live captions for one room: each speaker's audio goes through speech-to-text, and each
 phrase is translated once per language the listeners picked.
 
-Listeners who read the spoken language get the transcript. The others get only translations:
+Speakers on "auto" (the default) have the language of each phrase detected, starting from the
+language they read; a speaker who picked a language is always transcribed in it. Every result
+carries its own language. Listeners who read that language get the transcript. The others get only translations:
 - while someone talks, the words two partial transcripts in a row agree on are translated, so
   the subtitle grows with the speech without flickering;
 - a final that ends mid-sentence (a pause, or the 6 s cut) stays open: the next phrase is
@@ -17,6 +19,7 @@ import asyncio
 import logging
 import time
 import uuid
+from collections import deque
 from collections.abc import AsyncIterable, Awaitable, Callable
 from dataclasses import dataclass, replace
 
@@ -35,7 +38,8 @@ TRACK_ATTRIBUTE = "lk.transcribed_track_id"
 FINAL_ATTRIBUTE = "lk.transcription_final"
 LANGUAGE_ATTRIBUTE = "mawiid.language"  # the language someone reads captions in
 TRANSLATION_ATTRIBUTE = "mawiid.translation_enabled"  # "true" when someone wants captions
-SPOKEN_LANGUAGE_ATTRIBUTE = "mawiid.spoken_language"  # the language someone speaks; defaults to the above
+SPOKEN_LANGUAGE_ATTRIBUTE = "mawiid.spoken_language"  # the language someone speaks, or AUTO
+AUTO = "auto"  # detect the language of each phrase (also when no spoken language is set)
 
 DEFAULT_LANGUAGE = "en-US"  # backend default for accounts without user_language
 OPEN_RETRY_S = 5.0
@@ -46,6 +50,8 @@ MIN_NEW_WORDS = 2
 HOLD_S = 1.5
 # ...or once it is this long, for speech that never gets a full stop.
 MAX_HELD_CHARS = 300
+# Subtitles re-sent, in the new language, to someone who changes the language they read.
+HISTORY_SUBTITLES = 8
 _SENTENCE_END = (".", "!", "?", "؟", "…", "。", "！", "？")
 _CLOSING_MARKS = "\"'»”’)]"
 
@@ -111,15 +117,26 @@ class Segment:
     translations: dict[str, str]
 
 
+@dataclass(frozen=True, slots=True)
+class _Sent:
+    """A closed subtitle, kept to re-send it to someone who changes their language."""
+
+    unit_id: str
+    track_sid: str
+    transcript: Transcript
+
+
 class _Speaker:
     def __init__(self, identity: str, track_sid: str) -> None:
         self.identity = identity
         self.track_sid = track_sid
         self.stream: SttStream | None = None
         self.language = ""
+        self.detect = True
         self.offset = 0.0  # pipeline time when the stream started; stream timestamps count from here
         self.retry_at = 0.0
         self.segment_id: str | None = None  # shared by a phrase's partials and its final
+        self.segment_language = ""  # the language the phrase's captions were sent in
         self.translating: asyncio.Task[None] | None = None  # translations run one after another
         self.version = 0  # bumped by every translation queued; older live ones are then skipped
         # Live translation of the phrase being spoken.
@@ -154,21 +171,60 @@ class RoomPipeline:
         # Everyone in the room, by identity: the language they read.
         # None: a language no model handles, so they only get the originals.
         self._languages: dict[str, str | None] = {}
-        # The language they speak, when they picked one; otherwise the one they read.
+        # The language they speak, when they picked one. None: detected, starting from the one they read.
         self._spoken_languages: dict[str, str | None] = {}
         # Who switched captions on. Nobody: nothing is transcribed, sent or saved.
         self._captions: set[str] = set()
+        self._history: deque[_Sent] = deque(maxlen=HISTORY_SUBTITLES)
+        self._resending: dict[str, asyncio.Task[None]] = {}
 
     def set_language(self, identity: str, code: str | None, spoken_code: str | None = None) -> None:
         """Record a participant's language attributes; a speaker's stream follows the spoken one."""
         language = mawiid_language(code)
         if language is None and code:
             log.warning("%s picked %r, which no model handles: originals only", identity, code)
-        spoken = mawiid_language(spoken_code)
-        if spoken is None and spoken_code:
+        spoken = None if spoken_code == AUTO else mawiid_language(spoken_code)
+        if spoken is None and spoken_code and spoken_code != AUTO:
             log.warning("%s speaks %r, which no model handles", identity, spoken_code)
+        changed = identity in self._languages and self._languages[identity] != language
         self._languages[identity] = language
         self._spoken_languages[identity] = spoken
+        if changed and language is not None and identity in self._captions and self._history:
+            self._resend_history(identity, language)
+
+    def _resend_history(self, identity: str, language: str) -> None:
+        """Send the recent subtitles again in the language someone just picked: what they read
+        so far would otherwise stay in the old language (and direction) on their screen."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # not in the worker's event loop (tests calling set_language directly)
+        previous = self._resending.pop(identity, None)
+        if previous is not None:
+            previous.cancel()  # they changed again: only the latest language matters
+        task = loop.create_task(self._send_history(identity, language, list(self._history)))
+        self._resending[identity] = task
+        task.add_done_callback(lambda done: self._resending.pop(identity, None) if self._resending.get(identity) is done else None)
+
+    async def _send_history(self, identity: str, language: str, history: list[_Sent]) -> None:
+        for sent in history:
+            transcript = sent.transcript
+            attributes = {
+                SEGMENT_ATTRIBUTE: sent.unit_id,
+                TRACK_ATTRIBUTE: sent.track_sid,
+                FINAL_ATTRIBUTE: "true",
+            }
+            text, topic, shown = transcript.text, TRANSCRIPTION_TOPIC, transcript.language
+            if self._translator is not None and transcript.language != language:
+                try:
+                    subtitles = await asyncio.to_thread(self._translator.translate, transcript, [language])
+                except Exception:
+                    log.exception("re-translating for %s failed", identity)
+                    subtitles = []
+                for subtitle in subtitles:
+                    if subtitle.language == language:
+                        text, topic, shown = subtitle.text, TRANSLATION_TOPIC, language
+            await self._send(text, topic, {**attributes, LANGUAGE_ATTRIBUTE: shown}, [identity])
 
     def set_captions(self, identity: str, enabled: bool) -> None:
         """Record a participant's own captions switch."""
@@ -181,6 +237,9 @@ class RoomPipeline:
         self._captions.discard(identity)
         self._languages.pop(identity, None)
         self._spoken_languages.pop(identity, None)
+        task = self._resending.pop(identity, None)
+        if task is not None:
+            task.cancel()
 
     def listeners(self) -> dict[str, list[str]]:
         """Identities with captions on, per Mawiid language."""
@@ -209,10 +268,12 @@ class RoomPipeline:
                 if not self._captions:
                     await self._close(speaker)
                     continue
-                language = self._spoken_languages.get(identity) or self._languages.get(identity) or DEFAULT_LANGUAGE
-                if speaker.stream is not None and speaker.language != language:
+                picked = self._spoken_languages.get(identity)
+                language = picked or self._languages.get(identity) or DEFAULT_LANGUAGE
+                detect = picked is None
+                if speaker.stream is not None and (speaker.language, speaker.detect) != (language, detect):
                     await self._close(speaker)  # finish the current phrase in the old language
-                if speaker.stream is None and not await self._open(speaker, language):
+                if speaker.stream is None and not await self._open(speaker, language, detect):
                     continue
                 await self._feed(speaker, lambda stream: stream.push_audio(chunk))
         finally:
@@ -220,16 +281,16 @@ class RoomPipeline:
             if speaker.translating is not None:
                 await speaker.translating
 
-    async def _open(self, speaker: _Speaker, language: str) -> bool:
+    async def _open(self, speaker: _Speaker, language: str, detect: bool) -> bool:
         if self._clock() < speaker.retry_at:
             return False
         try:
-            speaker.stream = await asyncio.to_thread(self._router.open_stream, language)
+            speaker.stream = await asyncio.to_thread(self._router.open_stream, language, detect)
         except Exception:
             log.exception("could not open speech-to-text for %s (%s)", speaker.identity, language)
             speaker.retry_at = self._clock() + OPEN_RETRY_S
             return False
-        speaker.language = language
+        speaker.language, speaker.detect = language, detect
         speaker.offset = self._clock() - self._started
         return True
 
@@ -261,8 +322,15 @@ class RoomPipeline:
     async def _emit(self, speaker: _Speaker, result: Transcript) -> None:
         if not self._captions:
             return
+        if speaker.segment_id is not None and speaker.segment_language != result.language:
+            # The final heard another language than the partials: other people get it, so it starts
+            # a caption of its own instead of replacing a partial they never saw.
+            speaker.segment_id = None
+        if speaker.held_segments and speaker.held_segments[-1][1].language != result.language:
+            self._close_unit(speaker)  # the speaker switched language: a new subtitle starts
         if speaker.segment_id is None:
             speaker.segment_id = f"SG_{uuid.uuid4().hex[:12]}"
+            speaker.segment_language = result.language
         segment_id = speaker.segment_id
         final = result.kind is ResultKind.FINAL
         if final:
@@ -346,6 +414,7 @@ class RoomPipeline:
             return
         first, last = segments[0][1], segments[-1][1]
         unit = Transcript(ResultKind.FINAL, text, last.language, first.start, last.end, last.engine)
+        self._history.append(_Sent(attributes[SEGMENT_ATTRIBUTE], speaker.track_sid, unit))
         self._queue(speaker, unit, attributes, segments)
 
     def _queue(

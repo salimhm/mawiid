@@ -318,7 +318,7 @@ Returns `404 participant-not-found` if the target isn't connected and no `block_
   "participant_hand_raised": true, // optional
   "participant_translation_enabled": true, // optional, this participant's own live captions
   "participant_language": "fr", // optional, the language captions are shown in, e.g. "ar", "en-US"
-  "participant_spoken_language": "ar-MA" // optional, the language speech is transcribed in; defaults to participant_language
+  "participant_spoken_language": "ar" // optional, the language speech is always transcribed in, or "auto" (the default when unset): the language of each phrase is detected, starting from participant_language
 }
 ```
 

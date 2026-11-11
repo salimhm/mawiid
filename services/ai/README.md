@@ -18,11 +18,13 @@ for chunk in audio_chunks:               # int16 bytes/array or float32, any chu
 stream.flush()                           # speaker left: finalize what's buffered
 ```
 
-Languages switched on: `en-US`, `fr-FR`, `ar-SA`. The code also handles `zh-CN`, `zh-TW` (same Mandarin audio; the text is converted to the chosen script) and `ar-MA` (Darija, see below), but they are off for now. `MAWIID_LANGUAGES` picks the languages (default `en-US,fr-FR,ar-SA`); to turn the others back on, set `MAWIID_LANGUAGES=en-US,fr-FR,ar-SA,zh-CN,zh-TW,ar-MA`, uncomment them in the frontend's `MeetControls.jsx`, and for Darija convert its model (below). While a language is off, a listener who picks it reads the original text, and a speaker who picks `ar-MA` is transcribed as `ar-SA`. Their tests are skipped.
+Languages switched on: `en-US`, `fr-FR`, `ar-SA` and `ar-MA` (Darija, see below). The code also handles `zh-CN` and `zh-TW` (same Mandarin audio; the text is converted to the chosen script), but they are off for now. `MAWIID_LANGUAGES` picks the languages (default `en-US,fr-FR,ar-SA,ar-MA`); to turn Chinese back on, set `MAWIID_LANGUAGES=en-US,fr-FR,ar-SA,ar-MA,zh-CN,zh-TW` and uncomment it in the frontend's `MeetControls.jsx`. While a language is off, a listener who picks it reads the original text, and a speaker who picks `ar-MA` is transcribed as `ar-SA`. Their tests are skipped. At startup the worker logs the engines each language is transcribed with (`stt route ar-MA: whisper-darija, whisper`).
 
 ### Darija (`ar-MA`)
 
-Stock Whisper hears Darija as Arabic and misses most dialect words, so `ar-MA` routes to a Darija-tuned Whisper first (`whisper-darija`), with stock Whisper as the backup. The model is converted once per machine into `data/models/whisper-darija-ct2` (needs the same `convert` extras as the translation model):
+Darija is detected automatically. Whisper's language detection reports one `"ar"` for Standard Arabic and Darija, so the words decide instead (`stt/dialect.py`): every Arabic phrase is transcribed by the Darija model, which also writes Standard Arabic, and one Darija-only word (ديال, واش, بزاف, دابا...) labels the speaker `ar-MA`. They go back to `ar-SA` after three phrases of six words or more without any. Stock Whisper still detects English, French or Arabic for each phrase, so `ar-MA` routes to stock Whisper first, which hands its Arabic phrases to the Darija model, and to the Darija model alone as the backup. A speaker whose `mawiid.spoken_language` is set keeps that label; their Arabic phrases still go to the Darija model. Measured on 12 Standard Arabic clips (FLEURS) and 24 Darija clips (DVoice, adiren7): no Standard Arabic clip had a Darija word; Darija was found in 12 of 12 long clips (~28 s) and 7 of 12 short phrases (~4 s), and the speaker then stays on Darija. The Darija model brings Darija error (CER) from 63% to 35% on the long clips, but is a little worse than `small` on Standard Arabic (14% against 11%), and takes about 0.9 s of CPU per second of speech against 0.2 s for `small`. On a weak CPU, `MAWIID_STT_DETECT_DARIJA=0` turns detection off: then only people who read captions in Darija are transcribed with the Darija model, and other Arabic stays on stock Whisper.
+
+Stock Whisper hears Darija as Arabic and misses most dialect words, so Arabic goes to a Darija-tuned Whisper (`whisper-darija`). The model is converted once per machine into `data/models/whisper-darija-ct2` (needs the same `convert` extras as the translation model):
 
 ```sh
 .venv/bin/python scripts/convert_darija_model.py --model turbo    # anaszil/whisper-large-v3-turbo-darija (MIT)
@@ -30,7 +32,7 @@ Stock Whisper hears Darija as Arabic and misses most dialect words, so `ar-MA` r
 MAWIID_STT_DARIJA_MODEL=data/models/whisper-darija-medium-ct2 ...  # pick another conversion
 ```
 
-Only needed while `ar-MA` is switched on; `make ai-models` no longer converts it. Without a converted model the engine is skipped, the worker logs a warning and Darija goes to stock Whisper. Output is Arabic script. Test clips come from DVoice v2.0 and adiren7/darija_speech_to_text (`fetch_samples.py --languages ar-MA`); the benchmark scores each source separately and also reports CER, because Darija has no standard spelling and WER counts every spelling variant as an error.
+`make ai-models-darija` runs the `turbo` conversion if the model is missing. Without a converted model the engine is skipped, the worker logs an error and Darija goes to stock Whisper, which transcribes it as Standard Arabic. Output is Arabic script. Test clips come from DVoice v2.0 and adiren7/darija_speech_to_text (`fetch_samples.py --languages ar-MA`); the benchmark scores each source separately and also reports CER, because Darija has no standard spelling and WER counts every spelling variant as an error.
 
 ### How it works
 
@@ -39,7 +41,9 @@ Only needed while `ar-MA` is switched on; `make ai-models` no longer converts it
 - `router.py`: each language has an ordered engine list in `config.py` (`voxtral`, then `whisper`). Engines that aren't loaded are skipped. If the active engine crashes, or is too slow (above 3 s per call) while a backup exists, the stream switches engines and replays the audio since the last final, so no speech is lost. The failed engine is skipped by all streams for 60 s, then retried at the next phrase boundary.
 - `postprocess.py`: whitespace clean-up and Simplified/Traditional Chinese conversion (OpenCC).
 
-Settings live in `config.py`; the Whisper ones can be overridden with environment variables: `MAWIID_STT_WHISPER_MODEL` (default `small`), `MAWIID_STT_WHISPER_DEVICE` (`auto`/`cpu`/`cuda`), `MAWIID_STT_WHISPER_COMPUTE_TYPE`, `MAWIID_STT_WHISPER_CPU_THREADS`, `MAWIID_STT_PARTIALS` (`auto`/`1`/`0`; auto = only with a GPU, a CPU can't keep up), `MAWIID_STT_PARTIAL_INTERVAL_S`.
+Settings live in `config.py`; the Whisper ones can be overridden with environment variables: `MAWIID_STT_WHISPER_MODEL` (default `small`), `MAWIID_STT_WHISPER_DEVICE` (`auto`/`cpu`/`cuda`), `MAWIID_STT_WHISPER_COMPUTE_TYPE`, `MAWIID_STT_WHISPER_CPU_THREADS`, `MAWIID_STT_PARTIALS` (`auto`/`1`/`0`; auto = only with a GPU, a CPU can't keep up), `MAWIID_STT_PARTIAL_INTERVAL_S`, `MAWIID_STT_DETECT_LANGUAGE` (`1`/`0`, see below).
+
+**Language detection** (`MAWIID_STT_DETECT_LANGUAGE=1`, the default): Whisper detects the language of each phrase among the enabled ones (`MAWIID_LANGUAGES`). This applies to speakers on **I speak: Auto** in the app (the default, `mawiid.spoken_language` empty or `auto`), starting from the language they read captions in. A speaker who picks a language is always transcribed in it. A phrase switches language only when Whisper is at least 70% sure among the enabled languages, and phrases under 1 s keep the current language, so a stray "OK" doesn't flip it. Partials detect once per phrase (at their first second of audio) and the final checks again on the whole phrase. It costs one extra Whisper encoder pass per phrase (~0.4 s for `small` on a laptop CPU, much less on a GPU). `MAWIID_STT_DETECT_LANGUAGE=0` turns detection off for everyone: Auto then means the language they read.
 
 ### Setup and scripts
 
@@ -111,6 +115,10 @@ In each room it:
 4. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s). When finals were translated together, the translation is saved on the last of them.
 
 Whisper also gets the end of the speaker's previous phrase as a prompt (`MAWIID_STT_CONTEXT_CHARS`, default 200, `0` turns it off), so a phrase cut mid-sentence continues the sentence instead of getting a false full stop, and names keep their spelling.
+
+Arabic (`ar-SA`, `ar-MA`) gets no prompt, whatever `MAWIID_STT_CONTEXT_CHARS` says: on unsure dialect audio Whisper continues the prompt in Standard Arabic instead of transcribing, and each made-up phrase becomes the next prompt. Arabic segments whose average log probability stays below -1.0 after the temperature retries are also dropped (`Language.min_segment_logprob`). For every language, a final is dropped when it is longer than 15 characters plus 20 per second of audio (made up), or when it repeats the previous final word for word and is at least 20 characters long (Whisper looping over silence).
+
+Stock Whisper is trained mostly on Standard Arabic and `small` is weak in Arabic; use `MAWIID_STT_WHISPER_MODEL=medium` or `large-v3` for `ar-SA` when the machine can run it.
 
 Without the converted MADLAD model, step 3 is skipped and everyone gets captions in the spoken language. The topics and attributes are described in `apps/backend/src/module/main/participants/integration.md` (section 8). The code: `pipeline.py` (one room, no LiveKit code, tested with fakes in `tests/test_pipeline.py`), `uploader.py` (transcript batches), `worker.py` (LiveKit wiring). Rooms run as threads in one process, so every room shares the models loaded once.
 

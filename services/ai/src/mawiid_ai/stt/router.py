@@ -68,17 +68,19 @@ class SttRouter:
             if name in self.engines and self.engines[name].supports(language)
         ]
 
-    def open_stream(self, language: str) -> FailoverStream:
+    def open_stream(self, language: str, detect: bool = True) -> FailoverStream:
+        """``detect``: ``language`` is only the first guess; each phrase's language is detected."""
         chain = self.chain_for(language)
         if not chain:
             raise SttError(f"no speech-to-text engine loaded for {language}")
-        return FailoverStream(self, language, chain)
+        return FailoverStream(self, language, chain, detect)
 
 
 class FailoverStream(SttStream):
-    def __init__(self, router: SttRouter, language: str, chain: list[str]) -> None:
+    def __init__(self, router: SttRouter, language: str, chain: list[str], detect: bool = True) -> None:
         self._router = router
         self._language = language
+        self._detect = detect
         self._chain = chain
         self._max_replay = int(router.settings.max_replay_s * SAMPLE_RATE)
         # Audio since the last final result, as (start_sample, chunk).
@@ -195,7 +197,8 @@ class FailoverStream(SttStream):
         return True
 
     def _open(self, index: int, time_offset: float) -> SttStream:
-        return self._router.engines[self._chain[index]].open_stream(self._language, time_offset=time_offset)
+        engine = self._router.engines[self._chain[index]]
+        return engine.open_stream(self._language, time_offset=time_offset, detect=self._detect)
 
     def _first_available(self, start: int, required: bool = True, exclude: int | None = None) -> int | None:
         for i in range(start, len(self._chain)):

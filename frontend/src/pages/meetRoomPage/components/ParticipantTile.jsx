@@ -1,40 +1,6 @@
 import { useEffect, useRef } from 'react'
-import * as icons from '../../../assets/icons'
-import { BiSolidHand } from "react-icons/bi";
-import { BiSolidMicrophoneOff } from "react-icons/bi";
-
-const palettes = [
-  {
-    background: '#878C25',
-    accent: '#A8AD3B',
-    badge: 'rgba(65, 70, 15, 0.78)',
-  },
-  {
-    background: '#8D3221',
-    accent: '#C45A42',
-    badge: 'rgba(90, 28, 18, 0.82)',
-  },
-  {
-    background: '#245D68',
-    accent: '#398A99',
-    badge: 'rgba(18, 59, 67, 0.82)',
-  },
-  {
-    background: '#59427D',
-    accent: '#8969B7',
-    badge: 'rgba(47, 32, 72, 0.82)',
-  },
-  {
-    background: '#9A6429',
-    accent: '#D19343',
-    badge: 'rgba(92, 55, 17, 0.82)',
-  },
-  {
-    background: '#315D46',
-    accent: '#55966E',
-    badge: 'rgba(24, 62, 42, 0.82)',
-  },
-]
+import { BiSolidHand, BiSolidMicrophoneOff } from 'react-icons/bi'
+import { NEUTRAL_COLOR } from '../../../lib/participantColor'
 
 function initials(name = '') {
   return name
@@ -47,62 +13,22 @@ function initials(name = '') {
     .toUpperCase() || 'M'
 }
 
-const languageCodes = {
-  en: 'English',
-  ar: 'Arabic',
-  es: 'Spanish',
-  fr: 'French',
-  de: 'German',
-  it: 'Italian',
-  pt: 'Portuguese',
-  r: 'Russian',
-  'ar-MA': 'Arabic (Moroccan)',
-  'zh-CN': 'Chinese (Simplified)',
-  'zh-TW': 'Chinese (Traditional)',
-}
-
-function getPalette(id, colorIndex = 0) {
-  const value = String(id || colorIndex)
-
-  let hash = 0
-
-  for (let i = 0; i < value.length; i++) {
-    hash = (hash * 31 + value.charCodeAt(i)) >>> 0
-  }
-
-  return palettes[hash % palettes.length]
-}
-
-function LanguageDisplay({ language, palette }) {
-  const languageName = languageCodes[language] || language || 'Unknown'
-  const badge = palette?.badge
-
-  return (
-	<span
-		className="inline-flex items-center min-h-8 md:min-h-[38px] max-w-[min(70%,320px)] px-3 md:px-[18px] py-[7px] md:py-[9px] overflow-hidden rounded-full backdrop-blur-[12px] font-montserrat text-xs md:text-sm font-semibold text-ellipsis whitespace-nowrap"
-		style={{ background: badge }}
-	>
-		en : {languageName}
-    </span>
-  )
-}
-
 export default function ParticipantTile({
-  id,
   name,
   stream,
   isCamOn,
   isMicOn,
   handRaised,
-  language,
+  isSpeaking = false,
   isLocal = false,
   color,
+  // A small tile, in the strip beside a shared screen.
+  compact = false,
 }) {
   const videoElement = useRef(null)
   const showVideo = Boolean(stream && isCamOn)
-  const palette = getPalette(id, color)
+  const palette = color || NEUTRAL_COLOR
 
-  
   useEffect(() => {
     const video = videoElement.current
     if (!video) return
@@ -116,12 +42,20 @@ export default function ParticipantTile({
 
   return (
     <section
-      className="relative isolate flex min-w-0 min-h-[220px] md:min-h-[280px] flex-col justify-between overflow-hidden p-3.5 md:p-[clamp(16px,2vw,30px)] rounded-2xl md:rounded-[20px] text-white"
+      className={`relative isolate flex min-w-0 flex-col justify-between overflow-hidden text-white ${compact
+        ? 'h-full p-2 rounded-xl'
+        : 'min-h-[220px] md:min-h-[280px] p-3.5 md:p-[clamp(16px,2vw,30px)] rounded-2xl md:rounded-[20px]'}`}
       style={{
         background: `radial-gradient(ellipse at 50% 34%, rgba(255,255,255,0.13), transparent 45%), linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.72) 100%), ${palette.background}`,
       }}
       aria-label={`${name}${isLocal ? ', you' : ''}`}
     >
+      {/* Speaking: an outline in the person's color, drawn over the video. */}
+      <div
+        className={`pointer-events-none absolute inset-0 z-10 rounded-[inherit] transition-opacity duration-200 ${isSpeaking ? 'opacity-100' : 'opacity-0'}`}
+        style={{ boxShadow: `inset 0 0 0 ${compact ? 2 : 3}px ${palette.text}` }}
+        aria-hidden="true"
+      />
       {showVideo && (
         <video
           ref={videoElement}
@@ -135,41 +69,57 @@ export default function ParticipantTile({
       <div className="absolute inset-0 w-full h-full -z-10 pointer-events-none bg-[linear-gradient(180deg,rgba(0,0,0,0.22)_0%,transparent_28%,transparent_55%,rgba(0,0,0,0.82)_100%)]" aria-hidden="true" />
       <div className="flex items-center justify-between gap-3">
         <span
-          className="inline-flex items-center min-h-8 md:min-h-[38px] max-w-[min(70%,320px)] px-3 md:px-[18px] py-[7px] md:py-[9px] overflow-hidden rounded-full backdrop-blur-[12px] font-montserrat text-xs md:text-sm font-semibold text-ellipsis whitespace-nowrap"
-          style={{ background: palette.badge }}
+          className={`inline-block overflow-hidden rounded-full backdrop-blur-[12px] font-montserrat font-semibold text-ellipsis whitespace-nowrap ${compact
+            ? 'max-w-full px-2 py-0.5 text-[11px]'
+            : 'min-h-8 md:min-h-[38px] max-w-[min(70%,320px)] px-3 md:px-[18px] py-[7px] md:py-[9px] text-xs md:text-sm'}`}
+          style={{ background: 'rgba(0,0,0,0.32)' }}
         >
           {name.replace(/\s*\(You\)\s*/gi, '').trim() || (isLocal ? 'You' : 'Guest')}
           {isLocal && ' (You)'}
         </span>
-
-        <LanguageDisplay language={language} palette={palette} />
       </div>
 
       {!showVideo && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 min-h-0 text-center">
-          <div
-            className="grid w-[82px] md:w-[clamp(112px,14vw,190px)] aspect-square place-items-center rounded-full shadow-[0_18px_60px_rgba(0,0,0,0.2),inset_0_0_30px_rgba(255,255,255,0.08)] text-white font-montserrat font-semibold text-[30px] md:text-[clamp(34px,5vw,58px)] leading-none"
-            style={{
-              border: `1px solid ${palette.accent}`,
-              background: `radial-gradient(circle at 35% 25%, ${palette.accent}4D, ${palette.accent}14 54%, rgba(0,0,0,0.18))`,
-            }}
-          >
-            {initials(name)}
+        <div className={`flex flex-1 flex-col items-center justify-center min-h-0 text-center ${compact ? 'gap-0' : 'gap-4'}`}>
+          <div className="relative">
+            {/* Ripples behind the avatar while this person speaks (index.css, .speaking-rings). */}
+            <div
+              className={`speaking-rings ${isSpeaking ? 'is-speaking' : ''}`}
+              style={{ '--ring-color': palette.text }}
+              aria-hidden="true"
+            >
+              <span />
+              <span />
+              <span />
+            </div>
+            <div
+              className={`relative grid aspect-square place-items-center rounded-full shadow-[0_18px_60px_rgba(0,0,0,0.2),inset_0_0_30px_rgba(255,255,255,0.08)] text-white font-montserrat font-semibold leading-none ${compact
+                ? 'w-11 text-base'
+                : 'w-[82px] md:w-[clamp(112px,14vw,190px)] text-[30px] md:text-[clamp(34px,5vw,58px)]'}`}
+              style={{
+                border: `1px solid ${palette.text}`,
+                background: `radial-gradient(circle at 35% 25%, color-mix(in srgb, ${palette.text} 30%, transparent), color-mix(in srgb, ${palette.text} 8%, transparent) 54%, rgba(0,0,0,0.18))`,
+              }}
+            >
+              {initials(name)}
+            </div>
           </div>
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-3 text-white/75 font-inter text-[10px] sm:text-xs leading-none font-medium">
+      {/* Always one icon tall, even when empty: otherwise muting or unmuting (or a raised
+          hand) changes this row's height and the avatar above moves up or down. */}
+      <div className={`flex items-center justify-end gap-3 text-white/75 font-inter text-[10px] sm:text-xs leading-none font-medium ${compact ? 'min-h-5' : 'min-h-12'}`}>
         <div className="flex items-center gap-2">
           {handRaised && (
-            <span className="inline-flex items-center justify-center text-center p-2 rounded-full text-base" title="Hand raised">
-              <BiSolidHand size={32} />
+            <span className={`inline-flex items-center justify-center text-center rounded-full ${compact ? 'p-0.5' : 'p-2'} text-base`} title="Hand raised">
+              <BiSolidHand size={compact ? 16 : 32} />
             </span>
           )}
 
           {!isMicOn && (
-            <span className="inline-flex items-center justify-center text-center p-2 rounded-full" title="Microphone muted">
-              <BiSolidMicrophoneOff size={32} />
+            <span className={`inline-flex items-center justify-center text-center rounded-full ${compact ? 'p-0.5' : 'p-2'}`} title="Microphone muted">
+              <BiSolidMicrophoneOff size={compact ? 16 : 32} />
             </span>
           )}
         </div>
