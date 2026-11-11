@@ -17,6 +17,35 @@ function turnDirection(turn) {
     return rtl > ltr ? 'rtl' : 'ltr'
 }
 
+// At most this many characters of a speaker's line are shown, like TV subtitles: the
+// latest words stay, older ones drop off the front. The full text stays in the transcript.
+const CAPTION_VISIBLE_CHARS = 100
+
+// The latest pieces of a turn that fit in CAPTION_VISIBLE_CHARS (the spaces between them
+// count). The oldest piece shown may be cut, at the start of a word when it has spaces.
+// `clipped` says whether anything before it was left out.
+function visibleSegments(segments) {
+    const shown = []
+    let budget = CAPTION_VISIBLE_CHARS
+    for (let i = segments.length - 1; i >= 0 && budget > 0; i--) {
+        const segment = segments[i]
+        const text = segment.text
+        if (text.length <= budget) {
+            shown.unshift(segment)
+            budget -= text.length + 1
+            continue
+        }
+        let tail = text.slice(text.length - budget)
+        // Mid-word: start at the next word instead (not for text without spaces, e.g. Chinese).
+        const space = tail.indexOf(' ')
+        if (text[text.length - budget - 1] !== ' ' && space !== -1 && space < tail.length - 1)
+            tail = tail.slice(space + 1)
+        shown.unshift({ ...segment, text: tail.trimStart() })
+        return { shown, clipped: true }
+    }
+    return { shown, clipped: shown.length < segments.length }
+}
+
 // Subtitles from the AI translation worker: one entry per speaker, the most recent
 // speaker last (see mergeCaption in useRoom). Text still in another language (the
 // translation is on its way) or still changing is dimmed.
@@ -83,18 +112,22 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
                     {!captions.length && (
                         <p className='text-sm sm:text-base text-white/50 italic'>Captions appear here when someone speaks.</p>
                     )}
-                    {captions.map((turn) => (
-                        <p key={turn.id} dir={turnDirection(turn)} className='text-sm sm:text-lg leading-snug'>
-                            {/* bdi: a Latin name keeps its own order inside an Arabic line */}
-                            <span className='font-semibold' style={{ color: colorOf(turn.speakerId).text }}><bdi>{turn.speaker}</bdi>: </span>
-                            {turn.segments.map((caption, index) => (
-                                <span key={caption.id}>
-                                    {index > 0 && ' '}
-                                    <span className={caption.final && !caption.foreign ? '' : 'text-white/70 italic'}>{caption.text}</span>
-                                </span>
-                            ))}
-                        </p>
-                    ))}
+                    {captions.map((turn) => {
+                        const { shown, clipped } = visibleSegments(turn.segments)
+                        return (
+                            <p key={turn.id} dir={turnDirection(turn)} className='text-sm sm:text-lg leading-snug'>
+                                {/* bdi: a Latin name keeps its own order inside an Arabic line */}
+                                <span className='font-semibold' style={{ color: colorOf(turn.speakerId).text }}><bdi>{turn.speaker}</bdi>: </span>
+                                {clipped && <span className='text-white/50'>… </span>}
+                                {shown.map((caption, index) => (
+                                    <span key={caption.id}>
+                                        {index > 0 && ' '}
+                                        <span className={caption.final && !caption.foreign ? '' : 'text-white/70 italic'}>{caption.text}</span>
+                                    </span>
+                                ))}
+                            </p>
+                        )
+                    })}
                 </div>
                 {!following && (
                     <button

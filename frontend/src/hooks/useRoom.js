@@ -27,6 +27,9 @@ const CAPTION_MAX = 10
 // Pieces kept in one turn, so a long monologue does not grow without end.
 const TURN_SEGMENT_MAX = 50
 const ROOM_EVENT_MAX = 200
+// The featured speaker changes at most this often, so people talking over each other
+// (or a cough) does not make the spotlight jump back and forth.
+const SPEAKER_HOLD_MS = 1500
 
 // Why a participant left, as a line in the chat. LiveKit sends the reason with
 // the disconnect; anything not listed reads as a lost connection.
@@ -185,6 +188,8 @@ export function useRoom(roomUid, {
     // Newest message_id in the history loaded on join: those count as read.
     const [joinedAtMessageId, setJoinedAtMessageId] = useState(0)
     const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+    // The person to feature in the speaker layout: the last other person who spoke.
+    const [spotlightId, setSpotlightId] = useState(null)
     const messagesRef = useRef(messages)
     messagesRef.current = messages
 
@@ -231,7 +236,7 @@ export function useRoom(roomUid, {
         const screen = participant.getTrackPublication(Track.Source.ScreenShare)
         const camera = participant.getTrackPublication(Track.Source.Camera)
         const microphone = participant.getTrackPublication(Track.Source.Microphone)
-        const video = screen?.track && !screen.isMuted ? screen : camera
+        const isScreenSharing = Boolean(screen?.track && !screen.isMuted)
         const attributes = participant.attributes || {}
 
         return {
@@ -244,13 +249,17 @@ export function useRoom(roomUid, {
             language: attributes[ATTRIBUTE.language] || '',
             translationEnabled: attributes[ATTRIBUTE.translationEnabled] === 'true',
             handRaised: attributes[ATTRIBUTE.handRaised] === 'true',
-            stream: streamFor(video?.track),
-            isCamOn: Boolean(video?.track && !video.isMuted),
+            // The camera and a shared screen are kept apart: the room shows a shared screen
+            // on its own stage while the person's tile keeps their camera.
+            stream: streamFor(camera?.track),
+            isCamOn: Boolean(camera?.track && !camera.isMuted),
+            screenStream: isScreenSharing ? streamFor(screen.track) : null,
             // From the publication, not the received track: a remote track
             // is only set once its media arrives, which can fail or lag.
             isCamPublished: Boolean(camera && !camera.isMuted),
             isMicOn: Boolean(microphone && !microphone.isMuted),
-            isScreenSharing: Boolean(screen?.track && !screen.isMuted),
+            isScreenSharing,
+            isSpeaking: Boolean(participant.isSpeaking),
             isLocal,
         }
     }, [streamFor])
@@ -381,6 +390,26 @@ export function useRoom(roomUid, {
                 addRoomEvent(`${nameOf(participant)} ${leftText(reason)}`)
             refresh()
         }
+        // Loudest first. You are never featured on your own screen, nor is the AI worker.
+        let spotlight = null
+        let spotlightSince = 0
+        let spotlightTimer = null
+        const onActiveSpeakers = (speakers) => {
+            refresh()
+            const next = speakers.find((participant) => !participant.isLocal && !participant.isAgent)?.identity
+            if (!next || next === spotlight) {
+                clearTimeout(spotlightTimer)
+                return
+            }
+            clearTimeout(spotlightTimer)
+            spotlightTimer = setTimeout(() => {
+                spotlight = next
+                spotlightSince = Date.now()
+                if (!cancelled)
+                    setSpotlightId(next)
+            }, Math.max(0, spotlightSince + SPEAKER_HOLD_MS - Date.now()))
+        }
+
         const onAttributesChanged = (changed, participant) => {
             const role = changed[ATTRIBUTE.role]
             if (role && !participant.isAgent)
@@ -401,6 +430,7 @@ export function useRoom(roomUid, {
             .on(RoomEvent.ParticipantNameChanged, refresh)
             .on(RoomEvent.ParticipantPermissionsChanged, refresh)
             .on(RoomEvent.RoomMetadataChanged, onMetadata)
+            .on(RoomEvent.ActiveSpeakersChanged, onActiveSpeakers)
             .on(RoomEvent.Reconnecting, () => {
                 setStatus('reconnecting')
                 addRoomEvent('Connection lost, reconnecting…')
@@ -485,6 +515,7 @@ export function useRoom(roomUid, {
         setCaptions([])
         setHasOlderMessages(false)
         setJoinedAtMessageId(0)
+        setSpotlightId(null)
         start().catch((err) => {
             if (cancelled)
                 return
@@ -494,6 +525,7 @@ export function useRoom(roomUid, {
 
         return () => {
             cancelled = true
+            clearTimeout(spotlightTimer)
             socket.close()
             signal.close()
             captionFeed.close()
@@ -688,6 +720,7 @@ export function useRoom(roomUid, {
         loadOlderMessages,
         settings,
         captions,
+        spotlightId,
         isStaff: STAFF_ROLES.includes(localUser.role),
         roomCode: roomUid,
         sendTyping,
