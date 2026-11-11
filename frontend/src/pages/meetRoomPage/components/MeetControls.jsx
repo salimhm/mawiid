@@ -45,11 +45,11 @@ export default function MeetControls({
 
   const navigate = useNavigate()
   const languages = Object.keys(LANGUAGE_CODES)
-  const curr_language =
-    picked_language ||
-    languages.find((name) => LANGUAGE_CODES[name] === language) ||
-    languages.find((name) => LANGUAGE_CODES[name] === language.split('-')[0]) ||
+  const language_name = (code) =>
+    languages.find((name) => LANGUAGE_CODES[name] === code) ||
+    languages.find((name) => LANGUAGE_CODES[name] === code.split('-')[0]) ||
     'English'
+  const curr_language = picked_language || language_name(language)
   const room_id = roomCode
 
   useEffect(() => {
@@ -187,6 +187,16 @@ export default function MeetControls({
                   <span className='hidden sm:inline'>{icons.translateIcon(22, 22, 2)}</span>
                   <span className='sm:hidden'>{icons.translateIcon(17, 17, 2)}</span>
                 </button>
+                <button
+                  type='button'
+                  onClick={handle_reaction_click}
+                  aria-label='Reactions'
+                  title='Reactions'
+                  className='w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-white transition hover:scale-110 active:scale-90 cursor-pointer rounded-full hover:text-white/80'
+                >
+                  <span className='hidden sm:inline'>{icons.emojiIcon(22, 22, 1.8)}</span>
+                  <span className='sm:hidden'>{icons.emojiIcon(17, 17, 1.8)}</span>
+                </button>
               </div>
 
               <div className='h-9 sm:h-11 md:h-12 flex items-center gap-1 sm:gap-3 md:gap-4 px-2 sm:px-3.5 md:px-4 rounded-full bg-[#444446]/90 shrink-0'>
@@ -268,7 +278,7 @@ export default function MeetControls({
 
       {translating && (
         <div
-          className='fixed w-48 sm:w-60 max-h-[50vh] overflow-y-auto rounded-3xl bg-black/60 backdrop-blur-xl border border-white/24 text-white font-inter z-50 shadow-2xl'
+          className='fixed w-56 sm:w-60 max-h-[70vh] overflow-y-auto rounded-3xl bg-black/60 backdrop-blur-xl border border-white/24 text-white font-inter z-[65] shadow-2xl'
           style={{
             left: popup_x,
             top: menu_pos.y - 12,
@@ -308,7 +318,7 @@ export default function MeetControls({
 
       {reacting && (
         <div
-          className='fixed rounded-full bg-black/60 backdrop-blur-xl border border-white/24 z-50 shadow-2xl flex items-center gap-1 px-2 py-1.5 max-w-[95vw]'
+          className='fixed rounded-full bg-black/60 backdrop-blur-xl border border-white/24 z-[65] shadow-2xl flex items-center gap-1 px-2 py-1.5 max-w-[95vw]'
           style={{
             left:
               typeof window !== 'undefined'

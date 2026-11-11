@@ -1,4 +1,3 @@
-
 import ParticipantTile from './ParticipantTile'
 import { participantColor } from '../../../lib/participantColor'
 

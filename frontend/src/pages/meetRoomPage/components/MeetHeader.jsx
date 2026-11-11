@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ControlsButtons from '../../../components/controlButtons';
 import * as icons from '../../../assets/icons';
+import dark_logo from '../../../assets/logo/mawiid_logo_dark_header.png';
 
 const ROLE_LABELS = { host: 'Host', moderator: 'Moderator', member: 'Member', viewer: 'Viewer' };
 
@@ -251,9 +252,11 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
     return (
         <header className={fullScreen ? 'fixed top-0 left-0 right-0 z-30 h-14 sm:h-16 px-4 sm:px-12 flex items-center justify-between' : 'relative h-14 sm:h-16 px-3 sm:px-5 flex items-center justify-between'}>
             {!fullScreen && (
-                <span className='text-primary-white font-bold text-2xl sm:text-3xl md:text-[42px] lg:text-[52px] leading-none tracking-tight'>
-                    MAWIID
-                </span>
+                <img
+                  src={dark_logo}
+                  alt="Mawiid"
+                  className="h-7 sm:h-8 md:h-10 lg:h-12 w-auto"
+                />
             )}
 
             {!menuOpen && (

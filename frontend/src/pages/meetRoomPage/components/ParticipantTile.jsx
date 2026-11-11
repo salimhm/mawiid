@@ -1,8 +1,6 @@
-
 import { useEffect, useRef } from 'react'
-import * as icons from '../../../assets/icons'
+import { BiSolidHand, BiSolidMicrophoneOff } from 'react-icons/bi'
 import { NEUTRAL_COLOR } from '../../../lib/participantColor'
-import './meet-room-refresh.css'
 
 function initials(name = '') {
   return name
@@ -26,6 +24,7 @@ export default function ParticipantTile({
 }) {
   const videoElement = useRef(null)
   const showVideo = Boolean(stream && isCamOn)
+  const palette = color || NEUTRAL_COLOR
 
   useEffect(() => {
     const video = videoElement.current
@@ -40,11 +39,10 @@ export default function ParticipantTile({
 
   return (
     <section
-      className={[
-        'meet-person',
-        showVideo ? 'meet-person--video' : '',
-      ].filter(Boolean).join(' ')}
-      style={{ background: (color || NEUTRAL_COLOR).background }}
+      className="relative isolate flex min-w-0 min-h-[220px] md:min-h-[280px] flex-col justify-between overflow-hidden p-3.5 md:p-[clamp(16px,2vw,30px)] rounded-2xl md:rounded-[20px] text-white"
+      style={{
+        background: `radial-gradient(ellipse at 50% 34%, rgba(255,255,255,0.13), transparent 45%), linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.72) 100%), ${palette.background}`,
+      }}
       aria-label={`${name}${isLocal ? ', you' : ''}`}
     >
       {showVideo && (
@@ -53,47 +51,46 @@ export default function ParticipantTile({
           autoPlay
           playsInline
           muted={isLocal}
-          className="meet-person__video"
+          className="absolute inset-0 w-full h-full -z-20 object-cover bg-neutral-900"
         />
       )}
 
-      <div className="meet-person__shade" aria-hidden="true" />
-
-      <div className="meet-person__top">
-        <span className="meet-person__name">
+      <div className="absolute inset-0 w-full h-full -z-10 pointer-events-none bg-[linear-gradient(180deg,rgba(0,0,0,0.22)_0%,transparent_28%,transparent_55%,rgba(0,0,0,0.82)_100%)]" aria-hidden="true" />
+      <div className="flex items-center justify-between gap-3">
+        <span
+          className="inline-flex items-center min-h-8 md:min-h-[38px] max-w-[min(70%,320px)] px-3 md:px-[18px] py-[7px] md:py-[9px] overflow-hidden rounded-full backdrop-blur-[12px] font-montserrat text-xs md:text-sm font-semibold text-ellipsis whitespace-nowrap"
+          style={{ background: 'rgba(0,0,0,0.32)' }}
+        >
           {name.replace(/\s*\(You\)\s*/gi, '').trim() || (isLocal ? 'You' : 'Guest')}
           {isLocal && ' (You)'}
         </span>
       </div>
 
       {!showVideo && (
-        <div className="meet-person__identity">
-          <div className="meet-person__avatar">
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 min-h-0 text-center">
+          <div
+            className="grid w-[82px] md:w-[clamp(112px,14vw,190px)] aspect-square place-items-center rounded-full shadow-[0_18px_60px_rgba(0,0,0,0.2),inset_0_0_30px_rgba(255,255,255,0.08)] text-white font-montserrat font-semibold text-[30px] md:text-[clamp(34px,5vw,58px)] leading-none"
+            style={{
+              border: `1px solid ${palette.text}`,
+              background: `radial-gradient(circle at 35% 25%, color-mix(in srgb, ${palette.text} 30%, transparent), color-mix(in srgb, ${palette.text} 8%, transparent) 54%, rgba(0,0,0,0.18))`,
+            }}
+          >
             {initials(name)}
           </div>
         </div>
       )}
 
-      <div className="meet-person__footer">
-        <div className="meet-person__speaking">
-          <span
-            className={`meet-person__audio-dot ${isMicOn ? 'is-on' : ''}`}
-          />
-          <span>
-            {isMicOn ? 'Microphone on' : 'Microphone off'}
-          </span>
-        </div>
-
-        <div className="meet-person__indicators">
+      <div className="flex items-center justify-end gap-3 text-white/75 font-inter text-[10px] sm:text-xs leading-none font-medium">
+        <div className="flex items-center gap-2">
           {handRaised && (
-            <span className="meet-person__hand" title="Hand raised">
-              ✋
+            <span className="inline-flex items-center justify-center text-center p-2 rounded-full text-base" title="Hand raised">
+              <BiSolidHand size={32} />
             </span>
           )}
 
           {!isMicOn && (
-            <span className="meet-person__muted" title="Microphone muted">
-              {icons.micOffIcon(16, 16)}
+            <span className="inline-flex items-center justify-center text-center p-2 rounded-full" title="Microphone muted">
+              <BiSolidMicrophoneOff size={32} />
             </span>
           )}
         </div>
