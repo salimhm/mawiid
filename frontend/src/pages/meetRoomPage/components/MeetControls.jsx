@@ -180,7 +180,9 @@ export default function MeetControls({
                   onClick={handle_translate_click}
                   aria-label='Captions and translation'
                   title='Captions and translation'
-                  className='w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-white transition hover:scale-110 active:scale-90 cursor-pointer rounded-full hover:text-white/80'
+                  className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center transition hover:scale-110 active:scale-90 cursor-pointer rounded-full ${
+                    translationEnabled ? 'text-red-400' : 'text-white hover:text-white/80'
+                  }`}
                 >
                   <span className='hidden sm:inline'>{icons.translateIcon(22, 22, 2)}</span>
                   <span className='sm:hidden'>{icons.translateIcon(17, 17, 2)}</span>
