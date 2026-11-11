@@ -6,17 +6,32 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Written by scripts/convert_translation_model.py; data/ is git-ignored.
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parents[3] / "data" / "models" / "madlad400-3b-mt-ct2"
+from mawiid_ai.stt.config import MODELS_DIR
+
+# MADLAD-400 sizes, by MAWIID_MT_MODEL. Same languages and tokenizer; 10b translates better
+# (Darija too) but needs ~11 GB of GPU memory and is ~3x slower: a GPU host only.
+MODELS = {"3b": "google/madlad400-3b-mt", "10b": "google/madlad400-10b-mt"}
 
 
 def _env(name: str, default: str) -> str:
     return os.environ.get(f"MAWIID_MT_{name}", default)
 
 
+def model_size() -> str:
+    size = _env("MODEL", "3b")
+    if size not in MODELS:
+        raise ValueError(f"MAWIID_MT_MODEL: unknown model {size!r} (known: {', '.join(MODELS)})")
+    return size
+
+
+def model_dir(size: str) -> Path:
+    """Where scripts/convert_translation_model.py writes the CTranslate2 conversion of ``size``."""
+    return MODELS_DIR / f"madlad400-{size}-mt-ct2"
+
+
 @dataclass(frozen=True, slots=True)
 class MadladSettings:
-    model_path: str = field(default_factory=lambda: _env("MODEL_PATH", str(DEFAULT_MODEL_PATH)))
+    model_path: str = field(default_factory=lambda: _env("MODEL_PATH", str(model_dir(model_size()))))
     device: str = field(default_factory=lambda: _env("DEVICE", "auto"))  # auto | cpu | cuda
     compute_type: str = field(default_factory=lambda: _env("COMPUTE_TYPE", "default"))
     cpu_threads: int = field(default_factory=lambda: int(_env("CPU_THREADS", "0")))

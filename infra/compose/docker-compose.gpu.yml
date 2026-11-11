@@ -1,0 +1,11 @@
+# Gives the AI worker the host's NVIDIA GPU (needs the NVIDIA driver and the NVIDIA Container
+# Toolkit). Used with: docker compose -f docker-compose.yml -f docker-compose.gpu.yml ...
+services:
+  ai:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

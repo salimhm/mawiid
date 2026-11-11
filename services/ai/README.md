@@ -80,7 +80,7 @@ for result in stream.push_audio(chunk):  # one speaker's transcripts
 - Model: [MADLAD-400 3B](https://huggingface.co/google/madlad400-3b-mt) (Apache 2.0), int8 in CTranslate2, greedy decoding. Finals are split into sentences, because MADLAD drops sentences from long inputs. Output length is capped, and looping outputs are retried. `&apos;` and similar escapes are cleaned up.
 - If the engine fails, it is skipped for 60 s, like the speech-to-text router. `MAWIID_MT_CPU_BACKUP=1` loads a second copy on the CPU as backup (~3 GB of RAM). It is a last resort: on a Core Ultra 7 155H it needs 2.6 s median and 4.6 s p95 per final, against 0.7 s on the GPU.
 
-Settings: `MAWIID_MT_MODEL_PATH`, `MAWIID_MT_DEVICE` (`auto`/`cpu`/`cuda`; auto falls back to the CPU if the GPU can't load), `MAWIID_MT_COMPUTE_TYPE`, `MAWIID_MT_CPU_THREADS`, `MAWIID_MT_PARTIALS`, `MAWIID_MT_CPU_BACKUP`.
+Settings: `MAWIID_MT_MODEL` (`3b`, the default, or `10b`: better translations, Darija included, but ~11 GB of GPU memory and ~3x slower, so for GPU hosts; convert it with `scripts/convert_translation_model.py --model 10b`), `MAWIID_MT_MODEL_PATH` (default `<MAWIID_MODELS_DIR>/madlad400-<size>-mt-ct2`; `MAWIID_MODELS_DIR` defaults to `data/models`, `/models` in Docker), `MAWIID_MT_DEVICE` (`auto`/`cpu`/`cuda`; auto falls back to the CPU if the GPU can't load), `MAWIID_MT_COMPUTE_TYPE`, `MAWIID_MT_CPU_THREADS`, `MAWIID_MT_PARTIALS`, `MAWIID_MT_CPU_BACKUP`.
 
 ### Setup
 

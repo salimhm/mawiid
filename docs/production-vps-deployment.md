@@ -275,7 +275,7 @@ docker compose --env-file .env.production -f docker-compose.yml logs -f ai
 
 The AI worker has no public port. It connects to `ws://livekit:7880` through Docker, accepts only the dispatched `mawiid-translator` jobs, and calls the backend internally to save transcript segments.
 
-Whisper downloads on its first start. Translation requires a converted MADLAD model and `MAWIID_MT_MODEL_PATH` pointing to that model inside the `/models` volume. If the worker is not running, normal meetings still work; live translation/captions do not.
+Whisper downloads on its first start. Translation requires a converted MADLAD model in the `/models` volume, matching `MAWIID_MT_MODEL` (`10b` on a GPU host, `3b` on CPU); `infra/compose/README.md` has the conversion command and the GPU requirements. If the worker is not running, normal meetings still work; live translation/captions do not.
 
 ## 11. Operations after deployment
 
