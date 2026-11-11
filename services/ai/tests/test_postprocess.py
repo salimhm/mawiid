@@ -11,3 +11,29 @@ def test_simplified_chinese_is_enforced_for_zh_cn():
 
 def test_other_languages_only_get_whitespace_cleanup():
     assert clean_text("  Bonjour   tout le monde ", "fr-FR") == "Bonjour tout le monde"
+
+
+from mawiid_ai.stt.postprocess import is_hallucination, repeats_context
+
+
+def test_whisper_stock_phrases_over_silence_are_hallucinations():
+    for text in [
+        "you",
+        "Thank you.",
+        "Sous-titres réalisés par la communauté des Amara.org",
+        "Sssssssssssssssss",
+        "سر. سر. سر.",
+        "...",
+    ]:
+        assert is_hallucination(text), text
+
+
+def test_real_speech_is_not_a_hallucination():
+    for text in ["I don't know.", "Thank you for coming today.", "Bonjour à tous.", "شكرا جزيلا يا أحمد"]:
+        assert not is_hallucination(text), text
+
+
+def test_echo_of_the_prompt_is_detected():
+    assert repeats_context("I don't know.", "We tried twice. I don't know.")
+    assert not repeats_context("I don't know.", "We tried twice.")
+    assert not repeats_context("Yes", "")

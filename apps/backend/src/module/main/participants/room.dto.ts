@@ -29,7 +29,6 @@ export const dto_room = {
       ...lib_dto_room_body,
       room_locked: t.Optional(t.Boolean()),
       room_lobby_enabled: t.Optional(t.Boolean()),
-      room_translation_enabled: t.Optional(t.Boolean()),
     }),
     response: t.Object({
       data: dto_schema_room,

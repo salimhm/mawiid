@@ -10,7 +10,6 @@ import {
   lib_livekit_room,
   lib_livekit_token,
   lib_livekit_translator_start,
-  lib_livekit_translator_stop,
 } from '@lib/livekit.lib'
 import { room_socket_event } from '@contracts/room'
 import { service_audit } from '@module/main/participants/audit.service'
@@ -125,17 +124,14 @@ export const service_room = {
     const previous = {
       room_locked: room.room_locked,
       room_lobby_enabled: room.room_lobby_enabled,
-      room_translation_enabled: room.room_translation_enabled,
     }
     const next = {
       room_locked: body.room_locked ?? room.room_locked,
       room_lobby_enabled: body.room_lobby_enabled ?? room.room_lobby_enabled,
-      room_translation_enabled: body.room_translation_enabled ?? room.room_translation_enabled,
     }
     if (
       next.room_locked === previous.room_locked &&
-      next.room_lobby_enabled === previous.room_lobby_enabled &&
-      next.room_translation_enabled === previous.room_translation_enabled
+      next.room_lobby_enabled === previous.room_lobby_enabled
     ) {
       return { data: room }
     }
@@ -155,14 +151,12 @@ export const service_room = {
       }),
     ])
     await service_room.sync(data)
-    if (next.room_translation_enabled !== previous.room_translation_enabled) await service_room.translate(data)
     return { data }
   },
 
   async translate(room: Room) {
     try {
-      if (room.room_translation_enabled) await lib_livekit_translator_start(room.room_uid)
-      else await lib_livekit_translator_stop(room.room_uid)
+      await lib_livekit_translator_start(room.room_uid)
     } catch {
       console.error('Could not update the translator agent in LiveKit', room.room_uid)
     }

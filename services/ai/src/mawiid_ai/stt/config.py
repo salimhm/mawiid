@@ -13,8 +13,8 @@ class Language:
     script: str | None = None  # forced Chinese script: "simplified" or "traditional"
 
 
-# Mawiid language codes, matching the "Speak:" dropdown in the apps.
-LANGUAGES: dict[str, Language] = {
+# Every language the code can handle, by Mawiid language code.
+ALL_LANGUAGES: dict[str, Language] = {
     "en-US": Language("en"),
     "fr-FR": Language("fr"),
     "ar-SA": Language("ar"),
@@ -24,9 +24,25 @@ LANGUAGES: dict[str, Language] = {
     "ar-MA": Language("ar"),
 }
 
+# The languages switched on, matching the "Speak:" dropdown in the apps. Chinese and Darija are
+# off for now; add them back with MAWIID_LANGUAGES=en-US,fr-FR,ar-SA,zh-CN,zh-TW,ar-MA (and the
+# commented-out entries in the frontend's MeetControls.jsx).
+_DEFAULT_ENABLED = "en-US,fr-FR,ar-SA"
+
+
+def _enabled_languages() -> dict[str, Language]:
+    codes = [code.strip() for code in os.environ.get("MAWIID_LANGUAGES", _DEFAULT_ENABLED).split(",") if code.strip()]
+    unknown = [code for code in codes if code not in ALL_LANGUAGES]
+    if unknown:
+        raise ValueError(f"MAWIID_LANGUAGES: unknown language {', '.join(unknown)} (known: {', '.join(ALL_LANGUAGES)})")
+    return {code: ALL_LANGUAGES[code] for code in codes}
+
+
+LANGUAGES: dict[str, Language] = _enabled_languages()
+
 # Engines tried in order for each language. Engines that are not loaded
 # (e.g. Voxtral on a machine without a GPU) are skipped.
-DEFAULT_ROUTES: dict[str, list[str]] = {
+ALL_ROUTES: dict[str, list[str]] = {
     "en-US": ["voxtral", "whisper"],
     "fr-FR": ["voxtral", "whisper"],
     "ar-SA": ["voxtral", "whisper"],
@@ -35,6 +51,7 @@ DEFAULT_ROUTES: dict[str, list[str]] = {
     # Stock Whisper only as a last resort: it hears Darija as Arabic and misses most dialect words.
     "ar-MA": ["whisper-darija", "whisper"],
 }
+DEFAULT_ROUTES: dict[str, list[str]] = {code: route for code, route in ALL_ROUTES.items() if code in LANGUAGES}
 
 # Written by scripts/convert_darija_model.py; data/ is git-ignored.
 DEFAULT_DARIJA_MODEL_PATH = Path(__file__).resolve().parents[3] / "data" / "models" / "whisper-darija-ct2"
@@ -46,12 +63,12 @@ def _env(name: str, default: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class VadSettings:
-    threshold: float = 0.5  # speech probability that starts speech
+    threshold: float = 0.6  # speech probability that starts speech (breathing and noise often reach 0.5)
     neg_threshold: float = 0.35  # probability below which a window counts as silence
     min_silence_ms: int = 500  # pause length that ends a phrase
     speech_pad_ms: int = 200  # audio kept before speech starts so first syllables aren't cut
-    min_speech_ms: int = 250  # shorter blips are dropped (coughs, clicks)
-    max_segment_s: float = 15.0  # long monologues are cut so finals keep flowing
+    min_speech_ms: int = 400  # shorter blips are dropped (coughs, clicks, breaths); Whisper makes up text for them
+    max_segment_s: float = 6.0  # non-stop speech is cut so it shows up without waiting for a pause
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,11 +80,16 @@ class WhisperSettings:
     beam_size: int = 5  # finals: accuracy matters
     partial_beam_size: int = 1  # partials: speed matters
     partial_interval_s: float = field(default_factory=lambda: float(_env("PARTIAL_INTERVAL_S", "1.0")))
-    # auto: on with a GPU, off on CPU (each partial costs a full Whisper pass; a CPU can't keep up).
-    partials: str = field(default_factory=lambda: _env("PARTIALS", "auto"))  # auto | 1 | 0
-    # Results Whisper is unsure about are dropped; this is where its "Thank you." hallucinations live.
+    partials: str = field(default_factory=lambda: _env("PARTIALS", "1"))  # 1 | 0
+    # Partials use at most this share of the time, so a slow machine shows fewer instead of falling behind.
+    partial_max_load: float = 0.5
+    # Phrases Whisper thinks are probably not speech are dropped, however sure it is of the text:
+    # its made-up "Thank you." / "I don't know." over silence are confident.
     max_no_speech_prob: float = 0.6
     min_avg_logprob: float = -1.0
+    # The end of the speaker's previous phrase is given to Whisper as a prompt, so a phrase cut in
+    # the middle of a sentence continues it (no false full stop) and names keep their spelling. 0: off.
+    context_chars: int = field(default_factory=lambda: int(_env("CONTEXT_CHARS", "200")))
 
 
 def _darija_settings() -> WhisperSettings:

@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import GlassSurface from '../../../components/GlassSurface'
 import * as icons from '../../../assets/icons'
 
+// The languages the AI translation worker handles (services/ai/README.md).
 const LANGUAGE_CODES = {
   English: 'en',
   Arabic: 'ar',
-  'Darija (Moroccan Arabic)': 'ar-MA',
+  // 'Darija (Moroccan Arabic)': 'ar-MA',
   French: 'fr',
-  'Chinese (Simplified)': 'zh-CN',
-  'Chinese (Traditional)': 'zh-TW',
+  // 'Chinese (Simplified)': 'zh-CN',
+  // 'Chinese (Traditional)': 'zh-TW',
 }
 
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮']
@@ -21,11 +22,15 @@ export default function MeetControls({
   camOn = false,
   handRaised = false,
   language = '',
+  spokenLanguage = '',
   onMicToggle,
   onCamToggle,
   onScreenShareToggle,
   onHandToggle,
+  translationEnabled = false,
+  onTranslationToggle,
   onLanguageChange,
+  onSpokenLanguageChange,
   onReaction,
   onLeave,
   roomCode = '',
@@ -36,14 +41,16 @@ export default function MeetControls({
   const [copied, set_copied] = useState(false)
   const [menu_pos, set_menu_pos] = useState({ x: 0, y: 0 })
   const [picked_language, set_picked_language] = useState('')
+  const [picked_spoken_language, set_picked_spoken_language] = useState('')
 
   const navigate = useNavigate()
   const languages = Object.keys(LANGUAGE_CODES)
-  const curr_language =
-    picked_language ||
-    languages.find((name) => LANGUAGE_CODES[name] === language) ||
-    languages.find((name) => LANGUAGE_CODES[name] === language.split('-')[0]) ||
+  const language_name = (code) =>
+    languages.find((name) => LANGUAGE_CODES[name] === code) ||
+    languages.find((name) => LANGUAGE_CODES[name] === code.split('-')[0]) ||
     'English'
+  const curr_language = picked_language || language_name(language)
+  const curr_spoken_language = picked_spoken_language || language_name(spokenLanguage || language)
   const room_id = roomCode
 
   useEffect(() => {
@@ -86,6 +93,33 @@ export default function MeetControls({
     set_picked_language(name)
     onLanguageChange?.(LANGUAGE_CODES[name])
   }
+
+  const handle_spoken_language_change = (name) => {
+    set_picked_spoken_language(name)
+    onSpokenLanguageChange?.(LANGUAGE_CODES[name])
+  }
+
+  const language_section = (title, current, on_pick) => (
+    <>
+      <div className='px-4 py-2 border-b border-white/24 text-sm sm:text-base text-white bg-white/20 flex items-center gap-2 font-medium'>
+        {icons.translateIcon(24, 24, 1)} {title}
+      </div>
+      {languages.map((name) => (
+        <button
+          key={name}
+          type='button'
+          className={
+            name === current
+              ? 'w-full py-2 hover:bg-white/40 border-white/20 border-b text-white font-semibold text-sm sm:text-base bg-blue-600/50 cursor-default'
+              : 'w-full py-2 hover:bg-white/10 border-white/20 border-b text-sm sm:text-base cursor-pointer'
+          }
+          onClick={() => on_pick(name)}
+        >
+          {name}
+        </button>
+      ))}
+    </>
+  )
 
   const copy_to_clipboard = async (text) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -198,6 +232,16 @@ export default function MeetControls({
                   <span className='hidden sm:inline'>{icons.translateIcon(22, 22, 2)}</span>
                   <span className='sm:hidden'>{icons.translateIcon(17, 17, 2)}</span>
                 </button>
+                <button
+                  type='button'
+                  onClick={handle_reaction_click}
+                  aria-label='Reactions'
+                  title='Reactions'
+                  className='w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-white transition hover:scale-110 active:scale-90 cursor-pointer rounded-full hover:text-white/80'
+                >
+                  <span className='hidden sm:inline'>{icons.emojiIcon(22, 22, 1.8)}</span>
+                  <span className='sm:hidden'>{icons.emojiIcon(17, 17, 1.8)}</span>
+                </button>
               </div>
 
               <div className='h-9 sm:h-11 md:h-12 flex items-center gap-1 sm:gap-3 md:gap-4 px-2 sm:px-3.5 md:px-4 rounded-full bg-[#444446]/90 shrink-0'>
@@ -279,36 +323,32 @@ export default function MeetControls({
 
       {translating && (
         <div
-          className='fixed w-48 sm:w-60 max-h-[50vh] overflow-y-auto rounded-3xl bg-black/60 backdrop-blur-xl border border-white/24 text-white font-inter z-50 shadow-2xl'
+          className='fixed w-56 sm:w-60 max-h-[70vh] overflow-y-auto rounded-3xl bg-black/60 backdrop-blur-xl border border-white/24 text-white font-inter z-[65] shadow-2xl'
           style={{
             left: popup_x,
             top: menu_pos.y - 12,
             transform: 'translate(-50%, -100%)',
           }}
         >
-          <div className='px-4 py-2 border-b border-white/24 text-sm sm:text-base text-white bg-white/20 flex items-center gap-2 font-medium'>
-            {icons.translateIcon(24, 24, 1)} Your language
-          </div>
-          {languages.map((language_name) => (
-            <button
-              key={language_name}
-              type='button'
-              className={
-                language_name === curr_language
-                  ? 'w-full py-2 hover:bg-white/40 border-white/20 border-b last:border-b-0 text-white font-semibold text-sm sm:text-base bg-blue-600/50 cursor-default'
-                  : 'w-full py-2 hover:bg-white/10 border-white/20 border-b last:border-b-0 text-sm sm:text-base cursor-pointer'
-              }
-              onClick={() => handle_language_change(language_name)}
-            >
-              {language_name}
-            </button>
-          ))}
+          <button
+            type='button'
+            aria-pressed={translationEnabled}
+            className='w-full flex items-center justify-between px-4 py-2.5 border-b border-white/24 text-sm sm:text-base font-medium hover:bg-white/10 cursor-pointer'
+            onClick={() => onTranslationToggle?.()}
+          >
+            Live translation
+            <span className={translationEnabled ? 'rounded-full bg-blue-600 px-2.5 py-0.5 text-xs' : 'rounded-full bg-white/20 px-2.5 py-0.5 text-xs'}>
+              {translationEnabled ? 'On' : 'Off'}
+            </span>
+          </button>
+          {language_section('I speak', curr_spoken_language, handle_spoken_language_change)}
+          {language_section('Show captions in', curr_language, handle_language_change)}
         </div>
       )}
 
       {reacting && (
         <div
-          className='fixed rounded-full bg-black/60 backdrop-blur-xl border border-white/24 z-50 shadow-2xl flex items-center gap-1 px-2 py-1.5 max-w-[95vw]'
+          className='fixed rounded-full bg-black/60 backdrop-blur-xl border border-white/24 z-[65] shadow-2xl flex items-center gap-1 px-2 py-1.5 max-w-[95vw]'
           style={{
             left:
               typeof window !== 'undefined'

@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import re
 
-from mawiid_ai.stt.config import LANGUAGES
+from mawiid_ai.stt.config import ALL_LANGUAGES as LANGUAGES
 from mawiid_ai.stt.postprocess import normalize_script
 
 # MADLAD learned Moses-escaped text: "n &apos; a" for "n'a".

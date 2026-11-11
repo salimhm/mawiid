@@ -1,4 +1,3 @@
-
 import { useEffect, useRef } from 'react'
 import * as icons from '../../../assets/icons'
 import { BiSolidHand } from "react-icons/bi";
@@ -48,18 +47,6 @@ function initials(name = '') {
     .toUpperCase() || 'M'
 }
 
-function getPalette(id, colorIndex = 0) {
-  const value = String(id || colorIndex)
-
-  let hash = 0
-
-  for (let i = 0; i < value.length; i++) {
-    hash = (hash * 31 + value.charCodeAt(i)) >>> 0
-  }
-
-  return palettes[hash % palettes.length]
-}
-
 const languageCodes = {
   en: 'English',
   ar: 'Arabic',
@@ -72,6 +59,18 @@ const languageCodes = {
   'ar-MA': 'Arabic (Moroccan)',
   'zh-CN': 'Chinese (Simplified)',
   'zh-TW': 'Chinese (Traditional)',
+}
+
+function getPalette(id, colorIndex = 0) {
+  const value = String(id || colorIndex)
+
+  let hash = 0
+
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0
+  }
+
+  return palettes[hash % palettes.length]
 }
 
 function LanguageDisplay({ language, palette }) {
@@ -97,13 +96,13 @@ export default function ParticipantTile({
   handRaised,
   language,
   isLocal = false,
-  colorIndex = 0,
+  color,
 }) {
   const videoElement = useRef(null)
   const showVideo = Boolean(stream && isCamOn)
+  const palette = getPalette(id, color)
 
-  const palette = getPalette(id, colorIndex)
-
+  
   useEffect(() => {
     const video = videoElement.current
     if (!video) return

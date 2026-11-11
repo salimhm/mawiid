@@ -59,10 +59,15 @@ if (import.meta.main) {
     const stop = () => {
       if (stopping) return;
       stopping = true;
-      void app.stop().catch(() => {
-        console.error('Backend shutdown failed');
-        process.exitCode = 1;
-      });
+      // Open connections can keep stop() waiting, and nothing else ends the process.
+      setTimeout(() => process.exit(1), 5000);
+      void app
+        .stop()
+        .catch(() => {
+          console.error('Backend shutdown failed');
+          process.exitCode = 1;
+        })
+        .finally(() => process.exit());
     };
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);

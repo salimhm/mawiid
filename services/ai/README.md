@@ -18,7 +18,7 @@ for chunk in audio_chunks:               # int16 bytes/array or float32, any chu
 stream.flush()                           # speaker left: finalize what's buffered
 ```
 
-Supported languages: `en-US`, `fr-FR`, `ar-SA`, `zh-CN`, `zh-TW` (same Mandarin audio; the text is converted to the chosen script) and `ar-MA` (Darija, see below).
+Languages switched on: `en-US`, `fr-FR`, `ar-SA`. The code also handles `zh-CN`, `zh-TW` (same Mandarin audio; the text is converted to the chosen script) and `ar-MA` (Darija, see below), but they are off for now. `MAWIID_LANGUAGES` picks the languages (default `en-US,fr-FR,ar-SA`); to turn the others back on, set `MAWIID_LANGUAGES=en-US,fr-FR,ar-SA,zh-CN,zh-TW,ar-MA`, uncomment them in the frontend's `MeetControls.jsx`, and for Darija convert its model (below). While a language is off, a listener who picks it reads the original text, and a speaker who picks `ar-MA` is transcribed as `ar-SA`. Their tests are skipped.
 
 ### Darija (`ar-MA`)
 
@@ -30,12 +30,12 @@ Stock Whisper hears Darija as Arabic and misses most dialect words, so `ar-MA` r
 MAWIID_STT_DARIJA_MODEL=data/models/whisper-darija-medium-ct2 ...  # pick another conversion
 ```
 
-Without a converted model the engine is skipped and Darija goes to stock Whisper. Output is Arabic script. Test clips come from DVoice v2.0 and adiren7/darija_speech_to_text (`fetch_samples.py --languages ar-MA`); the benchmark scores each source separately and also reports CER, because Darija has no standard spelling and WER counts every spelling variant as an error.
+Only needed while `ar-MA` is switched on; `make ai-models` no longer converts it. Without a converted model the engine is skipped, the worker logs a warning and Darija goes to stock Whisper. Output is Arabic script. Test clips come from DVoice v2.0 and adiren7/darija_speech_to_text (`fetch_samples.py --languages ar-MA`); the benchmark scores each source separately and also reports CER, because Darija has no standard spelling and WER counts every spelling variant as an error.
 
 ### How it works
 
-- `vad.py`: Silero voice detection (bundled with faster-whisper, no PyTorch) cuts the stream into phrases at 500 ms pauses, max 15 s each.
-- `whisper_engine.py`: faster-whisper transcribes each phrase (finals) and the phrase so far, once per second (partials).
+- `vad.py`: Silero voice detection (bundled with faster-whisper, no PyTorch) cuts the stream into phrases at 500 ms pauses, max 6 s each, so non-stop speech still shows up.
+- `whisper_engine.py`: faster-whisper transcribes each phrase (finals) and the phrase so far, up to once per second (partials), using at most half the time so a slow machine shows fewer partials instead of falling behind. On a CPU it encodes the phrase plus 3 s of silence (at least 10 s) instead of Whisper's fixed 30 s, which is 3-4 times faster.
 - `router.py`: each language has an ordered engine list in `config.py` (`voxtral`, then `whisper`). Engines that aren't loaded are skipped. If the active engine crashes, or is too slow (above 3 s per call) while a backup exists, the stream switches engines and replays the audio since the last final, so no speech is lost. The failed engine is skipped by all streams for 60 s, then retried at the next phrase boundary.
 - `postprocess.py`: whitespace clean-up and Simplified/Traditional Chinese conversion (OpenCC).
 
@@ -70,8 +70,9 @@ for result in stream.push_audio(chunk):  # one speaker's transcripts
         send(subtitle.language, subtitle.text)
 ```
 
+- Darija listeners read Modern Standard Arabic, and Darija and Arabic listeners read each other's original text: MADLAD's `<2ary>` tag returns lossy Standard Arabic, and its Darija-to-Arabic output changed the meaning in testing. Its Darija-to-English and French output is also unreliable.
 - Each language is translated once, however many listeners picked it. `zh-CN` and `zh-TW` share one translation, converted to each script. Listeners who speak the speaker's language get the transcript as-is.
-- Only finals are translated. Partials go only to listeners of the speaker's language (`MAWIID_MT_PARTIALS=1` translates them too, at several times the GPU load).
+- Live translation (`MAWIID_MT_PARTIALS`, on by default): while someone talks, the words two partials in a row agree on are translated once at least 2 more are stable, so the subtitle grows with the speech without flickering. If a newer one arrives while a translation is waiting, the older one is dropped, so a slow machine sends fewer updates instead of falling behind. It needs speech-to-text partials (`MAWIID_STT_PARTIALS=1`). `MAWIID_MT_PARTIALS=0` translates finished phrases only (less GPU load).
 - Model: [MADLAD-400 3B](https://huggingface.co/google/madlad400-3b-mt) (Apache 2.0), int8 in CTranslate2, greedy decoding. Finals are split into sentences, because MADLAD drops sentences from long inputs. Output length is capped, and looping outputs are retried. `&apos;` and similar escapes are cleaned up.
 - If the engine fails, it is skipped for 60 s, like the speech-to-text router. `MAWIID_MT_CPU_BACKUP=1` loads a second copy on the CPU as backup (~3 GB of RAM). It is a last resort: on a Core Ultra 7 155H it needs 2.6 s median and 4.6 s p95 per final, against 0.7 s on the GPU.
 
@@ -100,14 +101,16 @@ Measured on an RTX 4060 laptop GPU with Whisper `small` and MADLAD on the same G
 
 ## Live worker (`mawiid_ai.agent`)
 
-Links the two modules above to the app's calls. It is a LiveKit agent (`livekit-agents`) named `mawiid-translator`: LiveKit sends it only the rooms the backend dispatches it to, which happens when a host turns on live translation (`PATCH /room` with `room_translation_enabled: true`, or the room is created with it on). It leaves when translation is turned off or the room closes.
+Links the two modules above to the app's calls. It is a LiveKit agent (`livekit-agents`) named `mawiid-translator`: LiveKit sends it only the rooms the backend dispatches it to, which happens when a participant turns on their own captions (`PATCH /participant` with `participant_translation_enabled: true`). It stays until the room closes, and transcribes, sends and saves nothing while nobody has captions on.
 
 In each room it:
 
-1. Subscribes to every person's microphone (16 kHz mono) and runs one speech-to-text stream per speaker, in the language of the speaker's `mawiid.language` attribute (`en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`; other codes fall back to the language without region, then to `en-US`).
-2. Sends each partial and final result to everyone on the `lk.transcription` text-stream topic.
-3. Translates each final once per language that listeners picked (the same `mawiid.language` attribute) and sends it on `mawiid.translation.v1`, only to the listeners of that language. Listeners of the spoken language only get the original.
-4. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s).
+1. Subscribes to every person's microphone (16 kHz mono) and runs one speech-to-text stream per speaker, in the language of the speaker's `mawiid.spoken_language` attribute, or `mawiid.language` until one is set (`en`, `fr`, `ar`, `ar-MA`, `zh-CN`, `zh-TW`; other codes fall back to the language without region, then to `en-US`).
+2. Sends each partial and final result on the `lk.transcription` text-stream topic to the participants with captions on who read the spoken language (or a language no model handles).
+3. Translates for everyone else, once per language that listeners picked (the same `mawiid.language` attribute), and sends it on `mawiid.translation.v1`, only to the listeners of that language: live while the speaker talks (see above), then the finished text. A final that ends mid-sentence (no `.`, `?`, `!`, `؟`) stays open: the next phrase is translated together with it under the same segment id, so listeners see one subtitle that grows and MADLAD gets whole sentences. It is closed after 1.5 s of silence or at 300 characters. If translation fails, those listeners get the original.
+4. Saves final segments with their translations in the vault through the backend (`POST /transcript/internal`, every 5 s). When finals were translated together, the translation is saved on the last of them.
+
+Whisper also gets the end of the speaker's previous phrase as a prompt (`MAWIID_STT_CONTEXT_CHARS`, default 200, `0` turns it off), so a phrase cut mid-sentence continues the sentence instead of getting a false full stop, and names keep their spelling.
 
 Without the converted MADLAD model, step 3 is skipped and everyone gets captions in the spoken language. The topics and attributes are described in `apps/backend/src/module/main/participants/integration.md` (section 8). The code: `pipeline.py` (one room, no LiveKit code, tested with fakes in `tests/test_pipeline.py`), `uploader.py` (transcript batches), `worker.py` (LiveKit wiring). Rooms run as threads in one process, so every room shares the models loaded once.
 
@@ -131,4 +134,4 @@ Or directly: `.venv/bin/python -m mawiid_ai.agent dev` (`start` in production) w
 | `MAWIID_BACKEND_URL`, `INTERNAL_SERVICE_TOKEN`       | Where to save transcripts; without them nothing is saved        |
 | `MAWIID_STT_*`, `MAWIID_MT_*`                        | Model settings (sections above)                                 |
 
-The first start downloads Whisper. On a machine without CUDA libraries, set `MAWIID_STT_WHISPER_DEVICE=cpu` (partials are then off, finals arrive about half a second after the speaker pauses).
+The first start downloads Whisper. On a machine without CUDA libraries, set `MAWIID_STT_WHISPER_DEVICE=cpu` (`MAWIID_STT_PARTIALS=0` turns partials off if the machine is short of CPU).

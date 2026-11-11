@@ -1,6 +1,6 @@
 // Live captions from the AI translation worker (services/ai, mawiid_ai.agent). The original
-// text goes to everyone on lk.transcription; each translation goes only to the listeners
-// of its language on mawiid.translation.v1. A phrase's partial and final captions share a
+// text goes on lk.transcription only to those who read the spoken language; everyone else gets
+// just the translation in their language on mawiid.translation.v1. A phrase's partial and final captions share a
 // segment id, so the final one replaces the partial.
 // Keep in sync with packages/contracts/src/room.ts
 export const CAPTION_TOPIC = {

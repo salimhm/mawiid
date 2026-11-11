@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 from mawiid_ai.stt.base import SttEngine
-from mawiid_ai.stt.config import SttSettings
+from mawiid_ai.stt.config import LANGUAGES, SttSettings
 from mawiid_ai.stt.router import SttRouter
 
 log = logging.getLogger(__name__)
@@ -22,17 +22,8 @@ def load_engines(settings: SttSettings) -> dict[str, SttEngine]:
     except Exception:
         log.exception("whisper engine failed to load")
 
-    if Path(settings.darija.model).exists():
-        try:
-            from mawiid_ai.stt.whisper_engine import WhisperEngine
-
-            engines["whisper-darija"] = WhisperEngine(
-                settings.darija, settings.vad, name="whisper-darija", languages=["ar-MA"]
-            )
-        except Exception:
-            log.exception("darija engine failed to load")
-    else:
-        log.info("no darija model at %s (run scripts/convert_darija_model.py)", settings.darija.model)
+    if "ar-MA" in LANGUAGES:  # Darija is switched off by default: don't load its model then
+        _load_darija(settings, engines)
 
     # Voxtral Realtime needs a GPU; its engine is added once we test on GPU hardware.
     # Until then routes that list "voxtral" fall through to the next engine.
@@ -40,6 +31,20 @@ def load_engines(settings: SttSettings) -> dict[str, SttEngine]:
     if not engines:
         raise RuntimeError("no speech-to-text engine could be loaded")
     return engines
+
+
+def _load_darija(settings: SttSettings, engines: dict[str, SttEngine]) -> None:
+    if not Path(settings.darija.model).exists():
+        log.warning("no darija model at %s: Darija falls back to stock Whisper (run make ai-models)", settings.darija.model)
+        return
+    try:
+        from mawiid_ai.stt.whisper_engine import WhisperEngine
+
+        engines["whisper-darija"] = WhisperEngine(
+            settings.darija, settings.vad, name="whisper-darija", languages=["ar-MA"]
+        )
+    except Exception:
+        log.exception("darija engine failed to load")
 
 
 def build_router(settings: SttSettings | None = None) -> SttRouter:

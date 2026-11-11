@@ -1,10 +1,11 @@
-
 import ParticipantTile from './ParticipantTile'
+import { participantColor } from '../../../lib/participantColor'
 
 export default function MeetMain({
   localUser = {},
   participants = [],
   fullScreen = false,
+  colorOf = participantColor,
 }) {
   const users = [
     { ...localUser, isLocal: true },
@@ -45,7 +46,7 @@ export default function MeetMain({
             handRaised={Boolean(user.handRaised)}
             language={user.language}
             isLocal={Boolean(user.isLocal)}
-            colorIndex={index}
+            color={colorOf(user.id || 'local')}
           />
         ))}
       </div>

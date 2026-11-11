@@ -63,6 +63,31 @@ function ChatMessage({ message, name, isOwn, onRetry })
     );
 }
 
+function RoomEventLine({ event })
+{
+    return (
+        <p className='text-center text-xs text-primary-white/60 font-montserrat'>
+            {event.text} · {formatTime(event.createdAt)}
+        </p>
+    );
+}
+
+// Messages keep their order; each room event goes before the first message
+// written after it.
+function chatTimeline(messages, roomEvents)
+{
+    const items = [];
+    let next = 0;
+    for (const message of messages) {
+        while (next < roomEvents.length && roomEvents[next].createdAt < message.createdAt)
+            items.push({ kind: 'event', key: roomEvents[next].key, event: roomEvents[next++] });
+        items.push({ kind: 'message', key: message.key, message });
+    }
+    for (; next < roomEvents.length; next++)
+        items.push({ kind: 'event', key: roomEvents[next].key, event: roomEvents[next] });
+    return items;
+}
+
 function UnreadBadge({ count })
 {
     if (!count)
@@ -96,7 +121,7 @@ function SettingToggle({ label, description, checked, onChange })
     );
 }
 
-export default function MeetHeader({ fullScreen, participants = [], localRole = '', isStaff = false, moderation, settings, onUpdateSettings, typing = [], onTyping, messages = [], hasOlderMessages = false, joinedAtMessageId = 0, loadingOlderMessages = false, onSendMessage, onRetryMessage, onLoadOlderMessages })
+export default function MeetHeader({ fullScreen, participants = [], localRole = '', isStaff = false, moderation, settings, onUpdateSettings, typing = [], onTyping, messages = [], roomEvents = [], hasOlderMessages = false, joinedAtMessageId = 0, loadingOlderMessages = false, onSendMessage, onRetryMessage, onLoadOlderMessages })
 {
     const [actionsFor, setActionsFor] = useState(null);
     const [menuOpen, setMenuOpen] = useState(false);
@@ -104,8 +129,9 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
     const [menuPage, setMenuPage] = useState('chat');
     const [chatInput, setChatInput] = useState('');
     const messagesEndRef = useRef(null);
-    // Only a new latest message scrolls to the bottom, not loading older ones.
-    const lastMessageKey = messages.at(-1)?.key;
+    const timeline = chatTimeline(messages, roomEvents);
+    // Only a new latest message or event scrolls to the bottom, not loading older ones.
+    const lastMessageKey = timeline.at(-1)?.key;
     const localUserId = participants.find((participant) => participant.isLocal)?.userId;
     // Messages from others newer than what the chat last showed are unread.
     const [readUpToId, setReadUpToId] = useState(0);
@@ -296,7 +322,10 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
                                         {messages.length === 0 && (
                                             <p className='pt-6 text-center text-sm text-primary-white/60'>No messages yet. Say hello!</p>
                                         )}
-                                        {messages.map((message) => {
+                                        {timeline.map((item) => {
+                                            if (item.kind === 'event')
+                                                return <RoomEventLine key={item.key} event={item.event} />;
+                                            const { message } = item;
                                             const isOwn = message.userId === localUserId;
                                             return (
                                                 <div key={message.key}>
@@ -369,7 +398,6 @@ export default function MeetHeader({ fullScreen, participants = [], localRole = 
                                         <div className='mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2'>
                                             <SettingToggle label='Lock' description='Only the host can join' checked={settings.locked} onChange={(locked) => onUpdateSettings?.({ room_locked: locked })} />
                                             <SettingToggle label='Lobby' description='Guests wait to be admitted' checked={settings.lobby} onChange={(lobby) => onUpdateSettings?.({ room_lobby_enabled: lobby })} />
-                                            <SettingToggle label='Live translation' description='Subtitles in each person’s language' checked={settings.translation} onChange={(translation) => onUpdateSettings?.({ room_translation_enabled: translation })} />
                                         </div>
                                     )}
                                     <div className='flex items-center gap-3 text-primary-white/80 text-base mb-4'>
