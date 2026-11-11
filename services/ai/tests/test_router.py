@@ -67,7 +67,8 @@ class FakeEngine(SttEngine):
     def supports(self, language: str) -> bool:
         return language in self.languages
 
-    def open_stream(self, language: str, time_offset: float = 0.0) -> SttStream:
+    def open_stream(self, language: str, time_offset: float = 0.0, detect: bool = True) -> SttStream:
+        self.detect = detect
         if self.fail_open:
             raise RuntimeError(f"{self.name} cannot open a stream")
         return FakeStream(self, language, time_offset)
@@ -221,3 +222,12 @@ def test_slow_replay_does_not_cascade_through_backups(clock):
     b.call_seconds = 4.0  # replaying 0.9 s of audio takes a while; that alone is not "overloaded"
     push(stream, 0.1)
     assert stream.engine == "whisper-gpu"
+
+
+def test_streams_tell_engines_whether_to_detect_the_language(clock):
+    primary, backup = FakeEngine("voxtral", clock), FakeEngine("whisper", clock)
+    router = make_router(clock, primary, backup)
+    router.open_stream("fr-FR", detect=False)
+    assert primary.detect is False
+    router.open_stream("fr-FR")
+    assert primary.detect is True

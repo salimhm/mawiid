@@ -12,6 +12,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "livekit-client": "^2.23.0"
+    "livekit-client": "^2.23.0",
+    "react-icons": "^5.7.0"
   }
 }

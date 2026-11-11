@@ -16,7 +16,7 @@ import re
 import threading
 from pathlib import Path
 
-from mawiid_ai.stt.config import LANGUAGES
+from mawiid_ai.stt.config import ALL_LANGUAGES, LANGUAGES
 from mawiid_ai.translation.base import TranslationEngine
 from mawiid_ai.translation.config import MadladSettings
 
@@ -51,7 +51,7 @@ def _is_abbreviation(word: str) -> bool:
 
 def encode(sp, text: str, target: str) -> list[str]:
     """Sentencepiece tokens for translating ``text`` into the Mawiid language ``target``."""
-    return [*sp.encode(f"<2{LANGUAGES[target].model_code}> {text}", out_type=str), "</s>"]
+    return [*sp.encode(f"<2{ALL_LANGUAGES[target].model_code}> {text}", out_type=str), "</s>"]
 
 
 def _resolve_device(settings: MadladSettings) -> tuple[str, str]:
@@ -106,7 +106,7 @@ class MadladEngine(TranslationEngine):
             outputs = self._decode(batch)
         n = len(sentences)
         return [
-            ("" if LANGUAGES[target].model_code == "zh" else " ").join(outputs[i * n : (i + 1) * n])
+            ("" if ALL_LANGUAGES[target].model_code == "zh" else " ").join(outputs[i * n : (i + 1) * n])
             for i, target in enumerate(targets)
         ]
 

@@ -62,8 +62,25 @@ _PUNCTUATION = re.compile(r"[^\w\s]")
 _STRETCHED = re.compile(r"(\w)\1{5,}")  # "Sssssss", "hmmmmmm"
 
 
-def _normalized(text: str) -> str:
+def normalize_for_compare(text: str) -> str:
+    """Lower-cased, without punctuation or extra spaces: for comparing two transcripts."""
     return " ".join(_PUNCTUATION.sub("", text.lower()).split())
+
+
+# Fast speech is about 15-20 characters a second with spaces, in every enabled language. The
+# fixed allowance covers short phrases, where the voice detector's cut is barely longer than the
+# words ("D'accord, merci." in 0.6 s).
+MAX_CHARS_PER_SECOND = 20.0
+SHORT_PHRASE_ALLOWANCE_CHARS = 15
+_MIN_PLAUSIBILITY_AUDIO_S = 0.2
+
+
+def implausible_length(text: str, audio_seconds: float) -> bool:
+    """True when the text is far longer than anyone could say in that much audio: Whisper made
+    up a sentence. ``audio_seconds`` is the phrase as cut by the voice detector, before padding."""
+    if audio_seconds <= _MIN_PLAUSIBILITY_AUDIO_S:
+        return False
+    return len(text) > SHORT_PHRASE_ALLOWANCE_CHARS + MAX_CHARS_PER_SECOND * audio_seconds
 
 
 def is_hallucination(text: str) -> bool:
@@ -73,7 +90,7 @@ def is_hallucination(text: str) -> bool:
         return True
     if _STRETCHED.search(text):
         return True
-    words = _normalized(text).split()
+    words = normalize_for_compare(text).split()
     if not words:
         return True
     if " ".join(words) in _STOCK_PHRASES:
@@ -85,5 +102,5 @@ def is_hallucination(text: str) -> bool:
 def repeats_context(text: str, context: str) -> bool:
     """True when the text is just the end of the prompt again: Whisper echoing what it was
     given instead of transcribing. Without this, one made-up phrase keeps coming back."""
-    said, before = _normalized(text), _normalized(context)
+    said, before = normalize_for_compare(text), normalize_for_compare(context)
     return bool(said) and before.endswith(said)

@@ -136,3 +136,40 @@
     animation: none;
   }
 }
+
+/* Speaking, with the camera off: rings in the person's color (--ring-color) ripple out
+   from behind their avatar. Kept mounted and paused while silent, so they fade out
+   instead of vanishing mid-ripple. */
+@keyframes speakingRipple {
+  0% { opacity: 0.6; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.65); }
+}
+
+.speaking-rings {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 300ms ease-out;
+}
+
+.speaking-rings > span {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid var(--ring-color);
+  background: color-mix(in srgb, var(--ring-color) 12%, transparent);
+  animation: speakingRipple 1.8s cubic-bezier(0.2, 0.6, 0.35, 1) infinite paused;
+  will-change: transform, opacity;
+}
+
+.speaking-rings > span:nth-child(2) { animation-delay: 0.6s; }
+.speaking-rings > span:nth-child(3) { animation-delay: 1.2s; }
+
+.speaking-rings.is-speaking { opacity: 1; }
+.speaking-rings.is-speaking > span { animation-play-state: running; }
+
+@media (prefers-reduced-motion: reduce) {
+  .speaking-rings > span { animation: none; opacity: 0.6; transform: scale(1.12); }
+  .speaking-rings > span + span { display: none; }
+}

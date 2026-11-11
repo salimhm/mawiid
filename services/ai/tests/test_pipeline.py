@@ -29,9 +29,10 @@ PHRASE_CHUNKS = 4  # fake streams: a partial after 2 chunks, a final after 4
 
 
 class FakeStream(SttStream):
-    def __init__(self, router: "FakeRouter", language: str) -> None:
+    def __init__(self, router: "FakeRouter", language: str, detect: bool = True) -> None:
         self.router = router
         self.language = language
+        self.detect = detect
         self.chunks = 0
         self.phrases = 0
         self.closed = False
@@ -61,7 +62,10 @@ class FakeStream(SttStream):
     def _result(self, kind: ResultKind, label: str) -> Transcript:
         start = self.phrases * PHRASE_CHUNKS * 0.1
         end = "." if self.router.punctuate and kind is ResultKind.FINAL else ""
-        return Transcript(kind, f"{self.language} {label} {self.phrases}{end}", self.language, start, start + 0.4, "fake")
+        # The language speech-to-text detected: the scripted one for this phrase, else the stream's.
+        phrase = self.phrases - (kind is ResultKind.FINAL)
+        detected = self.router.detected.get((phrase, kind), self.router.detected.get(phrase, self.language))
+        return Transcript(kind, f"{detected} {label} {self.phrases}{end}", detected, start, start + 0.4, "fake")
 
 
 class FakeRouter:
@@ -69,9 +73,11 @@ class FakeRouter:
         self.streams: list[FakeStream] = []
         self.crash = False
         self.punctuate = False  # finals end with a full stop
+        # Phrase index (or (index, kind)) -> the language detected for it.
+        self.detected: dict = {}
 
-    def open_stream(self, language: str) -> FakeStream:
-        stream = FakeStream(self, language)
+    def open_stream(self, language: str, detect: bool = True) -> FakeStream:
+        stream = FakeStream(self, language, detect)
         self.streams.append(stream)
         return stream
 
@@ -151,6 +157,12 @@ def test_languages_switched_off_map_to_what_is_on(monkeypatch):
     assert mawiid_language("ar-MA") == "ar-SA"  # Darija off: plain Arabic
     assert mawiid_language("zh-tw") is None  # Chinese off: originals only
     assert mawiid_language("zh") is None
+
+
+def test_darija_is_its_own_language_when_enabled(monkeypatch):
+    monkeypatch.setattr(pipeline, "LANGUAGES", {code: ALL_LANGUAGES[code] for code in ("en-US", "fr-FR", "ar-SA", "ar-MA")})
+    assert mawiid_language("ar-MA") == "ar-MA"
+    assert mawiid_language("ar") == "ar-SA"
 
 
 def test_original_goes_only_to_readers_of_the_spoken_language_and_partial_and_final_share_a_segment():
@@ -394,7 +406,7 @@ class ScriptedRouter:
         self.script = list(script)
         self.streams: list[ScriptedStream] = []
 
-    def open_stream(self, language: str) -> ScriptedStream:
+    def open_stream(self, language: str, detect: bool = True) -> ScriptedStream:
         stream = ScriptedStream(self.script)
         self.streams.append(stream)
         return stream
@@ -522,3 +534,134 @@ def test_queued_live_translations_are_skipped_when_newer_ones_arrive():
     sent = translations(room)
     assert sent[-1] == ("<en-US>un deux trois quatre cinq six sept huit.", "true")
     assert len(sent) < 4  # 3 live ones were queued; the stale ones were dropped
+
+
+def test_each_phrase_is_captioned_in_the_language_it_was_spoken_in():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")  # picked French, speaks Arabic then English
+    room.pipeline.set_language("user_2", "ar")
+    room.pipeline.set_language("user_3", "en")
+    room.router.detected = {0: "ar-SA", 1: "en-US"}
+    room.router.punctuate = True
+
+    room.speak("user_1", 2 * PHRASE_CHUNKS)
+
+    originals = [(sent.text, sent.identities) for sent in room.topic(TRANSCRIPTION_TOPIC) if sent.attributes[FINAL_ATTRIBUTE] == "true"]
+    assert originals == [("ar-SA final 1.", ["user_2"]), ("en-US final 2.", ["user_3"])]
+    translations = [(sent.attributes[LANGUAGE_ATTRIBUTE], sent.identities) for sent in room.topic(TRANSLATION_TOPIC)]
+    assert translations == [("fr-FR", ["user_1"]), ("en-US", ["user_3"]), ("fr-FR", ["user_1"]), ("ar-SA", ["user_2"])]
+    assert [segment.language for segment in room.segments] == ["ar-SA", "en-US"]
+
+
+def test_a_language_switch_closes_the_open_subtitle():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "en")
+    room.router.detected = {1: "ar-SA"}  # no full stop: the French phrase would wait for the next one
+
+    room.speak("user_1", 2 * PHRASE_CHUNKS)
+
+    assert room.engine.calls == [("fr-FR final 1", ["en-US"]), ("ar-SA final 2", ["fr-FR", "en-US"])]
+
+
+def test_a_final_in_another_language_than_its_partials_starts_a_new_caption():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "ar")
+    room.router.detected = {(0, ResultKind.FINAL): "ar-SA"}  # the partial still guessed French
+
+    room.speak("user_1", PHRASE_CHUNKS)
+
+    partial, final = room.topic(TRANSCRIPTION_TOPIC)
+    assert (partial.identities, final.identities) == (["user_1"], ["user_2"])
+    assert partial.attributes[SEGMENT_ATTRIBUTE] != final.attributes[SEGMENT_ATTRIBUTE]
+
+
+def test_auto_detects_from_the_read_language_and_a_picked_language_is_fixed():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr")  # nothing picked: auto
+    room.pipeline.set_language("user_2", "en", "auto")
+    room.pipeline.set_language("user_3", "en", "ar")
+
+    for identity in ("user_1", "user_2", "user_3"):
+        room.speak(identity, 1)
+
+    assert [(s.language, s.detect) for s in room.router.streams] == [
+        ("fr-FR", True), ("en-US", True), ("ar-SA", False)
+    ]
+
+
+def test_switching_between_auto_and_a_picked_language_reopens_the_stream():
+    room = Room()
+    room.pipeline.set_language("user_1", "fr", "fr")
+
+    def switch(chunk: int) -> None:
+        if chunk == 1:
+            room.pipeline.set_language("user_1", "fr", "auto")
+
+    room.speak("user_1", 3, between=switch)
+
+    assert [(s.language, s.detect) for s in room.router.streams] == [("fr-FR", False), ("fr-FR", True)]
+
+
+def _switch(room: Room, identity: str, code: str) -> None:
+    """Change someone's language inside an event loop, as the worker does, and wait for the re-send."""
+
+    async def run():
+        room.pipeline.set_language(identity, code)
+        await asyncio.gather(*room.pipeline._resending.values())
+
+    asyncio.run(run())
+
+
+def test_changing_language_resends_recent_subtitles_in_the_new_language():
+    room = Room()
+    room.router.punctuate = True  # each final closes its subtitle
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "ar")
+    room.speak("user_1", PHRASE_CHUNKS * 2)
+    unit_ids = [sent.attributes[SEGMENT_ATTRIBUTE] for sent in room.topic(TRANSLATION_TOPIC)]
+    room.sent.clear()
+
+    _switch(room, "user_2", "en")
+
+    assert [(s.text, s.topic, s.identities, s.attributes[LANGUAGE_ATTRIBUTE]) for s in room.sent] == [
+        ("<en-US>fr-FR final 1.", TRANSLATION_TOPIC, ["user_2"], "en-US"),
+        ("<en-US>fr-FR final 2.", TRANSLATION_TOPIC, ["user_2"], "en-US"),
+    ]
+    # Same subtitle ids, in order, all final: the new text replaces the old one.
+    assert [s.attributes[SEGMENT_ATTRIBUTE] for s in room.sent] == unit_ids
+    assert all(s.attributes[FINAL_ATTRIBUTE] == "true" for s in room.sent)
+
+
+def test_changing_to_the_spoken_language_resends_the_original():
+    room = Room()
+    room.router.punctuate = True
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "ar")
+    room.speak("user_1", PHRASE_CHUNKS)
+    room.sent.clear()
+
+    _switch(room, "user_2", "fr")
+
+    assert [(s.text, s.topic, s.attributes[LANGUAGE_ATTRIBUTE]) for s in room.sent] == [
+        ("fr-FR final 1.", TRANSCRIPTION_TOPIC, "fr-FR")
+    ]
+
+
+def test_nothing_is_resent_when_the_language_does_not_change_or_captions_are_off():
+    room = Room()
+    room.router.punctuate = True
+    room.pipeline.set_language("user_1", "fr")
+    room.pipeline.set_language("user_2", "ar")
+    room.speak("user_1", PHRASE_CHUNKS)
+    room.sent.clear()
+
+    _switch(room, "user_2", "ar")
+    room.pipeline.set_captions("user_2", False)
+
+    async def captions_off_switch():
+        RoomPipeline.set_language(room.pipeline, "user_2", "en")  # without turning captions on
+
+    asyncio.run(captions_off_switch())
+    assert room.sent == []
