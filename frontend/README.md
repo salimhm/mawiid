@@ -48,3 +48,14 @@ For a Windows browser testing against LiveKit on the same machine in WSL, use
 `bun run postman:dev`. A stale LAN IP can prevent the browser from connecting even while
 the backend successfully creates media rooms. When using `make backend` or `make dev`,
 the root `.env` supplies the LiveKit settings instead.
+
+## HTTPS in development
+
+`make dev` and `make frontend` serve `https://<host>:3100`, and plain `http://` on the same port redirects to it. `make certs` creates a
+self-signed certificate in `.secrets/dev-tls` for localhost and this machine's IPv4 addresses, and replaces it when an
+address changes. Each browser asks you to accept it once.
+
+`/livekit/*` proxies to LiveKit (`LIVEKIT_PROXY_URL`, default `http://localhost:7880`), so signaling uses `wss://` with the
+same certificate. Browsers do not follow redirects on WebSocket handshakes, so `ws://` gets a redirect response but does
+not connect; the frontend always uses `wss://` on an HTTPS page. Without `TLS_CERT_FILE` and `TLS_KEY_FILE`, the
+server stays plain HTTP on `PORT`, which is how `bun dev` runs.

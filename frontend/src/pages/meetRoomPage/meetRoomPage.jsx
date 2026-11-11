@@ -2,9 +2,10 @@ import MeetHeader from './components/MeetHeader'
 import MeetMain from './components/MeetMain'
 import MeetControls from './components/MeetControls'
 import MeetCaptions from './components/MeetCaptions'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useRoom } from '../../hooks/useRoom'
+import { createColorAllocator } from '../../lib/participantColor'
 
 const STATUS_MESSAGES = {
     connecting: 'Joining the mawiid…',
@@ -12,6 +13,9 @@ const STATUS_MESSAGES = {
     waiting: 'Waiting for the host to let you in…',
     disconnected: 'You left the mawiid.',
     removed: 'You were removed from the mawiid.',
+    replaced: 'You were disconnected because your account joined this mawiid from another device or tab.',
+    ended: 'The mawiid has ended.',
+    lost: 'You lost the connection to the mawiid.',
 }
 
 export default function MeetRoomPage() {
@@ -30,6 +34,12 @@ export default function MeetRoomPage() {
 
     const [fullScreen, setFullScreen] = useState(false)
     const { notice, clearNotice } = room
+    // Lives as long as the page, so people keep their color while they stay.
+    const [colorAllocator] = useState(createColorAllocator)
+    const colorOf = useMemo(
+        () => colorAllocator.assign([room.localUser, ...room.participants]),
+        [colorAllocator, room.localUser, room.participants],
+    )
 
     useEffect(() => {
         if (!notice)
@@ -58,6 +68,7 @@ export default function MeetRoomPage() {
                 typing={room.typing}
                 onTyping={room.sendTyping}
                 messages={room.messages}
+                roomEvents={room.roomEvents}
                 hasOlderMessages={room.hasOlderMessages}
                 joinedAtMessageId={room.joinedAtMessageId}
                 loadingOlderMessages={room.loadingOlderMessages}
@@ -69,7 +80,9 @@ export default function MeetRoomPage() {
                 localUser={room.localUser}
                 participants={room.participants}
                 fullScreen={fullScreen}
+                colorOf={colorOf}
             />
+            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} fullScreen={fullScreen} colorOf={colorOf} />
             <MeetControls
                 fullScreen={fullScreen}
                 setFullScreen={setFullScreen}
@@ -77,22 +90,24 @@ export default function MeetRoomPage() {
                 camOn={room.localUser.isCamOn}
                 handRaised={room.localUser.handRaised}
                 language={room.localUser.language}
+                spokenLanguage={room.localUser.spokenLanguage}
                 onMicToggle={room.toggleMic}
                 onCamToggle={room.toggleCam}
                 onScreenShareToggle={room.toggleScreenShare}
                 onHandToggle={room.toggleHand}
+                translationEnabled={room.localUser.translationEnabled}
+                onTranslationToggle={room.toggleTranslation}
                 onLanguageChange={room.setLanguage}
+                onSpokenLanguageChange={room.setSpokenLanguage}
                 onReaction={room.sendReaction}
                 onLeave={handleLeave}
                 roomCode={room.roomCode}
             />
 
-            {room.settings.translation && <MeetCaptions captions={room.captions} />}
-
             {overlayMessage && (
                 <div className='fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-black/85 backdrop-blur-sm px-6 text-center'>
                     <p className='text-primary-white font-montserrat text-lg sm:text-2xl'>{overlayMessage}</p>
-                    {(room.status === 'error' || room.status === 'disconnected' || room.status === 'removed' || room.status === 'waiting') && (
+                    {['error', 'disconnected', 'removed', 'replaced', 'ended', 'lost', 'waiting'].includes(room.status) && (
                         <button className='rounded-full border border-white/30 px-6 py-2 text-white hover:bg-white/10 transition cursor-pointer' onClick={() => navigate('/')}>
                             Back to home
                         </button>

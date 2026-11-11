@@ -52,6 +52,7 @@ Only the server sets attributes, because tokens use `canUpdateOwnMetadata: false
 | `mawiid.user_id`     | `"42"`        | Token                       | Never                                 |
 | `mawiid.role`        | `"moderator"` | Token                       | Promote, demote, `PATCH /room-member` |
 | `mawiid.language`    | `"fr"`        | Token, from `user_language` | `PATCH /participant`                  |
+| `mawiid.spoken_language` | `"ar-MA"` | Backend                     | `PATCH /participant`                  |
 | `mawiid.hand_raised` | `"true"`      | Backend                     | `PATCH /participant`                  |
 
 Clients read them from participant attributes and `ParticipantAttributesChanged`. Late joiners see raised hands because they are attributes, not events.

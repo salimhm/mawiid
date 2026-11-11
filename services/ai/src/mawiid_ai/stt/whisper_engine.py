@@ -4,20 +4,62 @@ so the voice detector cuts the stream into phrases and each phrase is transcribe
 from __future__ import annotations
 
 import logging
+import os
 import threading
+import time
 from collections.abc import Iterable
 
 import numpy as np
 
 from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind, SttEngine, SttError, SttStream, Transcript, to_float32
 from mawiid_ai.stt.config import LANGUAGES, VadSettings, WhisperSettings
-from mawiid_ai.stt.postprocess import clean_text
+from mawiid_ai.stt.postprocess import clean_text, is_hallucination, repeats_context
 from mawiid_ai.stt.vad import SpeechProbModel, VadSegmenter
 
 log = logging.getLogger(__name__)
 
+# Whisper's own measure of a decoding stuck in a loop ("Sssss...", one word repeated).
+_MAX_COMPRESSION_RATIO = 2.4
+# Shorter finals are not given to the next phrase as a prompt: a few words ("I don't know.")
+# are the easiest for Whisper to echo back over silence.
+_MIN_CONTEXT_CHARS = 15
+
 # Nudges Whisper toward punctuated Mandarin; without it Chinese output often has no punctuation.
 _PROMPTS = {"zh": "以下是普通话的句子。"}
+
+
+# Whisper pads every phrase to 30 s and encodes all of it, so a 2 s phrase costs as much as a
+# 30 s one: 7 s with the Darija model on a laptop CPU. Encoding the phrase plus some silence is
+# 3-4 times faster. Below ~10 s in total the decoder starts repeating itself on short phrases.
+_MIN_FRAMES = 1000
+_TRAILING_FRAMES = 300
+_MAX_FRAMES = 3000
+
+
+def pad_to_phrase(features: np.ndarray) -> np.ndarray:
+    frames = min(_MAX_FRAMES, max(_MIN_FRAMES, features.shape[-1] + _TRAILING_FRAMES))
+    frames += frames % 2
+    if features.shape[-1] >= frames:
+        return features[..., :frames]
+    padding = [(0, 0)] * features.ndim
+    padding[-1] = (0, frames - features.shape[-1])
+    return np.pad(features, padding)
+
+
+def previous_text(context: str, text: str, limit: int) -> str:
+    """The last ``limit`` characters of what was said, cut at a word boundary."""
+    if limit <= 0:
+        return ""
+    joined = f"{context} {text}".strip()
+    if len(joined) <= limit:
+        return joined
+    tail = joined[-limit:]
+    space = tail.find(" ")
+    return tail[space + 1 :] if 0 <= space < len(tail) - 1 else tail
+
+
+def _default_cpu_threads() -> int:
+    return max(4, (os.cpu_count() or 4) * 2 // 3)
 
 
 def _resolve_device(settings: WhisperSettings) -> tuple[str, str]:
@@ -48,7 +90,12 @@ class WhisperEngine(SttEngine):
         self.settings = settings
         self.vad_settings = vad_settings
         self.device, self.compute_type = _resolve_device(settings)
-        self.partials = settings.partials == "1" or (settings.partials == "auto" and self.device == "cuda")
+        self.partials = settings.partials == "1"
+        if self.device == "cpu":
+            import faster_whisper.transcribe
+
+            # GPUs keep the stock 30 s, which is fast enough there.
+            faster_whisper.transcribe.pad_or_trim = pad_to_phrase
         log.info(
             "loading %s (%s) on %s (%s), partials %s",
             name, settings.model, self.device, self.compute_type, "on" if self.partials else "off",
@@ -57,7 +104,7 @@ class WhisperEngine(SttEngine):
             settings.model,
             device=self.device,
             compute_type=self.compute_type,
-            cpu_threads=settings.cpu_threads,
+            cpu_threads=settings.cpu_threads or (_default_cpu_threads() if self.device == "cpu" else 0),
         )
         # CTranslate2 handles concurrent calls, but on CPU they just fight over cores.
         self._lock = threading.Lock() if self.device == "cpu" else None
@@ -72,18 +119,18 @@ class WhisperEngine(SttEngine):
             raise SttError(f"{self.name} does not support {language}")
         return WhisperStream(self, language, time_offset, vad_model)
 
-    def transcribe(self, audio: np.ndarray, language: str, partial: bool = False) -> str:
-        """Transcribe one phrase of 16 kHz float32 audio."""
+    def transcribe(self, audio: np.ndarray, language: str, partial: bool = False, context: str = "") -> str:
+        """Transcribe one phrase of 16 kHz float32 audio. ``context``: what the speaker said just before."""
         code = LANGUAGES[language].model_code
         try:
             if self._lock is not None:
                 with self._lock:
-                    return self._transcribe(audio, language, code, partial)
-            return self._transcribe(audio, language, code, partial)
+                    return self._transcribe(audio, language, code, partial, context)
+            return self._transcribe(audio, language, code, partial, context)
         except Exception as exc:
             raise SttError(f"{self.name} failed: {exc}") from exc
 
-    def _transcribe(self, audio: np.ndarray, language: str, code: str, partial: bool) -> str:
+    def _transcribe(self, audio: np.ndarray, language: str, code: str, partial: bool, context: str) -> str:
         s = self.settings
         segments, _ = self._model.transcribe(
             audio,
@@ -96,9 +143,19 @@ class WhisperEngine(SttEngine):
             without_timestamps=True,
             no_speech_threshold=s.max_no_speech_prob,
             log_prob_threshold=s.min_avg_logprob,
-            initial_prompt=_PROMPTS.get(code),
+            initial_prompt=" ".join(p for p in (_PROMPTS.get(code), context) if p) or None,
         )
-        return clean_text("".join(segment.text for segment in segments), language)
+        # faster-whisper drops a segment only when it is both likely silence and low-confidence;
+        # its made-up phrases are confident, so either sign alone is enough here.
+        kept = (
+            segment.text
+            for segment in segments
+            if segment.no_speech_prob <= s.max_no_speech_prob and segment.compression_ratio <= _MAX_COMPRESSION_RATIO
+        )
+        text = clean_text("".join(kept), language)
+        if not text or is_hallucination(text) or repeats_context(text, context):
+            return ""
+        return text
 
 
 class WhisperStream(SttStream):
@@ -117,6 +174,8 @@ class WhisperStream(SttStream):
         self._last_partial_at = 0
         self._last_partial_text = ""
         self._partial_segment = -1
+        self._next_partial_at = 0.0
+        self._context = ""  # the end of the previous final, prompted to Whisper
 
     def push_audio(self, audio: np.ndarray | bytes) -> list[Transcript]:
         results = [r for seg in self._vad.feed(to_float32(audio)) if (r := self._final(seg.audio, seg.start_sample))]
@@ -130,9 +189,11 @@ class WhisperStream(SttStream):
 
     def _final(self, audio: np.ndarray, start_sample: int) -> Transcript | None:
         self._last_partial_text = ""
-        text = self._engine.transcribe(audio, self._language)
+        text = self._engine.transcribe(audio, self._language, context=self._context)
         if not text:
             return None
+        if len(text) >= _MIN_CONTEXT_CHARS:
+            self._context = previous_text(self._context, text, self._engine.settings.context_chars)
         return self._result(ResultKind.FINAL, text, start_sample, start_sample + len(audio))
 
     def _maybe_partial(self) -> Transcript | None:
@@ -144,11 +205,14 @@ class WhisperStream(SttStream):
             self._last_partial_at = start
             self._last_partial_text = ""
         now = self._vad.samples_seen
-        if now - self._last_partial_at < self._partial_every:
+        if now - self._last_partial_at < self._partial_every or time.monotonic() < self._next_partial_at:
             return None
         self._last_partial_at = now
         audio = self._vad.current_audio()
-        text = self._engine.transcribe(audio, self._language, partial=True)
+        started = time.monotonic()
+        text = self._engine.transcribe(audio, self._language, partial=True, context=self._context)
+        finished = time.monotonic()
+        self._next_partial_at = finished + (finished - started) * (1 / self._engine.settings.partial_max_load - 1)
         if not text or text == self._last_partial_text:
             return None
         self._last_partial_text = text

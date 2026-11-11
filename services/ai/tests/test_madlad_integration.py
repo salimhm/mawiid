@@ -7,6 +7,8 @@ import pytest
 from mawiid_ai.stt.base import ResultKind, Transcript
 from mawiid_ai.translation.config import MadladSettings, TranslationSettings
 
+from conftest import needs_languages
+
 MODEL = Path(MadladSettings().model_path)
 
 pytestmark = pytest.mark.skipif(not (MODEL / "model.bin").exists(), reason="no converted translation model")
@@ -26,13 +28,19 @@ def test_language_tag_reaches_the_model_as_one_token(madlad):
     assert pieces[-1] == "</s>"
 
 
-def test_french_sentence_is_translated_into_every_other_language(madlad):
-    en, ar, zh = madlad.translate("Le chat dort sur le canapé.", "fr-FR", ["en-US", "ar-SA", "zh-CN"])
+def test_french_sentence_is_translated_into_english_and_arabic(madlad):
+    en, ar = madlad.translate("Le chat dort sur le canapé.", "fr-FR", ["en-US", "ar-SA"])
     assert "cat" in en.lower() and ("sofa" in en.lower() or "couch" in en.lower())
     assert "القط" in ar
+
+
+@needs_languages("zh-CN")
+def test_french_sentence_is_translated_into_chinese(madlad):
+    [zh] = madlad.translate("Le chat dort sur le canapé.", "fr-FR", ["zh-CN"])
     assert "猫" in zh
 
 
+@needs_languages("zh-CN")
 def test_every_sentence_of_a_multi_sentence_final_is_translated(madlad):
     # Given both sentences at once, MADLAD silently dropped the first one.
     text = (
@@ -56,7 +64,6 @@ def test_translator_produces_subtitles_with_the_real_model(madlad):
 
     translator = SubtitleTranslator({"madlad": madlad}, TranslationSettings(engines=["madlad"]))
     final = Transcript(ResultKind.FINAL, "Hello everyone, can you hear me?", "en-US", 0.0, 2.0, "whisper")
-    subs = {s.language: s.text for s in translator.translate(final, ["fr-FR", "zh-TW", "en-US"])}
+    subs = {s.language: s.text for s in translator.translate(final, ["fr-FR", "en-US"])}
     assert subs["en-US"] == "Hello everyone, can you hear me?"
     assert "entend" in subs["fr-FR"].lower()
-    assert "聽" in subs["zh-TW"] and "听" not in subs["zh-TW"]

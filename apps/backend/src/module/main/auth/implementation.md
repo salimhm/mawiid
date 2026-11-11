@@ -89,7 +89,7 @@ Signup now issues and emails verification tokens. Copy the `token` query paramet
 
 `POST /auth/register` remains public. It creates an unverified account with an Argon2id password hash, stores a 24-hour verification token in Redis, and sends the verification email. It returns a confirmation, not an access token or refresh cookie.
 
-The frontend sends its current origin as optional `app_url` in registration, verification resend, and password-reset requests. In development the backend accepts local loopback origins and HTTPS Cloudflare Quick Tunnel (`*.trycloudflare.com`) origins; all other supplied origins are rejected. In production an `app_url` must exactly match the HTTPS `PUBLIC_APP_URL` allowlist entry. `PUBLIC_APP_URL` remains the fallback for non-browser calls. Email links use `/auth/verify-email?token=...`.
+The frontend sends its current origin as optional `app_url` in registration, verification resend, and password-reset requests. In development the backend accepts local loopback origins, HTTPS private network IPv4 origins (`10.x`, `172.16-31.x`, `192.168.x`) and HTTPS Cloudflare Quick Tunnel (`*.trycloudflare.com`) origins; all other supplied origins are rejected. In production an `app_url` must exactly match the HTTPS `PUBLIC_APP_URL` allowlist entry. `PUBLIC_APP_URL` remains the fallback for non-browser calls. Email links use `/auth/verify-email?token=...`.
 
 Example request, replacing the email with an inbox you control and using a username not already registered:
 

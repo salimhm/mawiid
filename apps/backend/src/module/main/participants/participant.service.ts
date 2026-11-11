@@ -46,12 +46,18 @@ export const service_participant = {
     if (body.participant_hand_raised !== undefined) {
       attributes[room_attribute.hand_raised] = body.participant_hand_raised ? 'true' : ''
     }
+    if (body.participant_translation_enabled !== undefined) {
+      attributes[room_attribute.translation_enabled] = body.participant_translation_enabled ? 'true' : ''
+    }
     if (body.participant_language) attributes[room_attribute.language] = body.participant_language
+    if (body.participant_spoken_language) attributes[room_attribute.spoken_language] = body.participant_spoken_language
     if (Object.keys(attributes).length === 0) throw lib_error.bad_request
     const info = await lib_livekit_call(() =>
       lib_livekit_room.updateParticipant(room.room_uid, lib_livekit_identity(payload.user_id), { attributes }),
     )
     if (!info) throw lib_error.participant_not_found
+    // The worker stays in the room once started and only works while someone has captions on.
+    if (body.participant_translation_enabled) await service_room.translate(room)
     return { data: participant_data(room, member, info.attributes) }
   },
 

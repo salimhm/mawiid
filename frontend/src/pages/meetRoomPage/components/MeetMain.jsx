@@ -1,6 +1,7 @@
 import ParticipantTile from './ParticipantTile'
+import { participantColor } from '../../../lib/participantColor'
 
-export default function MeetMain({ localUser = {}, participants = [], fullScreen = false })
+export default function MeetMain({ localUser = {}, participants = [], fullScreen = false, colorOf = participantColor })
 {
     const allUsers = [localUser, ...participants]
     const count = Math.max(allUsers.length, 1)
@@ -32,7 +33,7 @@ export default function MeetMain({ localUser = {}, participants = [], fullScreen
                 {allUsers.map((user, i) => (
                     <ParticipantTile
                         key={user.id || i}
-                        id={user.id || 'local'}
+                        color={colorOf(user.id || 'local')}
                         name={user.name || 'Guest'}
                         stream={user.stream || null}
                         isCamOn={user.isCamOn || false}

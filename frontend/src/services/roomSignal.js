@@ -1,4 +1,5 @@
 import { RoomEvent } from 'livekit-client'
+import { randomId } from '../lib/utils'
 
 // LiveKit data messages (chat, typing, reactions, moderation notices). Port of
 // create_participant_signal from
@@ -141,7 +142,7 @@ export function createRoomSignal(room, { onMessage, onTyping, onReaction, onMode
         if (now - reactionSentAt < LIMIT.reactionIntervalMs)
             return null
         reactionSentAt = now
-        const event = { type: 'reaction', reaction_id: crypto.randomUUID(), reaction }
+        const event = { type: 'reaction', reaction_id: randomId(), reaction }
         await publish(ROOM_TOPIC.reaction, event, true)
         return event
     }
