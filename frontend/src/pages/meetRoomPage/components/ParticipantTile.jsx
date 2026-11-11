@@ -107,7 +107,9 @@ export default function ParticipantTile({
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-3 text-white/75 font-inter text-[10px] sm:text-xs leading-none font-medium">
+      {/* Always one icon tall, even when empty: otherwise muting or unmuting (or a raised
+          hand) changes this row's height and the avatar above moves up or down. */}
+      <div className={`flex items-center justify-end gap-3 text-white/75 font-inter text-[10px] sm:text-xs leading-none font-medium ${compact ? 'min-h-5' : 'min-h-12'}`}>
         <div className="flex items-center gap-2">
           {handRaised && (
             <span className={`inline-flex items-center justify-center text-center rounded-full ${compact ? 'p-0.5' : 'p-2'} text-base`} title="Hand raised">
