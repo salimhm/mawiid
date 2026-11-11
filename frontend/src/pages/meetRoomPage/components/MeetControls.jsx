@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import GlassSurface from '../../../components/GlassSurface'
 import { copyText } from '../../../lib/utils'
 import * as icons from '../../../assets/icons'
+import { BiGridAlt, BiUserVoice } from 'react-icons/bi'
 
 // The languages the AI translation worker handles (services/ai/README.md).
 const LANGUAGE_CODES = {
@@ -21,6 +22,8 @@ const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮']
 export default function MeetControls({
   fullScreen,
   setFullScreen,
+  layout = 'grid',
+  onLayoutChange,
   micOn = false,
   camOn = false,
   handRaised = false,
@@ -249,7 +252,30 @@ export default function MeetControls({
           </GlassSurface>
         </div>
 
-        <div className='flex items-center justify-end min-w-0 pl-1'>
+        <div className='flex items-center justify-end gap-1.5 sm:gap-2 min-w-0 pl-1'>
+          {onLayoutChange && (
+            <GlassSurface
+              width='auto'
+              height='auto'
+              borderRadius={999}
+              backgroundOpacity={0.12}
+              blur={12}
+              className='shadow-lg shrink-0'
+            >
+              <button
+                type='button'
+                onClick={() => onLayoutChange(layout === 'speaker' ? 'grid' : 'speaker')}
+                title={layout === 'speaker' ? 'Show everyone in a grid' : 'Feature whoever is talking'}
+                aria-label={layout === 'speaker' ? 'Switch to grid layout' : 'Switch to speaker layout'}
+                className='text-white p-1.5 sm:p-2 hover:scale-110 active:scale-90 transition cursor-pointer flex items-center justify-center'
+              >
+                {/* The icon shows the layout a click switches to. */}
+                {layout === 'speaker'
+                  ? <BiGridAlt className='w-4 h-4 sm:w-5 sm:h-5' />
+                  : <BiUserVoice className='w-4 h-4 sm:w-5 sm:h-5' />}
+              </button>
+            </GlassSurface>
+          )}
           <GlassSurface
             width='auto'
             height='auto'

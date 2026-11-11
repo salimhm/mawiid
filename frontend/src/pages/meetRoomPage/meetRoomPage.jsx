@@ -7,6 +7,17 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useRoom } from '../../hooks/useRoom'
 import { createColorAllocator } from '../../lib/participantColor'
 
+// The layout someone picked (grid or speaker), kept for their next meetings.
+const LAYOUT_KEY = 'mawiid.layout'
+
+function savedLayout() {
+    try {
+        return localStorage.getItem(LAYOUT_KEY) === 'speaker' ? 'speaker' : 'grid'
+    } catch {
+        return 'grid'
+    }
+}
+
 const STATUS_MESSAGES = {
     connecting: 'Joining the mawiid…',
     reconnecting: 'Connection lost, reconnecting…',
@@ -33,6 +44,15 @@ export default function MeetRoomPage() {
     })
 
     const [fullScreen, setFullScreen] = useState(false)
+    const [layout, setLayout] = useState(savedLayout)
+    const changeLayout = (next) => {
+        setLayout(next)
+        try {
+            localStorage.setItem(LAYOUT_KEY, next)
+        } catch {
+            // Storage blocked: the choice holds for this meeting only.
+        }
+    }
     const { notice, clearNotice } = room
     // Lives as long as the page, so people keep their color while they stay.
     const [colorAllocator] = useState(createColorAllocator)
@@ -81,11 +101,16 @@ export default function MeetRoomPage() {
                 participants={room.participants}
                 fullScreen={fullScreen}
                 colorOf={colorOf}
+                layout={layout}
+                spotlightId={room.spotlightId}
+                onStopScreenShare={room.toggleScreenShare}
             />
             <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} fullScreen={fullScreen} colorOf={colorOf} />
             <MeetControls
                 fullScreen={fullScreen}
                 setFullScreen={setFullScreen}
+                layout={layout}
+                onLayoutChange={changeLayout}
                 micOn={room.localUser.isMicOn}
                 camOn={room.localUser.isCamOn}
                 handRaised={room.localUser.handRaised}
