@@ -84,6 +84,10 @@ redis:
 # which matches postman/.env.postman. infra/livekit.dev.yaml sends webhooks to the
 # backend on :3000, so participants who bypass a ban or removal are disconnected.
 # The container is recreated each time so config changes always apply.
+# Inside Docker, LiveKit would announce its container address (172.17.x.x) for media,
+# which only this machine can reach: other devices on the LAN connect, then drop.
+# It announces this machine's LAN address instead (override: make livekit NODE_IP=…).
+NODE_IP ?= $(shell hostname -I 2>/dev/null | tr ' ' '\n' | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$$' || echo 127.0.0.1)
 
 livekit:
 	@docker rm -f $(LIVEKIT_CONTAINER) >/dev/null 2>&1 || true
@@ -93,10 +97,10 @@ livekit:
 		-p 7882:7882/udp \
 		-v "$(CURDIR)/infra/livekit.dev.yaml:/etc/livekit.yaml:ro" \
 		$(LIVEKIT_IMAGE) \
-		--config /etc/livekit.yaml --dev --bind 0.0.0.0 >/dev/null
+		--config /etc/livekit.yaml --dev --bind 0.0.0.0 --node-ip $(NODE_IP) >/dev/null
 	@echo "LiveKit ws://localhost:7880"
-	@echo "LiveKit TCP RTC localhost:7881"
-	@echo "LiveKit UDP RTC localhost:7882"
+	@echo "LiveKit TCP RTC $(NODE_IP):7881"
+	@echo "LiveKit UDP RTC $(NODE_IP):7882"
 
 
 infra-down: ## Stop Redis and LiveKit
