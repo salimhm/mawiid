@@ -200,7 +200,9 @@ export default function AccountButton() {
           </span>
         )}
         <button type='button' onClick={logout} className={button_class}>
-          Sign out
+          <span className='text-primary-black font-montserrat font-bold text-sm md:text-base lg:text-[16px] whitespace-nowrap flex items-center gap-2'>
+            Sign out
+          </span>
         </button>
       </div>
     )
@@ -295,7 +297,7 @@ export default function AccountButton() {
   return (
     <div className='relative' ref={panel_ref}>
       <button type='button' onClick={toggle_open} className={button_class}>
-        <span className='text-primary-black font-montserrat font-bold text-base sm:text-lg lg:text-[20px] whitespace-nowrap flex items-center gap-2'>
+        <span className='text-primary-black font-montserrat font-bold text-sm md:text-base lg:text-[16px] whitespace-nowrap flex items-center gap-2'>
           Sign in
         </span>
       </button>

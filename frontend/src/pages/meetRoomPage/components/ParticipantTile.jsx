@@ -13,6 +13,36 @@ function initials(name = '') {
     .toUpperCase() || 'M'
 }
 
+const languageCodes = {
+  en: 'English',
+  ar: 'Arabic',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Portuguese',
+  r: 'Russian',
+  'ar-MA': 'Arabic (Moroccan)',
+  'zh-CN': 'Chinese (Simplified)',
+  'zh-TW': 'Chinese (Traditional)',
+}
+
+function LanguageDisplay({ language , compact}) {
+  const languageName = languageCodes[language] || language || 'Unknown'
+
+  return (
+    <span
+      className={`inline-block overflow-hidden rounded-full backdrop-blur-[12px] text-ellipsis font-montserrat font-semibold whitespace-nowrap ${compact
+        ? 'max-w-full px-2 py-0.5 text-[11px]'
+        : 'min-h-8 md:min-h-[38px] max-w-[min(80%,320px)] px-3 md:px-[18px] py-[7px] md:py-[9px] text-xs md:text-sm'}`}
+      style={{ background: 'rgba(0,0,0,0.32)' }}
+    >
+		  {languageName}
+    </span>
+  )
+}
+
+
 export default function ParticipantTile({
   name,
   stream,
@@ -24,12 +54,16 @@ export default function ParticipantTile({
   color,
   // A small tile, in the strip beside a shared screen.
   compact = false,
+  language
 }) {
   const videoElement = useRef(null)
   const showVideo = Boolean(stream && isCamOn)
   const palette = color || NEUTRAL_COLOR
 
   useEffect(() => {
+    console.log('user', name);
+    console.log('language',language);
+    
     const video = videoElement.current
     if (!video) return
 
@@ -67,7 +101,7 @@ export default function ParticipantTile({
       )}
 
       <div className="absolute inset-0 w-full h-full -z-10 pointer-events-none bg-[linear-gradient(180deg,rgba(0,0,0,0.22)_0%,transparent_28%,transparent_55%,rgba(0,0,0,0.82)_100%)]" aria-hidden="true" />
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between">
         <span
           className={`inline-block overflow-hidden rounded-full backdrop-blur-[12px] font-montserrat font-semibold text-ellipsis whitespace-nowrap ${compact
             ? 'max-w-full px-2 py-0.5 text-[11px]'
@@ -77,6 +111,7 @@ export default function ParticipantTile({
           {name.replace(/\s*\(You\)\s*/gi, '').trim() || (isLocal ? 'You' : 'Guest')}
           {isLocal && ' (You)'}
         </span>
+          <LanguageDisplay language={language} compact={compact} />
       </div>
 
       {!showVideo && (
