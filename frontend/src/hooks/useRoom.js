@@ -169,6 +169,8 @@ export function useRoom(roomUid, {
     const [reactions, setReactions] = useState([])
     const [settings, setSettings] = useState({ locked: false, lobby: false })
     const [captions, setCaptions] = useState([])
+    // Segment ids the reader cleared: a late update for one of them must not bring it back.
+    const clearedCaptionsRef = useRef(new Set())
     const [messages, setMessages] = useState([])
     // Joins, departures, removals and connection changes seen since joining,
     // shown in the chat between the messages. Kept only in this tab.
@@ -270,6 +272,8 @@ export function useRoom(roomUid, {
     const showCaption = useCallback((caption) => {
         const room = roomRef.current
         if (!room)
+            return
+        if (clearedCaptionsRef.current.has(caption.segmentId))
             return
         const speaker = trackOwner(room, caption.trackId)
         const myLanguage = pickedLanguageRef.current || room.localParticipant.attributes?.[ATTRIBUTE.language]
@@ -586,6 +590,15 @@ export function useRoom(roomUid, {
         return updateSelf({ participant_language: language, participant_translation_enabled: true })
     }, [updateSelf, localUser.translationEnabled])
 
+    // Empties this person's caption box; new captions keep coming in.
+    const clearCaptions = useCallback(() => {
+        setCaptions((prev) => {
+            const cleared = new Set(prev.flatMap((turn) => turn.segments.map((segment) => segment.id)))
+            clearedCaptionsRef.current = cleared
+            return []
+        })
+    }, [])
+
     const toggleTranslation = useCallback(() => {
         const enabled = !localUser.translationEnabled
         localStorage.setItem(CAPTIONS_KEY, String(enabled))
@@ -716,6 +729,7 @@ export function useRoom(roomUid, {
         loadOlderMessages,
         settings,
         captions,
+        clearCaptions,
         spotlightId,
         isStaff: STAFF_ROLES.includes(localUser.role),
         roomCode: roomUid,

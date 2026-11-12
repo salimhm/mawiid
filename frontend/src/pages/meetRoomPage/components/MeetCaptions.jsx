@@ -21,7 +21,7 @@ function turnDirection(turn) {
 // It spans the width of the video area (same side margins as the tiles) and takes its
 // own room below them: while `open` it slides open and the tiles shrink with it, so it
 // never covers anyone. In full screen it floats over the video.
-export default function MeetCaptions({ captions = [], open = false, fullScreen = false, colorOf = participantColor })
+export default function MeetCaptions({ captions = [], open = false, fullScreen = false, colorOf = participantColor, onClear })
 {
     const listRef = useRef(null)
     const [following, setFollowing] = useState(true)
@@ -62,18 +62,30 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
 
     const box = (
             <div className='relative rounded-2xl bg-black/20 text-white backdrop-blur-[2px] [text-shadow:0_1px_3px_rgb(0_0_0/0.9)]'>
-                <button
-                    type='button'
-                    className='absolute right-2 top-1.5 z-10 rounded-full px-2 py-0.5 text-xs text-white/70 hover:bg-white/10 hover:text-white cursor-pointer'
-                    aria-expanded={expanded}
-                    onClick={() => setExpanded((prev) => !prev)}
-                >
-                    {expanded ? 'Smaller' : 'Bigger'}
-                </button>
+                <div className='absolute right-2 top-1.5 z-10 flex gap-1'>
+                    {onClear && (
+                        <button
+                            type='button'
+                            className='rounded-full px-2 py-0.5 text-xs text-white/70 hover:bg-white/10 hover:text-white cursor-pointer disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent'
+                            disabled={!captions.length}
+                            onClick={onClear}
+                        >
+                            Clear
+                        </button>
+                    )}
+                    <button
+                        type='button'
+                        className='rounded-full px-2 py-0.5 text-xs text-white/70 hover:bg-white/10 hover:text-white cursor-pointer'
+                        aria-expanded={expanded}
+                        onClick={() => setExpanded((prev) => !prev)}
+                    >
+                        {expanded ? 'Smaller' : 'Bigger'}
+                    </button>
+                </div>
                 <div
                     ref={listRef}
                     onScroll={handleScroll}
-                    className={`${height} transition-[height,max-height] duration-300 ease-out overflow-y-auto overscroll-contain px-3 py-2 pr-16 flex flex-col gap-1`}
+                    className={`${height} transition-[height,max-height] duration-300 ease-out overflow-y-auto overscroll-contain px-3 py-2 pr-32 flex flex-col gap-1`}
                     role='log'
                     aria-live='polite'
                     aria-label='Live captions'

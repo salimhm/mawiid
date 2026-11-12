@@ -105,7 +105,7 @@ export default function MeetRoomPage() {
                 spotlightId={room.spotlightId}
                 onStopScreenShare={room.toggleScreenShare}
             />
-            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} fullScreen={fullScreen} colorOf={colorOf} />
+            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} onClear={room.clearCaptions} fullScreen={fullScreen} colorOf={colorOf} />
             <MeetControls
                 fullScreen={fullScreen}
                 setFullScreen={setFullScreen}
