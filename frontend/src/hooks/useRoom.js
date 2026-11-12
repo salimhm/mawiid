@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { DisconnectReason, Room, RoomEvent, Track } from 'livekit-client'
 import { api, ApiError, errorMessage } from '../services/api'
 import { randomId, reachableUrl } from '../lib/utils'
+import { textDirection } from '../lib/textDirection'
 import { createEventSocket } from '../services/eventSocket'
 import { createRoomSignal } from '../services/roomSignal'
 import { createRoomCaptions } from '../services/roomCaption'
@@ -121,9 +122,11 @@ function trackOwner(room, trackId) {
 // - An update to a segment already on screen (a partial growing, or its translation)
 //   changes it in place. A translation replaces the original, never the other way round:
 //   the original final arrives first, its translation a moment later.
-// - A new segment from the person who spoke last joins their turn.
+// - A new segment from the person who spoke last joins their turn, unless its text runs the
+//   other way (left to right vs right to left): then it starts a new line below, and the
+//   previous line stays, so the two directions are never mixed in one line.
 // - A new segment from anyone else starts a new turn at the bottom. If that person
-//   already had a turn on screen, it is removed: their old text is replaced by the new.
+//   already had turns on screen, they are removed: their old text is replaced by the new.
 // - Late updates for segments of a replaced turn are ignored.
 function mergeCaption(turns, caption) {
     const turnIndex = turns.findIndex((turn) => turn.segments.some((segment) => segment.id === caption.id))
@@ -140,18 +143,24 @@ function mergeCaption(turns, caption) {
 
     const last = turns[turns.length - 1]
     if (last && last.speakerId === caption.speakerId) {
-        const segments = [...last.segments, caption].slice(-TURN_SEGMENT_MAX)
-        return [...turns.slice(0, -1), { ...last, speaker: caption.speaker, segments }]
+        const direction = textDirection(caption.text)
+        const lastDirection = textDirection(last.segments.map((segment) => segment.text).join(' '))
+        if (!direction || !lastDirection || direction === lastDirection) {
+            const segments = [...last.segments, caption].slice(-TURN_SEGMENT_MAX)
+            return [...turns.slice(0, -1), { ...last, speaker: caption.speaker, segments }]
+        }
+        const turn = { id: caption.id, speakerId: caption.speakerId, speaker: caption.speaker, segments: [caption], replaced: [] }
+        return [...turns, turn].slice(-CAPTION_MAX)
     }
 
-    const previous = turns.find((turn) => turn.speakerId === caption.speakerId)
-    const others = turns.filter((turn) => turn !== previous)
+    const previous = turns.filter((turn) => turn.speakerId === caption.speakerId)
+    const others = turns.filter((turn) => turn.speakerId !== caption.speakerId)
     const turn = {
         id: caption.id,
         speakerId: caption.speakerId,
         speaker: caption.speaker,
         segments: [caption],
-        replaced: previous ? previous.segments.map((segment) => segment.id) : [],
+        replaced: previous.flatMap((entry) => [...entry.replaced, ...entry.segments.map((segment) => segment.id)]),
     }
     return [...others, turn].slice(-CAPTION_MAX)
 }
@@ -284,6 +293,11 @@ export function useRoom(roomUid, {
             return
         const speaker = trackOwner(room, caption.trackId)
         const myLanguage = pickedLanguageRef.current || room.localParticipant.attributes?.[ATTRIBUTE.language]
+        // Only finished text is shown: no draft (a live guess, original or translated) before
+        // the real translation. A draft can also be left behind when the final phrase was heard
+        // in another language than the draft and arrives as a caption of its own.
+        if (!caption.final)
+            return
         if (caption.translated && pickedLanguageRef.current && baseLanguage(caption.language) !== baseLanguage(pickedLanguageRef.current))
             return
         setCaptions((prev) => mergeCaption(prev, {
@@ -582,12 +596,10 @@ export function useRoom(roomUid, {
 
     // The worker detects the language of each phrase someone speaks, so changing
     // what you read doesn't change how you are heard.
-    // The worker sends the recent captions again in the new language, so the old ones are
-    // cleared rather than left in the previous language and direction.
+    // Captions already shown stay as they are: only new phrases come in the new language.
     // Picking a language means wanting captions in it, so captions are switched on too.
     const setLanguage = useCallback((language) => {
         pickedLanguageRef.current = language
-        setCaptions([])
         if (localUser.translationEnabled)
             return updateSelf({ participant_language: language })
         localStorage.setItem(CAPTIONS_KEY, 'true')

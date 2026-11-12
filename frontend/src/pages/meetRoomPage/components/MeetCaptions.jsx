@@ -1,20 +1,15 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { participantColor } from '../../../lib/participantColor'
+import { textDirection } from '../../../lib/textDirection'
 
 // How close to the bottom (px) still counts as "reading the latest".
 const STICK_THRESHOLD = 24
-
-const RTL_LETTERS = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/g
-const LTR_LETTERS = /[A-Za-z\u00C0-\u024F]/g
 
 // A speaker's line reads right to left when most of its letters are Arabic (or Hebrew).
 // Set on the whole line, not per piece: pieces each with their own direction are laid out
 // left to right by the line around them, so new Arabic text would land on the wrong side.
 function turnDirection(turn) {
-    const text = turn.segments.map((segment) => segment.text).join(' ')
-    const rtl = (text.match(RTL_LETTERS) || []).length
-    const ltr = (text.match(LTR_LETTERS) || []).length
-    return rtl > ltr ? 'rtl' : 'ltr'
+    return textDirection(turn.segments.map((segment) => segment.text).join(' ')) || 'ltr'
 }
 
 // At most this many characters of a speaker's line are shown, like TV subtitles: the
@@ -47,8 +42,9 @@ function visibleSegments(segments) {
 }
 
 // Subtitles from the AI translation worker: one entry per speaker, the most recent
-// speaker last (see mergeCaption in useRoom). Text still in another language (the
-// translation is on its way) or still changing is dimmed.
+// speaker last (see mergeCaption in useRoom); a speaker gets a new line when their text
+// switches between left to right and right to left. Only finished text is shown.
+// Text still in another language (no translation came back) is dimmed.
 // The box scrolls, following the newest text unless the reader has scrolled up.
 // It spans the width of the video area (same side margins as the tiles) and takes its
 // own room below them: while `open` it slides open and the tiles shrink with it, so it
@@ -122,7 +118,7 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
                                 {shown.map((caption, index) => (
                                     <span key={caption.id}>
                                         {index > 0 && ' '}
-                                        <span className={caption.final && !caption.foreign ? '' : 'text-white/70 italic'}>{caption.text}</span>
+                                        <span className={!caption.foreign ? '' : 'text-white/70 italic'}>{caption.text}</span>
                                     </span>
                                 ))}
                             </p>

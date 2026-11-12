@@ -48,8 +48,8 @@ def _default_engines() -> list[str]:
 class TranslationSettings:
     madlad: MadladSettings = field(default_factory=MadladSettings)
     # Live translation while someone talks (the stable words of each partial). Newer partials replace
-    # queued ones, so a slow machine sends fewer instead of falling behind. 0: listeners of other
-    # languages see each phrase only once it is finished.
-    partials: bool = field(default_factory=lambda: _env("PARTIALS", "1") == "1")
+    # queued ones, so a slow machine sends fewer instead of falling behind. Off by default: listeners
+    # of other languages see each phrase only once it is finished, never a draft translation first.
+    partials: bool = field(default_factory=lambda: _env("PARTIALS", "0") == "1")
     cooldown_s: float = 60.0  # how long a failed engine is skipped before it is retried
     engines: list[str] = field(default_factory=_default_engines)  # tried in order
