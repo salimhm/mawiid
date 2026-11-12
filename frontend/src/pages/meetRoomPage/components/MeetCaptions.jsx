@@ -61,7 +61,7 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
         : (expanded ? 'h-[40vh]' : 'h-24 sm:h-32')
 
     const box = (
-            <div className='relative rounded-2xl bg-black/75 text-white backdrop-blur-md'>
+            <div className='relative rounded-2xl bg-black/20 text-white backdrop-blur-[2px] [text-shadow:0_1px_3px_rgb(0_0_0/0.9)]'>
                 <button
                     type='button'
                     className='absolute right-2 top-1.5 z-10 rounded-full px-2 py-0.5 text-xs text-white/70 hover:bg-white/10 hover:text-white cursor-pointer'
