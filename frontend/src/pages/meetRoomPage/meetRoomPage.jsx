@@ -105,7 +105,7 @@ export default function MeetRoomPage() {
                 spotlightId={room.spotlightId}
                 onStopScreenShare={room.toggleScreenShare}
             />
-            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} fullScreen={fullScreen} colorOf={colorOf} />
+            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} onClear={room.clearCaptions} fullScreen={fullScreen} colorOf={colorOf} />
             <MeetControls
                 fullScreen={fullScreen}
                 setFullScreen={setFullScreen}
@@ -160,12 +160,6 @@ export default function MeetRoomPage() {
                             <span className='text-sm'>{entry.name}</span>
                         </div>
                     ))}
-                </div>
-            )}
-
-            {notice && (
-                <div className='fixed bottom-24 left-1/2 -translate-x-1/2 z-[60] rounded-xl border border-white/20 bg-black/80 px-4 py-2 text-sm text-white backdrop-blur-xl'>
-                    {notice}
                 </div>
             )}
         </div>

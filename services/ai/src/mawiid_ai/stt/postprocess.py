@@ -99,6 +99,42 @@ def is_hallucination(text: str) -> bool:
     return len(words) >= 3 and len(set(words)) == 1
 
 
+# A decoder stuck in a loop repeats a word or a short phrase: "يوجد ايضا ايضا ايضا ايضا ايضا".
+# The words before the loop are usually right, so only the loop is cut. Its text compresses
+# less than Whisper's own loop check (compression ratio 2.4) catches when the loop is short.
+_MAX_LOOP_WORDS = 4
+_MIN_LOOP_REPEATS = 3
+
+
+def collapse_repeats(text: str) -> str:
+    """Keep one copy of any word or phrase of up to 4 words repeated 3 times or more in a row
+    (punctuation and case ignored). People say "no, no" or "very very"; three is a loop."""
+    words = text.split()
+    keys = [normalize_for_compare(word) for word in words]
+    kept: list[str] = []
+    i = 0
+    while i < len(words):
+        step = 1
+        for n in range(1, _MAX_LOOP_WORDS + 1):
+            unit = keys[i : i + n]
+            if len(unit) < n:
+                break
+            if not all(unit):  # punctuation alone ("...", "-") is not a word
+                continue
+            repeats = 1
+            while keys[i + repeats * n : i + (repeats + 1) * n] == unit:
+                repeats += 1
+            if repeats >= _MIN_LOOP_REPEATS:
+                kept.extend(words[i : i + n])
+                i += repeats * n
+                step = 0
+                break
+        if step:
+            kept.append(words[i])
+            i += 1
+    return " ".join(kept)
+
+
 def repeats_context(text: str, context: str) -> bool:
     """True when the text is just the end of the prompt again: Whisper echoing what it was
     given instead of transcribing. Without this, one made-up phrase keeps coming back."""

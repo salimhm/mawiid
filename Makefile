@@ -1,5 +1,5 @@
-# Mawiid local development: `make help` lists every target.
-# Local runs use apps/backend/postman/.env.postman (local SQLite, Redis, LiveKit in dev mode).
+# Mawiid: `make help` lists every target. `make mawiid` deploys production on a fresh server;
+# the other targets are local development. Local runs use apps/backend/postman/.env.postman (local SQLite, Redis, LiveKit in dev mode).
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -24,11 +24,40 @@ AI_MODELS ?= 1
 # Darija is switched off (services/ai/README.md); convert its model by hand when turning it back on.
 AI_MODEL_FILES := $(AI)/data/models/madlad400-3b-mt-ct2/model.bin
 
-.PHONY: setup seed-if-missing ai-models ai-models-darija certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
+.PHONY: mawiid azure mawiid-status mawiid-logs mawiid-down setup seed-if-missing ai-models ai-models-darija certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
         tokens typecheck build test-unit test-ai check smoke test clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+# ---------------------------------------------------------------- production
+
+# Installs Docker and the host tools, creates infra/compose/.env.production with generated
+# secrets, builds and starts the stack, then the AI worker. Rerun it to update after a git pull.
+# Options: make mawiid APP_DOMAIN=app.example.com RTC_DOMAIN=rtc.example.com WITH_AI=0 GPU=auto|1|0
+WITH_AI ?= 1
+GPU     ?= auto
+PROD_COMPOSE = cd infra/compose && $$(docker info >/dev/null 2>&1 || echo sudo) docker compose --env-file .env.production \
+	-f docker-compose.yml $$(grep -qs '^AI_CUDA=1' .env.production && echo -f docker-compose.gpu.yml) --profile ai
+
+mawiid: ## Production: install everything on this server and serve the website (rerun to update)
+	@APP_DOMAIN="$(APP_DOMAIN)" RTC_DOMAIN="$(RTC_DOMAIN)" AI="$(WITH_AI)" GPU="$(GPU)" bash infra/deploy/mawiid.sh
+
+# Same, on an Azure GPU VM (Ubuntu): also installs the NVIDIA driver the VM size needs (GRID for
+# NV-series, reboots once), checks disk and RAM, and runs the AI worker on the GPU with MADLAD 10b.
+# Options: make azure APP_DOMAIN=... RTC_DOMAIN=... MT_MODEL=10b|3b REBOOT=1
+MT_MODEL ?= 10b
+azure: ## Production on an Azure GPU VM: NVIDIA driver, GPU AI worker with MADLAD 10b, whole stack (rerun to update)
+	@APP_DOMAIN="$(APP_DOMAIN)" RTC_DOMAIN="$(RTC_DOMAIN)" MT_MODEL="$(MT_MODEL)" REBOOT="$(REBOOT)" bash infra/deploy/azure.sh
+
+mawiid-status: ## Production: show the services
+	@$(PROD_COMPOSE) ps
+
+mawiid-logs: ## Production: follow the logs (make mawiid-logs S=backend for one service)
+	@$(PROD_COMPOSE) logs -f --tail=100 $(S)
+
+mawiid-down: ## Production: stop the stack (data volumes are kept)
+	@$(PROD_COMPOSE) down
 
 # ---------------------------------------------------------------- setup
 

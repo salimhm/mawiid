@@ -1,3 +1,5 @@
+import { resolveErrorMessage, logger } from './notifications'
+
 // Thin client for the Mawiid backend. Requests go through the dev server's
 // /api proxy (see src/index.ts), so no CORS setup is needed and the refresh
 // cookie is first-party.
@@ -94,13 +96,16 @@ async function request(path, { method = 'GET', body, token } = {}) {
       credentials: 'same-origin',
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  } catch {
+  } catch (err) {
+    logger.error('API', `Network failure on ${method} ${path}`, err);
     throw new ApiError('backend-unavailable', 0);
   }
 
   const json = await res.json().catch(() => ({}));
-  if (!res.ok)
+  if (!res.ok) {
+    logger.warn('API', `Request failed ${method} ${path} status=${res.status} code=${json.code || 'unknown'}`);
     throw new ApiError(json.code || 'internal-server-error', res.status);
+  }
   return json.data;
 }
 
@@ -324,6 +329,5 @@ const ERROR_MESSAGES = {
 };
 
 export function errorMessage(error) {
-  const code = error instanceof ApiError ? error.code : '';
-  return ERROR_MESSAGES[code] || 'Something went wrong. Please try again.';
+  return resolveErrorMessage(error);
 }

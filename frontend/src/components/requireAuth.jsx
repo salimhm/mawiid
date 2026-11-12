@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { notify } from '../services/notifications';
 
 export function AuthLoading() {
   return (
@@ -14,6 +16,14 @@ export function AuthLoading() {
 export default function RequireAuth({ children }) {
   const location = useLocation();
   const { isLoading, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && !isSignedIn) {
+      notify.warning('Please sign in to continue to your meeting.', {
+        dedupKey: 'require-auth-redirect',
+      });
+    }
+  }, [isLoading, isSignedIn]);
 
   if (isLoading) return <AuthLoading />;
   if (!isSignedIn)

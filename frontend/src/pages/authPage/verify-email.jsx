@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { auth, errorMessage } from '../../services/api'
+import { notify } from '../../services/notifications'
 
 export default function VerifyEmailPage() {
   const [params] = useSearchParams()
@@ -14,6 +15,7 @@ export default function VerifyEmailPage() {
     if (!token) {
       set_status('error')
       set_error('This verification link is invalid.')
+      notify.error('This verification link is invalid.')
       return
     }
     if (executed_ref.current)
@@ -23,10 +25,15 @@ export default function VerifyEmailPage() {
     auth.verifyEmail(token)
       .then(() => {
         set_status('success')
+        notify.success('Your email has been verified! You can now sign in.', {
+          title: 'Email verified',
+        })
       })
       .catch((err) => {
+        const msg = errorMessage(err)
         set_status('error')
-        set_error(errorMessage(err))
+        set_error(msg)
+        notify.error(msg, { title: 'Verification failed' })
       })
   }, [token])
 

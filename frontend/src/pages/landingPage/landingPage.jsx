@@ -18,6 +18,7 @@ import CreatemeetButton from "./components/createmeetButton";
 import Footer from "./components/footer";
 import AccountButton from "./components/accountButton";
 import { useNavigate } from "react-router-dom";
+import { notify } from "../../services/notifications";
 
 import dark_logo from "../../assets/logo/mawiid_logo_dark.png"
 
@@ -33,8 +34,11 @@ export default function Landing_Page() {
 
     const handleJoinClick = () => {
         const safeCode = sanitizeRoomCode(String(code)).toLowerCase();
-        if (!safeCode)
+        if (!safeCode) {
+            setJoinError('Please enter a meeting code.');
+            notify.warning('Please enter a meeting code to join.');
             return;
+        }
 
         setIsJoining(true);
         navigate('/welcome', { state: { isCreator: false, roomCode: safeCode } });

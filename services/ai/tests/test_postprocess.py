@@ -46,3 +46,25 @@ def test_text_far_too_long_for_its_audio_is_made_up():
     assert not implausible_length("D'accord, merci.", 0.6)
     assert not implausible_length("x" * 200, 10.0)
     assert not implausible_length("x" * 200, 0.1)  # too short to judge
+
+
+from mawiid_ai.stt.postprocess import collapse_repeats
+
+
+def test_a_looping_word_is_cut_to_one_copy():
+    looped = "احدهم يتحدث بسرعة يوجد ايضا ايضا ايضا ايضا ايضا يوجد ايضا ايضا ايضا ايضا"
+    assert collapse_repeats(looped) == "احدهم يتحدث بسرعة يوجد ايضا يوجد ايضا"
+
+
+def test_a_looping_phrase_is_cut_to_one_copy():
+    assert collapse_repeats("I said that, I said that, I said that, I said that.") == "I said that,"
+    assert collapse_repeats("je pense que je pense que je pense que oui") == "je pense que oui"
+
+
+def test_words_said_twice_are_kept():
+    for text in ["No, no, I meant tomorrow.", "very very good", "نعم نعم", "Wait... ... ... what?"]:
+        assert collapse_repeats(text) == text, text
+
+
+def test_a_loop_ignores_case_and_punctuation():
+    assert collapse_repeats("Hello. hello, HELLO! Are you there?") == "Hello. Are you there?"

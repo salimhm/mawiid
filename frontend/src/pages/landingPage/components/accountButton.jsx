@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { ApiError, auth, errorMessage } from '../../../services/api'
 import { useAuth } from '../../../hooks/useAuth'
+import { notify } from '../../../services/notifications'
 
 const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,32}$/
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -60,9 +61,13 @@ function VerifyEmailStep({ email, on_back, on_signin }) {
     set_message('')
     try {
       const result = await auth.resendEmail(email)
-      set_message(result?.message || 'Verification email sent. Check your inbox.')
+      const msg = result?.message || 'Verification email sent. Check your inbox.'
+      set_message(msg)
+      notify.success(msg)
     } catch (err) {
-      set_error(errorMessage(err))
+      const err_msg = errorMessage(err)
+      set_error(err_msg)
+      notify.error(err_msg)
     } finally {
       set_busy(false)
     }
@@ -112,9 +117,13 @@ function ForgotPasswordStep({ on_back }) {
     set_message('')
     try {
       const result = await auth.forgotPassword(email.trim())
-      set_message(result?.message || 'If your account is eligible, a reset link will arrive shortly.')
+      const msg = result?.message || 'If your account is eligible, a reset link will arrive shortly.'
+      set_message(msg)
+      notify.info(msg)
     } catch (err) {
-      set_error(errorMessage(err))
+      const err_msg = errorMessage(err)
+      set_error(err_msg)
+      notify.error(err_msg)
     } finally {
       set_busy(false)
     }
@@ -199,7 +208,18 @@ export default function AccountButton() {
             {user.user_username ? `@${user.user_username}` : `${user.user_first_name} ${user.user_last_name}`}
           </span>
         )}
-        <button type='button' onClick={logout} className={button_class}>
+        <button
+          type='button'
+          onClick={async () => {
+            try {
+              await logout()
+              notify.info('You have been signed out.')
+            } catch {
+              notify.error('Could not sign out completely.')
+            }
+          }}
+          className={button_class}
+        >
           <span className='text-primary-black font-montserrat font-bold text-sm md:text-base lg:text-[16px] whitespace-nowrap flex items-center gap-2'>
             Sign out
           </span>
@@ -266,6 +286,7 @@ export default function AccountButton() {
     }
     run(async () => {
       await auth.login(identifier.trim(), password)
+      notify.success('Signed in successfully. Welcome back!')
     })
   }
 
@@ -283,6 +304,9 @@ export default function AccountButton() {
         user_first_name: register.firstName.trim(),
         user_last_name: register.lastName.trim(),
         user_language: browser_language(),
+      })
+      notify.success('Account created! Please check your email for the verification link.', {
+        title: 'Check your email',
       })
       set_verify_email(register.email.trim())
       set_step('verify')
