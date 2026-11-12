@@ -54,7 +54,8 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
     }
 
     // A fixed height (not one that grows per line) so the tiles move only when the box
-    // opens, closes or changes size, never with every caption.
+    // opens or closes, never with every caption. "Bigger" grows the box up over the tiles
+    // instead of taking room from them, so the people keep their size.
     const height = fullScreen
         ? (expanded ? 'max-h-[50vh]' : 'max-h-28 sm:max-h-36')
         : (expanded ? 'h-[40vh]' : 'h-24 sm:h-32')
@@ -114,16 +115,21 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
             </div>
         )
 
-    // Animating the row from 0fr to 1fr opens the box to its real height smoothly.
+    // The row below the tiles always has the small box's height (animating 0fr to 1fr opens
+    // it smoothly). The box itself sits on the bottom of that row: small, it fills it exactly;
+    // bigger, it rises over the tiles without resizing them.
     return (
         <div
-            className={`grid shrink-0 transition-[grid-template-rows,opacity] duration-300 ease-out ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
+            className={`relative grid shrink-0 transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
             inert={!open}
         >
             <div className='min-h-0 overflow-hidden'>
-                <div className='w-full px-2 sm:px-6 md:px-12 lg:px-20 pt-2 sm:pt-3'>
-                    {box}
+                <div className='pt-2 sm:pt-3'>
+                    <div className='h-24 sm:h-32' />
                 </div>
+            </div>
+            <div className={`absolute inset-x-0 bottom-0 z-40 px-2 sm:px-6 md:px-12 lg:px-20 transition-opacity duration-300 ease-out ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                {box}
             </div>
         </div>
     )
