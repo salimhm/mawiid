@@ -1,7 +1,7 @@
 import CreateButton from "./components/createButton";
 import JoinButton from "./components/joinButton";
 import InputCode from "./components/inputCode";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import WordScroller from "./components/scroll";
 import animation1 from "../../assets/french.gif"
 import animation2 from "../../assets/english.gif"
@@ -17,20 +17,35 @@ import JoinnowButton from "./components/joinnowButton";
 import CreatemeetButton from "./components/createmeetButton";
 import Footer from "./components/footer";
 import AccountButton from "./components/accountButton";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../../hooks/useAuth";
 import { notify } from "../../services/notifications";
 
 import dark_logo from "../../assets/logo/mawiid_logo_dark.png"
 
 export default function Landing_Page() {
-
     const navigate = useNavigate();
+    const location = useLocation();
+    const { isSignedIn } = useAuth();
     const [code, setCode] = useState('');
     const [joinError, setJoinError] = useState('');
     const [isJoining, setIsJoining] = useState(false);
+    const [authOpen, setAuthOpen] = useState(false);
 
     // Room codes are the backend room_uid (a UUID).
     const sanitizeRoomCode = (value) => value.replace(/[^a-zA-Z0-9-]/g, '');
+
+    const handleCreateClick = () => {
+        if (!isSignedIn) {
+            notify.error('Please sign in to create a mawiid meeting.', {
+                title: 'Sign in required',
+                dedupKey: 'auth-required-create',
+            });
+            setAuthOpen(true);
+            return;
+        }
+        navigate('/welcome?creator=1', { state: { isCreator: true } });
+    };
 
     const handleJoinClick = () => {
         const safeCode = sanitizeRoomCode(String(code)).toLowerCase();
@@ -40,13 +55,33 @@ export default function Landing_Page() {
             return;
         }
 
+        if (!isSignedIn) {
+            notify.error('Please sign in to join a mawiid meeting.', {
+                title: 'Sign in required',
+                dedupKey: 'auth-required-join',
+            });
+            setAuthOpen(true);
+            return;
+        }
+
         setIsJoining(true);
         navigate('/welcome', { state: { isCreator: false, roomCode: safeCode } });
     };
+
+    useEffect(() => {
+        if (location.state?.openAuth && !isSignedIn) {
+            notify.error('Please sign in to join or create a mawiid meeting.', {
+                title: 'Sign in required',
+                dedupKey: 'auth-required-nav',
+            });
+            setAuthOpen(true);
+        }
+    }, [location.state, isSignedIn]);
+
     return (
         <div className="relative flex flex-col justify-center items-center bg-primary-black min-h-screen w-full gap-8 sm:gap-11 overflow-x-hidden pt-8 sm:pt-14">
             <div className="absolute top-4 right-4 sm:top-6 sm:right-8 z-20">
-                <AccountButton />
+                <AccountButton isOpen={authOpen} onOpenChange={setAuthOpen} />
             </div>
             <img src={dark_logo} alt="logo" className="w-[80%] h-[300px] object-cover" />
             <h2 className="font-montserrat text-2xl sm:text-4xl md:text-5xl lg:text-[66px] w-full max-w-5xl px-4 text-center font-extrabold leading-tight lg:leading-none text-primary-white">
@@ -58,7 +93,7 @@ export default function Landing_Page() {
             <div className="flex flex-col items-center mb-6 sm:mb-10 gap-3 w-full px-4">
                 <div className="w-full max-w-[815px] flex flex-col sm:flex-row justify-center items-center gap-3">
                     <div className="w-full sm:w-auto flex justify-center">
-                        <CreateButton />
+                        <CreateButton onClick={handleCreateClick} />
                     </div>
                     <div className="w-full sm:w-auto flex flex-col sm:flex-row items-center gap-2 sm:gap-3 flex-1 justify-center">
                         <InputCode 
@@ -180,7 +215,7 @@ export default function Landing_Page() {
                         Get a demo of our platform before you sign up.
                     </p>
                     <div className="mt-2">
-                        <CreatemeetButton />
+                        <CreatemeetButton onClick={handleCreateClick} />
                     </div>
                 </div>
             </div>

@@ -169,9 +169,19 @@ function ForgotPasswordStep({ on_back }) {
   )
 }
 
-export default function AccountButton() {
+export default function AccountButton({ isOpen: controlled_open, onOpenChange }) {
   const { isLoading, isSignedIn, user, logout } = useAuth()
-  const [open, set_open] = useState(false)
+  const [internal_open, set_internal_open] = useState(false)
+  const is_controlled = controlled_open !== undefined
+  const open = is_controlled ? controlled_open : internal_open
+
+  const set_open = (next) => {
+    if (!is_controlled) {
+      set_internal_open(next)
+    }
+    onOpenChange?.(next)
+  }
+
   const [step, set_step] = useState('signin')
   const [identifier, set_identifier] = useState('')
   const [password, set_password] = useState('')
@@ -196,6 +206,17 @@ export default function AccountButton() {
     if (isSignedIn && open)
       set_open(false)
   }, [isSignedIn, open])
+
+  useEffect(() => {
+    if (open) {
+      set_step('signin')
+      set_identifier('')
+      set_password('')
+      set_register(EMPTY_REGISTER)
+      set_verify_email('')
+      reset()
+    }
+  }, [open])
 
   if (isLoading)
     return null

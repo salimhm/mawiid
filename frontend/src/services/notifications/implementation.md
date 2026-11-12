@@ -5,7 +5,7 @@ Centralized notification and error handling system using Reapop integrated acros
 
 ## Architecture
 
-- **`notificationConfig.js`**: Reapop setup with top-right position, dismissible defaults, and duration presets (`short`: 3s, `default`: 4.5s, `long`: 8s, `persistent`: 0).
+- **`notificationConfig.js`**: Reapop setup with bottom-right position, dismissible defaults, and duration presets (`short`: 3s, `default`: 4.5s, `long`: 8s, `persistent`: 0).
 - **`notificationMessages.js`**: Error normalization mapping HTTP codes (400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504), domain error codes, media device errors, and titles.
 - **`notificationTheme.js`**: Custom Mawiid glassmorphic theme matching `#121216`, with blur, rounded borders, Montserrat/Inter typography, and status-colored left border accents.
 - **`notificationUtils.js`**: Notification ID generator, debounce deduplication cache to prevent toast spam, and payload normalizer.
@@ -35,6 +35,7 @@ Centralized notification and error handling system using Reapop integrated acros
    - `notify.promise` during room creation (loading → success / error).
    - Media permission failure notifications.
    - Missing room code warning.
+   - Unauthenticated join or create meeting attempts trigger an error notification and automatically open the sign-in modal dialog.
 6. **Network Connectivity**:
    - Offline detection: single persistent warning toast.
    - Online recovery: updates toast to success and auto-dismisses after 3 seconds.

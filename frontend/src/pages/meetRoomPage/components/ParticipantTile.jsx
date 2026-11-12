@@ -76,9 +76,9 @@ export default function ParticipantTile({
 
   return (
     <section
-      className={`relative isolate flex min-w-0 flex-col justify-between overflow-hidden text-white ${compact
-        ? 'h-full p-2 rounded-xl'
-        : 'min-h-[220px] md:min-h-[280px] p-3.5 md:p-[clamp(16px,2vw,30px)] rounded-2xl md:rounded-[20px]'}`}
+      className={`relative isolate flex min-w-0 flex-col justify-between overflow-hidden text-white h-full ${compact
+        ? 'p-2 rounded-xl'
+        : 'p-3.5 md:p-[clamp(16px,2vw,30px)] rounded-2xl md:rounded-[20px]'}`}
       style={{
         background: `radial-gradient(ellipse at 50% 34%, rgba(255,255,255,0.13), transparent 45%), linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.72) 100%), ${palette.background}`,
       }}

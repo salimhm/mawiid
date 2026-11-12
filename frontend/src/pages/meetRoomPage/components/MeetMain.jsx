@@ -1,18 +1,53 @@
-import { useState , useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import ParticipantTile from './ParticipantTile'
 import ScreenShareStage from './ScreenShareStage'
 import { participantColor } from '../../../lib/participantColor'
 
-// Three layouts:
-// - grid: everyone in equal tiles;
-// - speaker (picked with `layout`): the person talking fills the stage, everyone else is
-//   in a strip beside it;
-// - screen, whenever someone shares their screen (whatever `layout` is): the shared screen
-//   fills the stage and everyone's tiles are in the strip.
-// The strip is a column on the right on wide screens and a row below the stage on narrow
-// ones; it scrolls when there are many people.
-// With several screens shared, one is on the stage (someone else's before your own) and
-// the others wait in the strip; clicking one puts it on the stage.
+function compute_grid(count, container_w, container_h, gap) {
+  if (count === 0) return { cols: 1, rows: 1 }
+  if (count === 1) return { cols: 1, rows: 1 }
+
+  let best = { cols: 1, rows: count, area: 0 }
+
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols)
+    const tile_w = (container_w - gap * (cols - 1)) / cols
+    const tile_h = (container_h - gap * (rows - 1)) / rows
+    const scale = Math.min(tile_w, tile_h * (16 / 9))
+    const area = scale * (scale * 9 / 16)
+    if (area > best.area) {
+      best = { cols, rows, area }
+    }
+  }
+
+  return best
+}
+
+function useContainerSize(ref) {
+  const [size, setSize] = useState({ width: 0, height: 0 })
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const { width, height } = entry.contentRect
+      setSize((prev) =>
+        prev.width === Math.round(width) && prev.height === Math.round(height)
+          ? prev
+          : { width: Math.round(width), height: Math.round(height) }
+      )
+    })
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [ref])
+
+  return size
+}
+
 export default function MeetMain({
   localUser = {},
   participants = [],
@@ -23,6 +58,8 @@ export default function MeetMain({
   onStopScreenShare,
 }) {
   const [pinnedScreenId, setPinnedScreenId] = useState(null)
+  const gridRef = useRef(null)
+  const container_size = useContainerSize(gridRef)
 
   const users = [
     { ...localUser, isLocal: true },
@@ -43,7 +80,6 @@ export default function MeetMain({
     screens[0] ||
     null
 
-  // The last other person who spoke; before anyone has, the first other person; alone, you.
   const others = users.filter((user) => !user.isLocal)
   const featuredSpeaker = layout === 'speaker' && !featuredScreen
     ? others.find((user) => user.id === spotlightId) || others[0] || users[0] || null
@@ -56,10 +92,6 @@ export default function MeetMain({
       ? 'pt-[66px] pb-[82px] md:pt-[76px] md:pb-[92px]'
       : 'pt-[6px] pb-[12px] md:pt-[10px] md:pb-[18px]',
   ].join(' ')
-
-  useEffect(() => {
-    console.log('-----  users: ', users)
-  }, [users])
 
   const tile = (user, index, compact = false) => (
     <ParticipantTile
@@ -77,7 +109,6 @@ export default function MeetMain({
     />
   )
 
-  // Each strip item: 16:9, sized by the strip's height in a row or its width in a column.
   const item_class = 'shrink-0 h-full aspect-video lg:h-auto lg:w-full'
 
   const spotlight = (stage, strip) => (
@@ -129,7 +160,6 @@ export default function MeetMain({
   }
 
   if (featuredSpeaker) {
-    // The stage tile is keyed by person: a new speaker gets a fresh tile (no stale video).
     return spotlight(
       <div className='flex-1 min-h-0 min-w-0 grid [&>section]:min-h-0'>
         {tile(featuredSpeaker, featuredSpeaker.id)}
@@ -139,18 +169,41 @@ export default function MeetMain({
   }
 
   const count = users.length
+  const gap = container_size.width >= 768 ? 12 : 8
+  const { cols, rows } = compute_grid(count, container_size.width, container_size.height, gap)
 
-  const layout_class =
-    count === 1
-      ? 'w-full min-h-0 grid grid-cols-1 grid-rows-1'
-      : count === 2
-        ? 'w-full min-h-0 grid grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1 gap-2.5 md:gap-5'
-        : 'w-full min-h-0 grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] auto-rows-[minmax(220px,1fr)] md:auto-rows-[minmax(280px,1fr)] gap-2.5 md:gap-4'
+  const grid_style = {
+    display: 'grid',
+    gridTemplateColumns: `repeat(${cols}, 1fr)`,
+    gridTemplateRows: `repeat(${rows}, 1fr)`,
+    gap: `${gap}px`,
+    width: '100%',
+    height: '100%',
+    minHeight: 0,
+  }
+
+  const last_row_count = count % cols || cols
+  const last_row_start = count - last_row_count
+  const center_last_row = last_row_count < cols
 
   return (
     <main className={stage_class}>
-      <div className={layout_class}>
-        {users.map((user, index) => tile(user, index))}
+      <div ref={gridRef} style={grid_style}>
+        {users.map((user, index) => {
+          const is_last_row = index >= last_row_start
+          const style = is_last_row && center_last_row
+            ? {
+              gridColumn: index === last_row_start
+                ? `${Math.floor((cols - last_row_count) / 2) + 1} / span 1`
+                : undefined,
+            }
+            : undefined
+          return (
+            <div key={user.id || user.userId || index} className='min-h-0 min-w-0' style={style}>
+              {tile(user, index)}
+            </div>
+          )
+        })}
       </div>
     </main>
   )

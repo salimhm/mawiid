@@ -14,7 +14,7 @@ export const NOTIFICATION_POSITION = POSITIONS
 export const configureNotifications = () => {
   setUpNotifications({
     defaultProps: {
-      position: NOTIFICATION_POSITION.topRight,
+      position: NOTIFICATION_POSITION.bottomRight,
       dismissible: true,
       dismissAfter: NOTIFICATION_DURATIONS.default,
       showDismissButton: true,

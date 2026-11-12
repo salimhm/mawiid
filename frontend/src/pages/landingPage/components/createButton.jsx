@@ -1,11 +1,15 @@
 import { useNavigate } from 'react-router-dom'
 import { CreateIcon } from '../utils/icons'
 
-export default function CreateButton()
+export default function CreateButton({ onClick })
 {
     const navigate = useNavigate()
 
     const handleCreateClick = () => {
+        if (onClick) {
+            onClick()
+            return
+        }
         navigate('/welcome?creator=1', { state: { isCreator: true } })
     }
 

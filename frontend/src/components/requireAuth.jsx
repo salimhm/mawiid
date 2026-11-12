@@ -19,7 +19,8 @@ export default function RequireAuth({ children }) {
 
   useEffect(() => {
     if (!isLoading && !isSignedIn) {
-      notify.warning('Please sign in to continue to your meeting.', {
+      notify.error('Please sign in to join or create a mawiid meeting.', {
+        title: 'Sign in required',
         dedupKey: 'require-auth-redirect',
       });
     }
@@ -32,6 +33,7 @@ export default function RequireAuth({ children }) {
         to="/"
         replace
         state={{
+          openAuth: true,
           from: {
             pathname: location.pathname,
             search: location.search,
