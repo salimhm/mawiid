@@ -8,6 +8,9 @@ services:
       - "80:80/tcp"
       - "443:443/tcp"
       - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+      RTC_DOMAIN: ${RTC_DOMAIN:?Set RTC_DOMAIN in .env.production}
     volumes:
       - caddy_data:/data
       - caddy_config:/config
@@ -28,7 +31,11 @@ services:
       BACKEND_PORT: "3000"
       REDIS_URL: redis://redis:6379
       LIVEKIT_URL: http://livekit:7880
-      LIVEKIT_PUBLIC_URL: wss://rtc.mawiid.laedxdigitalstudio.com
+      LIVEKIT_PUBLIC_URL: wss://${RTC_DOMAIN}
+      PUBLIC_APP_URL: https://${APP_DOMAIN}
+    # Holds the SQLite databases when TURSODB_URL is file:/data/main.db (no Turso account).
+    volumes:
+      - backend_data:/data
     depends_on:
       redis:
         condition: service_healthy
@@ -66,6 +73,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile.ai
+      args:
+        CUDA: ${AI_CUDA:-0}
     restart: unless-stopped
     env_file:
       - .env.production
@@ -75,6 +84,7 @@ services:
     volumes:
       - ai_cache:/root/.cache
       - ai_models:/models
+    # On a host with an NVIDIA GPU, add -f docker-compose.gpu.yml (make mawiid does it).
     depends_on:
       backend:
         condition: service_started
@@ -82,6 +92,7 @@ services:
         condition: service_started
 
 volumes:
+  backend_data:
   ai_cache:
   ai_models:
   caddy_config:

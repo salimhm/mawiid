@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import GlassSurface from '../../../components/GlassSurface'
 import { copyText } from '../../../lib/utils'
+import { notify } from '../../../services/notifications'
 import * as icons from '../../../assets/icons'
 import { BiGridAlt, BiUserVoice } from 'react-icons/bi'
 
@@ -101,9 +102,11 @@ export default function MeetControls({
     try {
       await copyText(room_id)
       set_copied(true)
+      notify.success('Meeting ID copied to clipboard!')
       setTimeout(() => set_copied(false), 1500)
     } catch (error) {
       console.error('Failed to copy Room ID:', error)
+      notify.error('Could not copy meeting ID to clipboard.')
     }
   }
 

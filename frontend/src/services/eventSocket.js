@@ -1,4 +1,5 @@
 import { api } from './api'
+import { logger } from './notifications/logger'
 
 // Backend realtime socket (lobby events). Port of create_participant_socket
 // from apps/backend/src/module/main/participants/participant.client.ts.
@@ -55,6 +56,7 @@ export function createEventSocket({ onKnock, onAdmitted } = {}) {
             socket = current
             current.onopen = () => {
                 attempt = 0
+                logger.debug('EventSocket', 'Realtime socket connected')
                 ping = setInterval(() => current.send('ping'), PING_MS)
             }
             current.onmessage = (message) => {

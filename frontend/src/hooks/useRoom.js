@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { DisconnectReason, Room, RoomEvent, Track } from 'livekit-client'
 import { api, ApiError, errorMessage } from '../services/api'
+import { notify } from '../services/notifications'
 import { randomId, reachableUrl } from '../lib/utils'
+import { textDirection } from '../lib/textDirection'
 import { createEventSocket } from '../services/eventSocket'
 import { createRoomSignal } from '../services/roomSignal'
 import { createRoomCaptions } from '../services/roomCaption'
@@ -21,11 +23,8 @@ const REACTION_VISIBLE_MS = 4000
 const STAFF_ROLES = ['host', 'moderator']
 const MESSAGE_PAGE = 50
 const MESSAGE_PAGE_MAX = 100
-// Captions are kept as one entry per speaker (their current turn); at most this many
-// speakers are on screen, the one who spoke longest ago drops out first.
-const CAPTION_MAX = 10
-// Pieces kept in one turn, so a long monologue does not grow without end.
-const TURN_SEGMENT_MAX = 50
+// Caption lines kept (one per turn of speech); the oldest drops out first.
+const CAPTION_MAX = 200
 const ROOM_EVENT_MAX = 200
 // The featured speaker changes at most this often, so people talking over each other
 // (or a cough) does not make the spotlight jump back and forth.
@@ -116,15 +115,14 @@ function trackOwner(room, trackId) {
         .find((participant) => participant.trackPublications.has(trackId)) || null
 }
 
-// Captions state: one turn per speaker, oldest first.
-//   turn = { id, speakerId, speaker, segments: [caption], replaced: [segment ids] }
-// - An update to a segment already on screen (a partial growing, or its translation)
-//   changes it in place. A translation replaces the original, never the other way round:
-//   the original final arrives first, its translation a moment later.
-// - A new segment from the person who spoke last joins their turn.
-// - A new segment from anyone else starts a new turn at the bottom. If that person
-//   already had a turn on screen, it is removed: their old text is replaced by the new.
-// - Late updates for segments of a replaced turn are ignored.
+// Captions state: a log of lines, oldest first, each line one speaker's turn.
+//   turn = { id, speakerId, speaker, segments: [caption] }
+// - An update to a segment already on screen (its translation) changes it in place.
+//   A translation replaces the original, never the other way round.
+// - A new segment from the person who spoke last joins their line, unless its text runs the
+//   other way (left to right vs right to left): then it starts a new line, so the two
+//   directions are never mixed in one line.
+// - A new segment from anyone else starts a new line at the bottom; earlier lines stay.
 function mergeCaption(turns, caption) {
     const turnIndex = turns.findIndex((turn) => turn.segments.some((segment) => segment.id === caption.id))
     if (turnIndex !== -1) {
@@ -135,25 +133,17 @@ function mergeCaption(turns, caption) {
         const segments = turn.segments.map((segment) => (segment.id === caption.id ? caption : segment))
         return turns.map((entry, index) => (index === turnIndex ? { ...turn, segments } : entry))
     }
-    if (turns.some((turn) => turn.replaced.includes(caption.id)))
-        return turns
 
     const last = turns[turns.length - 1]
     if (last && last.speakerId === caption.speakerId) {
-        const segments = [...last.segments, caption].slice(-TURN_SEGMENT_MAX)
-        return [...turns.slice(0, -1), { ...last, speaker: caption.speaker, segments }]
+        const direction = textDirection(caption.text)
+        const lastDirection = textDirection(last.segments.map((segment) => segment.text).join(' '))
+        if (!direction || !lastDirection || direction === lastDirection)
+            return [...turns.slice(0, -1), { ...last, speaker: caption.speaker, segments: [...last.segments, caption] }]
     }
 
-    const previous = turns.find((turn) => turn.speakerId === caption.speakerId)
-    const others = turns.filter((turn) => turn !== previous)
-    const turn = {
-        id: caption.id,
-        speakerId: caption.speakerId,
-        speaker: caption.speaker,
-        segments: [caption],
-        replaced: previous ? previous.segments.map((segment) => segment.id) : [],
-    }
-    return [...others, turn].slice(-CAPTION_MAX)
+    const turn = { id: caption.id, speakerId: caption.speakerId, speaker: caption.speaker, segments: [caption] }
+    return [...turns, turn].slice(-CAPTION_MAX)
 }
 
 export function useRoom(roomUid, {
@@ -180,6 +170,8 @@ export function useRoom(roomUid, {
     const [reactions, setReactions] = useState([])
     const [settings, setSettings] = useState({ locked: false, lobby: false })
     const [captions, setCaptions] = useState([])
+    // Segment ids the reader cleared: a late update for one of them must not bring it back.
+    const clearedCaptionsRef = useRef(new Set())
     const [messages, setMessages] = useState([])
     // Joins, departures, removals and connection changes seen since joining,
     // shown in the chat between the messages. Kept only in this tab.
@@ -282,8 +274,15 @@ export function useRoom(roomUid, {
         const room = roomRef.current
         if (!room)
             return
+        if (clearedCaptionsRef.current.has(caption.segmentId))
+            return
         const speaker = trackOwner(room, caption.trackId)
         const myLanguage = pickedLanguageRef.current || room.localParticipant.attributes?.[ATTRIBUTE.language]
+        // Only finished text is shown: no draft (a live guess, original or translated) before
+        // the real translation. A draft can also be left behind when the final phrase was heard
+        // in another language than the draft and arrives as a caption of its own.
+        if (!caption.final)
+            return
         if (caption.translated && pickedLanguageRef.current && baseLanguage(caption.language) !== baseLanguage(pickedLanguageRef.current))
             return
         setCaptions((prev) => mergeCaption(prev, {
@@ -316,8 +315,13 @@ export function useRoom(roomUid, {
         // lobby receive room.admitted.
         const socket = createEventSocket({
             onKnock: ({ room_uid, user_id, user_name }) => {
-                if (room_uid === roomUid)
+                if (room_uid === roomUid) {
                     setKnocks((prev) => (prev.some((knock) => knock.userId === user_id) ? prev : [...prev, { userId: user_id, userName: user_name || `User #${user_id}` }]))
+                    notify.info(`${user_name || 'A guest'} wants to join the meeting`, {
+                        title: 'Waiting in lobby',
+                        dedupKey: `knock:${user_id}`,
+                    })
+                }
             },
         })
 
@@ -347,12 +351,21 @@ export function useRoom(roomUid, {
                     addMessages([fromServer(event)])
             },
             onModeration: (event) => {
-                if (event.type === 'participant.muted')
-                    setNotice(`Your ${event.track_source.replace(/_/g, ' ')} was muted by a moderator`)
-                if (event.type === 'participant.unmute_requested')
-                    setNotice(`A moderator asked you to turn on your ${event.track_source.replace(/_/g, ' ')}`)
-                if (event.type === 'participant.role_changed')
-                    setNotice(`Your role is now ${event.room_member_role}`)
+                if (event.type === 'participant.muted') {
+                    const text = `Your ${event.track_source.replace(/_/g, ' ')} was muted by a moderator`
+                    setNotice(text)
+                    notify.warning(text, { title: 'Muted by moderator' })
+                }
+                if (event.type === 'participant.unmute_requested') {
+                    const text = `A moderator asked you to turn on your ${event.track_source.replace(/_/g, ' ')}`
+                    setNotice(text)
+                    notify.info(text, { title: 'Moderator request' })
+                }
+                if (event.type === 'participant.role_changed') {
+                    const text = `Your role is now ${event.room_member_role}`
+                    setNotice(text)
+                    notify.info(text, { title: 'Role updated' })
+                }
                 refresh()
             },
             onTyping: (participant, isTyping) => {
@@ -381,13 +394,20 @@ export function useRoom(roomUid, {
         // The AI translation worker joins as a participant too; the chat leaves it out.
         const nameOf = (participant) => participant.name || participant.identity
         const onParticipantConnected = (participant) => {
-            if (!participant.isAgent)
-                addRoomEvent(`${nameOf(participant)} joined`)
+            if (!participant.isAgent) {
+                const pName = nameOf(participant)
+                addRoomEvent(`${pName} joined`)
+                notify.info(`${pName} joined the meeting`, { dedupKey: `joined:${participant.identity}` })
+            }
             refresh()
         }
         const onParticipantDisconnected = (participant, reason) => {
-            if (!participant.isAgent)
-                addRoomEvent(`${nameOf(participant)} ${leftText(reason)}`)
+            if (!participant.isAgent) {
+                const pName = nameOf(participant)
+                const text = `${pName} ${leftText(reason)}`
+                addRoomEvent(text)
+                notify.info(text, { dedupKey: `left:${participant.identity}` })
+            }
             refresh()
         }
         // Loudest first. You are never featured on your own screen, nor is the AI worker.
@@ -434,13 +454,32 @@ export function useRoom(roomUid, {
             .on(RoomEvent.Reconnecting, () => {
                 setStatus('reconnecting')
                 addRoomEvent('Connection lost, reconnecting…')
+                notify.warning({
+                    id: 'room-connection-state',
+                    title: 'Connection interrupted',
+                    message: 'Reconnecting to the meeting…',
+                    dismissAfter: 0,
+                    showDismissButton: false,
+                    allowDuplicate: true,
+                })
             })
             .on(RoomEvent.Reconnected, () => {
                 setStatus('connected')
                 addRoomEvent('Reconnected')
+                notify.update('room-connection-state', {
+                    status: 'success',
+                    title: 'Connection restored',
+                    message: 'Reconnected to the meeting.',
+                    dismissible: true,
+                    showDismissButton: true,
+                    dismissAfter: 3000,
+                })
                 catchUpMessages().catch(() => {})
             })
-            .on(RoomEvent.Disconnected, onDisconnected)
+            .on(RoomEvent.Disconnected, (reason) => {
+                notify.dismiss('room-connection-state')
+                onDisconnected(reason)
+            })
 
         const join = async () => {
             while (!cancelled) {
@@ -548,6 +587,7 @@ export function useRoom(roomUid, {
             await action(room.localParticipant)
         } catch {
             setNotice(failure)
+            notify.warning(failure)
         }
         refresh()
     }, [refresh])
@@ -582,13 +622,24 @@ export function useRoom(roomUid, {
 
     // The worker detects the language of each phrase someone speaks, so changing
     // what you read doesn't change how you are heard.
-    // The worker sends the recent captions again in the new language, so the old ones are
-    // cleared rather than left in the previous language and direction.
+    // Captions already shown stay as they are: only new phrases come in the new language.
+    // Picking a language means wanting captions in it, so captions are switched on too.
     const setLanguage = useCallback((language) => {
         pickedLanguageRef.current = language
-        setCaptions([])
-        return updateSelf({ participant_language: language })
-    }, [updateSelf])
+        if (localUser.translationEnabled)
+            return updateSelf({ participant_language: language })
+        localStorage.setItem(CAPTIONS_KEY, 'true')
+        return updateSelf({ participant_language: language, participant_translation_enabled: true })
+    }, [updateSelf, localUser.translationEnabled])
+
+    // Empties this person's caption box; new captions keep coming in.
+    const clearCaptions = useCallback(() => {
+        setCaptions((prev) => {
+            const cleared = new Set(prev.flatMap((turn) => turn.segments.map((segment) => segment.id)))
+            clearedCaptionsRef.current = cleared
+            return []
+        })
+    }, [])
 
     const toggleTranslation = useCallback(() => {
         const enabled = !localUser.translationEnabled
@@ -602,8 +653,11 @@ export function useRoom(roomUid, {
         setKnocks((prev) => prev.filter((knock) => knock.userId !== userId))
         try {
             await api.updateRoomMember(roomUid, userId, { room_member_status: admit ? 'active' : 'declined' })
+            notify.info(admit ? 'Guest admitted to meeting' : 'Guest request declined')
         } catch (err) {
-            setNotice(errorMessage(err))
+            const msg = errorMessage(err)
+            setNotice(msg)
+            notify.error(msg)
         }
     }, [roomUid])
 
@@ -618,7 +672,9 @@ export function useRoom(roomUid, {
             addMessages([fromServer(saved)])
         } catch (err) {
             addMessages([{ ...message, status: 'failed' }])
-            setNotice(err instanceof ApiError && err.code === 'forbidden' ? 'You are not allowed to send messages in this room.' : errorMessage(err))
+            const msg = err instanceof ApiError && err.code === 'forbidden' ? 'You are not allowed to send messages in this room.' : errorMessage(err)
+            setNotice(msg)
+            notify.error(msg)
         }
     }, [roomUid, addMessages])
 
@@ -665,16 +721,21 @@ export function useRoom(roomUid, {
                 showReaction('You', event)
         } catch {
             setNotice('Unable to send the reaction')
+            notify.warning('Unable to send reaction')
         }
     }, [showReaction])
 
     const moderate = useCallback(async (action, success) => {
         try {
             await action()
-            if (success)
+            if (success) {
                 setNotice(success)
+                notify.success(success)
+            }
         } catch (err) {
-            setNotice(err instanceof ApiError && err.code === 'forbidden' ? 'You are not allowed to do that.' : errorMessage(err))
+            const msg = err instanceof ApiError && err.code === 'forbidden' ? 'You are not allowed to do that.' : errorMessage(err)
+            setNotice(msg)
+            notify.error(msg)
         }
         refresh()
     }, [refresh])
@@ -720,6 +781,7 @@ export function useRoom(roomUid, {
         loadOlderMessages,
         settings,
         captions,
+        clearCaptions,
         spotlightId,
         isStaff: STAFF_ROLES.includes(localUser.role),
         roomCode: roomUid,

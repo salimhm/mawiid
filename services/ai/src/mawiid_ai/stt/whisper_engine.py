@@ -16,6 +16,7 @@ from mawiid_ai.stt.config import ALL_LANGUAGES, LANGUAGES, VadSettings, WhisperS
 from mawiid_ai.stt.dialect import ArabicVariant
 from mawiid_ai.stt.postprocess import (
     clean_text,
+    collapse_repeats,
     implausible_length,
     is_hallucination,
     normalize_for_compare,
@@ -204,7 +205,7 @@ class WhisperEngine(SttEngine):
         text = clean_text("".join(kept), language)
         if not text or is_hallucination(text) or repeats_context(text, context):
             return ""
-        return text
+        return collapse_repeats(text)
 
 
 class WhisperStream(SttStream):

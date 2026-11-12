@@ -1,4 +1,5 @@
-mawiid.laedxdigitalstudio.com {
+# APP_DOMAIN and RTC_DOMAIN come from .env.production (docker-compose.yml passes them in).
+{$APP_DOMAIN} {
   encode zstd gzip
 
   header {
@@ -21,6 +22,6 @@ mawiid.laedxdigitalstudio.com {
 }
 
 # Caddy terminates TLS and upgrades WebSocket connections for LiveKit signaling.
-rtc.mawiid.laedxdigitalstudio.com {
+{$RTC_DOMAIN} {
   reverse_proxy livekit:7880
 }

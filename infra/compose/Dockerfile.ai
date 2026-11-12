@@ -1,14 +1,26 @@
 FROM python:3.12-slim-bookworm
 
+# CTranslate2 (Whisper and MADLAD) runs on NVIDIA GPUs with the CUDA 12 cuBLAS and cuDNN 9
+# libraries, installed here from pip so the image does not need an nvidia/cuda base. The host
+# needs only the NVIDIA driver and the NVIDIA Container Toolkit. Without a GPU the worker falls
+# back to the CPU; build with --build-arg CUDA=0 to leave the ~1.5 GB of libraries out.
+ARG CUDA=1
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    MAWIID_MODELS_DIR=/models \
+    LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.12/site-packages/nvidia/cudnn/lib
 
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libgomp1 \
   && rm -rf /var/lib/apt/lists/*
+
+RUN if [ "$CUDA" = "1" ]; then pip install --no-cache-dir "nvidia-cublas-cu12" "nvidia-cudnn-cu12==9.*"; fi
 
 WORKDIR /app
 COPY services/ai/pyproject.toml ./
 COPY services/ai/src ./src
 RUN pip install --no-cache-dir .
+# Model conversion runs in this image too (scripts/convert_translation_model.py), into /models.
+COPY services/ai/scripts ./scripts
 
 CMD ["python", "-m", "mawiid_ai.agent", "start"]

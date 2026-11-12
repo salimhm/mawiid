@@ -25,3 +25,7 @@ def test_traditional_chinese_listeners_get_traditional_script():
 
 def test_whitespace_is_collapsed():
     assert clean_translation("  Bonjour   à tous ", "fr-FR") == "Bonjour à tous"
+
+
+def test_a_looping_translation_is_cut():
+    assert clean_translation("Il y a aussi aussi aussi aussi des gens.", "fr-FR") == "Il y a aussi des gens."

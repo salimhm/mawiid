@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ApiError, auth, errorMessage } from '../../services/api';
+import { notify } from '../../services/notifications';
 
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 128;
@@ -54,8 +55,13 @@ export default function ResetPasswordPage() {
     try {
       await auth.resetPassword(token, password);
       set_status('success');
+      notify.success('Your password has been reset successfully. You can now sign in.', {
+        title: 'Password updated',
+      });
     } catch (err) {
-      set_error(errorMessage(err));
+      const msg = errorMessage(err);
+      set_error(msg);
+      notify.error(msg, { title: 'Password reset failed' });
       if (err instanceof ApiError && err.status === 401) set_status('error');
     } finally {
       set_busy(false);

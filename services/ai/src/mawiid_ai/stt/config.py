@@ -63,8 +63,12 @@ ALL_ROUTES: dict[str, list[str]] = {
 }
 DEFAULT_ROUTES: dict[str, list[str]] = {code: route for code, route in ALL_ROUTES.items() if code in LANGUAGES}
 
-# Written by scripts/convert_darija_model.py; data/ is git-ignored.
-DEFAULT_DARIJA_MODEL_PATH = Path(__file__).resolve().parents[3] / "data" / "models" / "whisper-darija-ct2"
+# Where converted models are written and looked for: services/ai/data/models (git-ignored) by
+# default, /models in the Docker image (the ai_models volume).
+MODELS_DIR = Path(os.environ.get("MAWIID_MODELS_DIR") or Path(__file__).resolve().parents[3] / "data" / "models")
+
+# Written by scripts/convert_darija_model.py.
+DEFAULT_DARIJA_MODEL_PATH = MODELS_DIR / "whisper-darija-ct2"
 
 
 def _env(name: str, default: str) -> str:

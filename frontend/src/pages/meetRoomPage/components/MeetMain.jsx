@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState , useEffect } from 'react'
 import ParticipantTile from './ParticipantTile'
 import ScreenShareStage from './ScreenShareStage'
 import { participantColor } from '../../../lib/participantColor'
@@ -57,6 +57,10 @@ export default function MeetMain({
       : 'pt-[6px] pb-[12px] md:pt-[10px] md:pb-[18px]',
   ].join(' ')
 
+  useEffect(() => {
+    console.log('-----  users: ', users)
+  }, [users])
+
   const tile = (user, index, compact = false) => (
     <ParticipantTile
       key={user.id || user.userId || index}
@@ -69,6 +73,7 @@ export default function MeetMain({
       isSpeaking={Boolean(user.isSpeaking)}
       isLocal={Boolean(user.isLocal)}
       compact={compact}
+      language={user.language}
     />
   )
 

@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { captureTokenFromUrl } from "./services/api";
+import { NotificationProvider, NotificationErrorBoundary } from "./components/notifications";
 import "./index.css";
 
 captureTokenFromUrl();
@@ -17,9 +18,13 @@ captureTokenFromUrl();
 const elem = document.getElementById("root")!;
 const app = (
   <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <NotificationErrorBoundary>
+      <NotificationProvider>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </NotificationProvider>
+    </NotificationErrorBoundary>
   </StrictMode>
 );
 

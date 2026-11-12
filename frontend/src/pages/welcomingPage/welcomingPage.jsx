@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api, ApiError, errorMessage } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
+import { notify } from '../../services/notifications'
 import * as icons from '../../assets/icons'
 import ControlsButtons from '../../components/controlButtons'
 import DeviceSelect from './components/DeviceSelect'
@@ -39,13 +40,27 @@ export default function WelcomingPage() {
         selectedDevices,
     }), [micPermission, camPermission, isMicActive, isCamActive, selectedDevices])
 
+    useEffect(() => {
+        if (!mediaError) return
+        notify.warning(mediaError, { dedupKey: `media-err:${mediaError}` })
+    }, [mediaError])
+
     const handleJoinMeet = async () => {
         setActionError('')
 
         if (isCreator) {
             setCreating(true)
             try {
-                const room = await api.createRoom(user?.user_first_name ? `${user.user_first_name}'s mawiid` : 'New mawiid')
+                const room = await notify.promise(
+                    api.createRoom(user?.user_first_name ? `${user.user_first_name}'s mawiid` : 'New mawiid'),
+                    {
+                        loading: 'Creating your mawiid…',
+                        success: 'Mawiid created successfully!',
+                        error: (err) => err instanceof ApiError && err.code === 'forbidden'
+                            ? 'Your account is not allowed to create a mawiid. Join an existing one with its code.'
+                            : errorMessage(err),
+                    }
+                )
                 navigate(`/meet/${room.room_uid}`, { state: { mediaState: meetingMediaState } })
             } catch (err) {
                 setActionError(err instanceof ApiError && err.code === 'forbidden'
@@ -58,7 +73,9 @@ export default function WelcomingPage() {
 
         const joinedRoomCode = location.state?.roomCode
         if (!joinedRoomCode) {
-            setActionError('Missing room code. Please join from the landing page.')
+            const msg = 'Missing room code. Please join from the landing page.'
+            setActionError(msg)
+            notify.warning(msg)
             return
         }
 
