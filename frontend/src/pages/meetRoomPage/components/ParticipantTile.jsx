@@ -101,7 +101,7 @@ export default function ParticipantTile({
       )}
 
       <div className="absolute inset-0 w-full h-full -z-10 pointer-events-none bg-[linear-gradient(180deg,rgba(0,0,0,0.22)_0%,transparent_28%,transparent_55%,rgba(0,0,0,0.82)_100%)]" aria-hidden="true" />
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3 justify-between">
         <span
           className={`inline-block overflow-hidden rounded-full backdrop-blur-[12px] font-montserrat font-semibold text-ellipsis whitespace-nowrap ${compact
             ? 'max-w-full px-2 py-0.5 text-[11px]'
