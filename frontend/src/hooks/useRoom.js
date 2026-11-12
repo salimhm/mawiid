@@ -22,11 +22,8 @@ const REACTION_VISIBLE_MS = 4000
 const STAFF_ROLES = ['host', 'moderator']
 const MESSAGE_PAGE = 50
 const MESSAGE_PAGE_MAX = 100
-// Captions are kept as one entry per speaker (their current turn); at most this many
-// speakers are on screen, the one who spoke longest ago drops out first.
-const CAPTION_MAX = 10
-// Pieces kept in one turn, so a long monologue does not grow without end.
-const TURN_SEGMENT_MAX = 50
+// Caption lines kept (one per turn of speech); the oldest drops out first.
+const CAPTION_MAX = 200
 const ROOM_EVENT_MAX = 200
 // The featured speaker changes at most this often, so people talking over each other
 // (or a cough) does not make the spotlight jump back and forth.
@@ -117,17 +114,14 @@ function trackOwner(room, trackId) {
         .find((participant) => participant.trackPublications.has(trackId)) || null
 }
 
-// Captions state: one turn per speaker, oldest first.
-//   turn = { id, speakerId, speaker, segments: [caption], replaced: [segment ids] }
-// - An update to a segment already on screen (a partial growing, or its translation)
-//   changes it in place. A translation replaces the original, never the other way round:
-//   the original final arrives first, its translation a moment later.
-// - A new segment from the person who spoke last joins their turn, unless its text runs the
-//   other way (left to right vs right to left): then it starts a new line below, and the
-//   previous line stays, so the two directions are never mixed in one line.
-// - A new segment from anyone else starts a new turn at the bottom. If that person
-//   already had turns on screen, they are removed: their old text is replaced by the new.
-// - Late updates for segments of a replaced turn are ignored.
+// Captions state: a log of lines, oldest first, each line one speaker's turn.
+//   turn = { id, speakerId, speaker, segments: [caption] }
+// - An update to a segment already on screen (its translation) changes it in place.
+//   A translation replaces the original, never the other way round.
+// - A new segment from the person who spoke last joins their line, unless its text runs the
+//   other way (left to right vs right to left): then it starts a new line, so the two
+//   directions are never mixed in one line.
+// - A new segment from anyone else starts a new line at the bottom; earlier lines stay.
 function mergeCaption(turns, caption) {
     const turnIndex = turns.findIndex((turn) => turn.segments.some((segment) => segment.id === caption.id))
     if (turnIndex !== -1) {
@@ -138,31 +132,17 @@ function mergeCaption(turns, caption) {
         const segments = turn.segments.map((segment) => (segment.id === caption.id ? caption : segment))
         return turns.map((entry, index) => (index === turnIndex ? { ...turn, segments } : entry))
     }
-    if (turns.some((turn) => turn.replaced.includes(caption.id)))
-        return turns
 
     const last = turns[turns.length - 1]
     if (last && last.speakerId === caption.speakerId) {
         const direction = textDirection(caption.text)
         const lastDirection = textDirection(last.segments.map((segment) => segment.text).join(' '))
-        if (!direction || !lastDirection || direction === lastDirection) {
-            const segments = [...last.segments, caption].slice(-TURN_SEGMENT_MAX)
-            return [...turns.slice(0, -1), { ...last, speaker: caption.speaker, segments }]
-        }
-        const turn = { id: caption.id, speakerId: caption.speakerId, speaker: caption.speaker, segments: [caption], replaced: [] }
-        return [...turns, turn].slice(-CAPTION_MAX)
+        if (!direction || !lastDirection || direction === lastDirection)
+            return [...turns.slice(0, -1), { ...last, speaker: caption.speaker, segments: [...last.segments, caption] }]
     }
 
-    const previous = turns.filter((turn) => turn.speakerId === caption.speakerId)
-    const others = turns.filter((turn) => turn.speakerId !== caption.speakerId)
-    const turn = {
-        id: caption.id,
-        speakerId: caption.speakerId,
-        speaker: caption.speaker,
-        segments: [caption],
-        replaced: previous.flatMap((entry) => [...entry.replaced, ...entry.segments.map((segment) => segment.id)]),
-    }
-    return [...others, turn].slice(-CAPTION_MAX)
+    const turn = { id: caption.id, speakerId: caption.speakerId, speaker: caption.speaker, segments: [caption] }
+    return [...turns, turn].slice(-CAPTION_MAX)
 }
 
 export function useRoom(roomUid, {
