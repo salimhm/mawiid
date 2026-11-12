@@ -18,7 +18,7 @@ export const mawiidTheme = {
     flexDirection: 'column',
     alignItems: 'flex-end',
     pointerEvents: 'none',
-    top: '20px',
+    bottom: '20px',
     right: '20px',
     maxWidth: 'calc(100vw - 32px)',
     width: '380px',
