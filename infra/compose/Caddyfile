@@ -9,6 +9,13 @@
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
+  # Service-to-service routes stay on the Docker network: LiveKit posts webhooks and the AI
+  # worker saves transcripts straight to backend:3000. The API description is not published.
+  @private path /api/transcript/internal* /api/webhook/* /api/openapi*
+  handle @private {
+    respond 404
+  }
+
   # handle_path removes /api before forwarding, matching the backend routes.
   handle_path /api/* {
     reverse_proxy backend:3000

@@ -2,6 +2,7 @@ import type { RedisClient } from 'bun'
 import type { Static } from 'elysia'
 import type { create_database_client } from '@db/client.db'
 import { lib_error } from '@lib/error.lib'
+import { lib_rate_count } from '@lib/rate-limit.lib'
 import { lib_jwt_access_ttl_seconds, type lib_jwt_signer } from '@lib/jwt.lib'
 import { dto_auth } from '@module/main/auth/auth.dto'
 import { service_auth_token } from '@module/main/auth/auth-token.service'
@@ -308,18 +309,17 @@ export const service_auth = {
   ): Promise<auth_session> {
     const user_identifier = normalize(body.user_identifier)
     const attempt_key = login_attempt_key(user_identifier)
-    if (Number(await redis.get(attempt_key)) >= login_max_attempts) throw lib_error.too_many_requests
+    // Counted before the password is checked: parallel guesses each take a slot, so a burst of
+    // requests cannot all pass the limit while the slow hash runs.
+    if ((await lib_rate_count(redis, attempt_key, login_attempt_window_seconds)) > login_max_attempts)
+      throw lib_error.too_many_requests
     const user = await database.main_db.user.findFirst({
       where: user_identifier.includes('@')
         ? { user_email: user_identifier, deleted_at: null }
         : { user_username: user_identifier, deleted_at: null },
     })
     const valid = await Bun.password.verify(body.user_password, user?.user_password_hash ?? (await dummy_password_hash))
-    if (!user?.user_password_hash || !valid) {
-      const attempts = await redis.incr(attempt_key)
-      if (attempts === 1) await redis.expire(attempt_key, login_attempt_window_seconds)
-      throw lib_error.invalid_credentials
-    }
+    if (!user?.user_password_hash || !valid) throw lib_error.invalid_credentials
     await redis.del(attempt_key)
     return await service_auth.session(user, signer, redis)
   },

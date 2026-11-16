@@ -75,6 +75,10 @@ def _env(name: str, default: str) -> str:
     return os.environ.get(f"MAWIID_STT_{name}", default)
 
 
+def _int_list(value: str) -> list[int]:
+    return [int(part) for part in value.split(",") if part.strip()]
+
+
 @dataclass(frozen=True, slots=True)
 class VadSettings:
     threshold: float = 0.6  # speech probability that starts speech (breathing and noise often reach 0.5)
@@ -91,6 +95,11 @@ class WhisperSettings:
     device: str = field(default_factory=lambda: _env("WHISPER_DEVICE", "auto"))  # auto | cpu | cuda
     compute_type: str = field(default_factory=lambda: _env("WHISPER_COMPUTE_TYPE", "default"))
     cpu_threads: int = field(default_factory=lambda: int(_env("WHISPER_CPU_THREADS", "0")))
+    # GPU only. One model copy per listed GPU ("0,1,2,3"), each running num_workers calls at once.
+    # Every speaker in every room shares these copies: with the defaults (one copy on GPU 0) their
+    # Whisper calls queue behind each other however many GPUs the host has.
+    device_index: list[int] = field(default_factory=lambda: _int_list(_env("WHISPER_DEVICE_INDEX", "0")))
+    num_workers: int = field(default_factory=lambda: int(_env("WHISPER_NUM_WORKERS", "1")))
     beam_size: int = 5  # finals: accuracy matters
     partial_beam_size: int = 1  # partials: speed matters
     partial_interval_s: float = field(default_factory=lambda: float(_env("PARTIAL_INTERVAL_S", "1.0")))
