@@ -26,6 +26,15 @@ import numpy as np
 
 from mawiid_ai.stt import LANGUAGES, ResultKind, SttRouter, SttStream, Transcript
 from mawiid_ai.translation import SubtitleTranslator
+from mawiid_ai.metrics import (
+    caption_active_tracks,
+    caption_events,
+    caption_processing_latency,
+    caption_publish_duration,
+    caption_transcription_duration,
+    caption_translation_duration,
+    caption_translation_queue_duration,
+)
 
 log = logging.getLogger(__name__)
 
@@ -210,6 +219,7 @@ class RoomPipeline:
     async def run_speaker(self, identity: str, track_sid: str, audio: AsyncIterable[np.ndarray | bytes]) -> None:
         """Transcribe one audio track (16 kHz mono chunks) until it ends."""
         speaker = _Speaker(identity, track_sid)
+        caption_active_tracks.inc()
         try:
             async for chunk in audio:
                 if not self._captions:
@@ -227,6 +237,7 @@ class RoomPipeline:
             await self._close(speaker)
             if speaker.translating is not None:
                 await speaker.translating
+            caption_active_tracks.dec()
 
     async def _open(self, speaker: _Speaker, language: str, detect: bool) -> bool:
         if self._clock() < speaker.retry_at:
@@ -256,13 +267,23 @@ class RoomPipeline:
     ) -> None:
         stream = stream or speaker.stream
         assert stream is not None
+        started_at = self._clock()
         try:
             # Whisper blocks for a whole phrase; other speakers and the room keep running meanwhile.
             results = await asyncio.to_thread(op, stream)
         except Exception:
+            caption_transcription_duration.observe(
+                self._clock() - started_at, {"engine": "unknown", "outcome": "error"}
+            )
+            caption_events.inc({"component": "transcription", "outcome": "error"})
             log.exception("speech-to-text failed for %s; reopening", speaker.identity)
             speaker.stream = None
             return
+        engine = results[0].engine if results else "none"
+        caption_transcription_duration.observe(
+            self._clock() - started_at, {"engine": engine, "outcome": "success"}
+        )
+        caption_events.inc({"component": "transcription", "outcome": "success"})
         for result in results:
             await self._emit(speaker, result)
 
@@ -291,7 +312,14 @@ class RoomPipeline:
         # People reading another language wait for their translation instead of the original.
         readers = self._original_readers(result.language)
         if readers:
-            await self._send(result.text, TRANSCRIPTION_TOPIC, attributes, readers)
+            await self._send(
+                result.text,
+                TRANSCRIPTION_TOPIC,
+                attributes,
+                readers,
+                result.kind,
+                self._source_ended_at(speaker, result),
+            )
         if speaker.unit_id is None:
             speaker.unit_id = segment_id
         if final:
@@ -374,7 +402,7 @@ class RoomPipeline:
         speaker.version += 1
         previous = speaker.translating
         speaker.translating = asyncio.create_task(
-            self._translate(previous, speaker, speaker.version, transcript, attributes, segments or [])
+            self._translate(previous, speaker, speaker.version, transcript, attributes, segments or [], self._clock())
         )
 
     async def _translate(
@@ -385,22 +413,36 @@ class RoomPipeline:
         transcript: Transcript,
         attributes: dict[str, str],
         segments: list[tuple[str, Transcript]],
+        queued_at: float,
     ) -> None:
         if previous is not None:
             await previous
+        caption_translation_queue_duration.observe(self._clock() - queued_at, {"kind": transcript.kind.value})
         live = transcript.kind is ResultKind.PARTIAL
         if live and version != speaker.version:
+            caption_events.inc({"component": "translation", "outcome": "dropped"})
             return  # a newer subtitle is queued: skip this one rather than fall behind
         attributes = {**attributes, FINAL_ATTRIBUTE: "false" if live else "true"}
         # Listeners of the spoken language read the original.
         groups = {language: ids for language, ids in self.listeners().items() if language != transcript.language}
         translations: dict[str, str] = {}
         if self._translator is not None and groups:
+            started_at = self._clock()
             try:
                 subtitles = await asyncio.to_thread(self._translator.translate, transcript, list(groups))
             except Exception:
+                caption_translation_duration.observe(
+                    self._clock() - started_at, {"engine": "unknown", "outcome": "error"}
+                )
+                caption_events.inc({"component": "translation", "outcome": "error"})
                 log.exception("translation failed for %s", speaker.identity)
                 subtitles = []
+            else:
+                engine = subtitles[0].engine if subtitles else "none"
+                caption_translation_duration.observe(
+                    self._clock() - started_at, {"engine": engine, "outcome": "success"}
+                )
+                caption_events.inc({"component": "translation", "outcome": "success"})
             missing = set(groups)
             for subtitle in subtitles:
                 if subtitle.language not in groups:
@@ -415,11 +457,20 @@ class RoomPipeline:
                     TRANSLATION_TOPIC,
                     {**attributes, LANGUAGE_ATTRIBUTE: subtitle.language},
                     groups[subtitle.language],
+                    transcript.kind,
+                    self._source_ended_at(speaker, transcript),
                 )
             if missing and not live:
                 # No translation came back: better the original than nothing.
                 readers = sorted(identity for language in missing for identity in groups[language])
-                await self._send(transcript.text, TRANSCRIPTION_TOPIC, attributes, readers)
+                await self._send(
+                    transcript.text,
+                    TRANSCRIPTION_TOPIC,
+                    attributes,
+                    readers,
+                    transcript.kind,
+                    self._source_ended_at(speaker, transcript),
+                )
         if self._on_segment is not None:
             for i, (segment_id, result) in enumerate(segments):
                 self._on_segment(
@@ -434,8 +485,28 @@ class RoomPipeline:
                     )
                 )
 
-    async def _send(self, text: str, topic: str, attributes: dict[str, str], identities: list[str] | None) -> None:
+    def _source_ended_at(self, speaker: _Speaker, transcript: Transcript) -> float:
+        return self._started + speaker.offset + transcript.end
+
+    async def _send(
+        self,
+        text: str,
+        topic: str,
+        attributes: dict[str, str],
+        identities: list[str] | None,
+        kind: ResultKind,
+        source_ended_at: float,
+    ) -> None:
+        started_at = self._clock()
         try:
             await self._publish(text, topic, attributes, identities)
         except Exception:
+            caption_publish_duration.observe(self._clock() - started_at, {"topic": topic, "outcome": "error"})
+            caption_events.inc({"component": "publish", "outcome": "error"})
             log.exception("publishing %s failed", topic)
+            return
+        caption_publish_duration.observe(self._clock() - started_at, {"topic": topic, "outcome": "success"})
+        caption_processing_latency.observe(
+            max(0.0, self._clock() - source_ended_at), {"kind": kind.value, "topic": topic}
+        )
+        caption_events.inc({"component": "publish", "outcome": "success"})

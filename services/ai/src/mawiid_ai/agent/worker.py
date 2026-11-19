@@ -32,6 +32,7 @@ from mawiid_ai.agent.pipeline import (
     Segment,
 )
 from mawiid_ai.agent.uploader import TranscriptUploader, http_post
+from mawiid_ai.metrics import start_metrics_server
 from mawiid_ai.stt import SAMPLE_RATE, SttRouter, build_router
 from mawiid_ai.translation import SubtitleTranslator, build_translator
 
@@ -94,6 +95,7 @@ server = AgentServer(job_executor_type=JobExecutorType.THREAD)
 @server.on("worker_started")
 def _preload() -> None:
     # The first room should not wait for the models.
+    start_metrics_server()
     threading.Thread(target=load_models, name="model-preload", daemon=True).start()
 
 

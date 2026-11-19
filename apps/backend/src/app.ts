@@ -4,6 +4,7 @@ import { openapi } from '@elysiajs/openapi';
 import { create_database_client } from '@db/client.db';
 import { create_redis_client } from '@storage/redis.storage';
 import { lib_middleware_error } from '@lib/middleware.lib';
+import { lib_metrics } from '@lib/metrics.lib';
 import { controller_auth } from '@module/main/auth/auth.controller';
 import { controller_message } from '@module/main/message/message.controller';
 import { controller_audit } from '@module/main/participants/audit.controller';
@@ -28,6 +29,7 @@ if (import.meta.main) {
       .use(cors({ origin: '*' }))
       .decorate('database', database)
       .decorate('redis', redis)
+      .use(lib_metrics)
       .use(lib_middleware_error)
       .use(controller_auth)
       .use(controller_participant)
