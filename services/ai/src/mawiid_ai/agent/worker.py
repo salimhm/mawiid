@@ -118,7 +118,10 @@ async def entrypoint(ctx: JobContext) -> None:
         participant = room.remote_participants.get(segment.identity)
         uploader.add(segment, user_id_of(segment.identity, participant.attributes if participant else {}))
 
-    pipeline = RoomPipeline(router, translator, publish, on_segment)
+    pipeline = RoomPipeline(
+        router, translator, publish, on_segment,
+        stage_timings=os.environ.get("MAWIID_STAGE_TIMINGS") == "1",  # load tests only
+    )
 
     def spawn(coroutine) -> None:
         task = asyncio.create_task(coroutine)

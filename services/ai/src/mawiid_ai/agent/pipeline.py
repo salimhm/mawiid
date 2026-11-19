@@ -38,6 +38,12 @@ FINAL_ATTRIBUTE = "lk.transcription_final"
 LANGUAGE_ATTRIBUTE = "mawiid.language"  # the language someone reads captions in
 TRANSLATION_ATTRIBUTE = "mawiid.translation_enabled"  # "true" when someone wants captions
 SPOKEN_LANGUAGE_ATTRIBUTE = "mawiid.spoken_language"  # the language someone speaks, or AUTO
+# With stage_timings on (MAWIID_STAGE_TIMINGS=1, for load tests), final captions also carry how
+# long their phrase spent in each stage, in ms: the speech-to-text call that produced the last
+# final, the wait behind the speaker's earlier translations, and the translation call itself.
+STT_MS_ATTRIBUTE = "mawiid.timing.stt_ms"
+QUEUE_MS_ATTRIBUTE = "mawiid.timing.queue_ms"
+MT_MS_ATTRIBUTE = "mawiid.timing.mt_ms"
 AUTO = "auto"  # detect the language of each phrase (also when no spoken language is set)
 
 DEFAULT_LANGUAGE = "en-US"  # backend default for accounts without user_language
@@ -136,6 +142,7 @@ class _Speaker:
         self.held_segments: list[tuple[str, Transcript]] = []  # saved when the subtitle closes
         self.unit_attributes: dict[str, str] = {}
         self.hold_timer: asyncio.Task[None] | None = None
+        self.stt_s = 0.0  # duration of the last speech-to-text call that returned results
 
 
 class RoomPipeline:
@@ -147,10 +154,12 @@ class RoomPipeline:
         on_segment: Callable[[Segment], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
         hold_s: float = HOLD_S,
+        stage_timings: bool = False,
     ) -> None:
         """Without a translator (no translation model on this machine), only the originals are sent."""
         self._router = router
         self._hold_s = hold_s
+        self._stage_timings = stage_timings
         self._translator = translator
         self._publish = publish
         self._on_segment = on_segment
@@ -258,7 +267,10 @@ class RoomPipeline:
         assert stream is not None
         try:
             # Whisper blocks for a whole phrase; other speakers and the room keep running meanwhile.
+            started = time.monotonic()
             results = await asyncio.to_thread(op, stream)
+            if results:
+                speaker.stt_s = time.monotonic() - started
         except Exception:
             log.exception("speech-to-text failed for %s; reopening", speaker.identity)
             speaker.stream = None
@@ -373,8 +385,10 @@ class RoomPipeline:
         # Translation runs beside speech-to-text, chained so a speaker's subtitles stay in order.
         speaker.version += 1
         previous = speaker.translating
+        if self._stage_timings and transcript.kind is ResultKind.FINAL:
+            attributes = {**attributes, STT_MS_ATTRIBUTE: str(round(speaker.stt_s * 1000))}
         speaker.translating = asyncio.create_task(
-            self._translate(previous, speaker, speaker.version, transcript, attributes, segments or [])
+            self._translate(previous, speaker, speaker.version, transcript, attributes, segments or [], time.monotonic())
         )
 
     async def _translate(
@@ -385,6 +399,7 @@ class RoomPipeline:
         transcript: Transcript,
         attributes: dict[str, str],
         segments: list[tuple[str, Transcript]],
+        queued_at: float,
     ) -> None:
         if previous is not None:
             await previous
@@ -392,15 +407,21 @@ class RoomPipeline:
         if live and version != speaker.version:
             return  # a newer subtitle is queued: skip this one rather than fall behind
         attributes = {**attributes, FINAL_ATTRIBUTE: "false" if live else "true"}
+        timed = self._stage_timings and not live
+        if timed:
+            attributes[QUEUE_MS_ATTRIBUTE] = str(round((time.monotonic() - queued_at) * 1000))
         # Listeners of the spoken language read the original.
         groups = {language: ids for language, ids in self.listeners().items() if language != transcript.language}
         translations: dict[str, str] = {}
         if self._translator is not None and groups:
+            started = time.monotonic()
             try:
                 subtitles = await asyncio.to_thread(self._translator.translate, transcript, list(groups))
             except Exception:
                 log.exception("translation failed for %s", speaker.identity)
                 subtitles = []
+            if timed:
+                attributes[MT_MS_ATTRIBUTE] = str(round((time.monotonic() - started) * 1000))
             missing = set(groups)
             for subtitle in subtitles:
                 if subtitle.language not in groups:

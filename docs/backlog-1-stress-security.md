@@ -26,6 +26,13 @@ New opt-in settings (defaults unchanged) let us test the fix the same week:
   real-time pace with captions on, each reading another language. The real worker is dispatched.
   Times every final caption from "speaker stopped" to "listener received", counts dropped
   captions, and prints p50/p95/max per minute. Bots are `loadbot_*`, so nothing lands in a vault.
+  `--ramp 1,2,3,... --step-minutes N` raises the number talking at once per room every N minutes in one
+  run, and `summary.json` → `verdict` names the last step within the limits and the first one past
+  them. Clips are trimmed of silence, so latency counts from the end of speech.
+- `MAWIID_STAGE_TIMINGS=1` in `.env.production` (restart `ai`): final captions carry the Whisper time,
+  the wait behind the speaker's earlier translations and the MADLAD time. The script prints their p95
+  per minute (`stt95 que95 mt95`) and writes them to `captions.csv` and each step of `summary.json`,
+  so a break is pinned to a stage. Off by default; leave it off in normal production.
 - `services/ai/scripts/resource_sampler.sh <dir>`: on the DGX, GPU util/memory/power, per-container
   CPU/RAM/network, host load, every 5 s.
 - Video/SFU load (not covered by the bots, which only send audio): `lk load-test` from LiveKit CLI,
@@ -39,7 +46,7 @@ export LIVEKIT_URL="wss://rtc.example.com" LIVEKIT_API_KEY="CHANGE_ME" LIVEKIT_A
 # ON THE DGX (not the test machine), in another shell, from a checkout of this repo:
 scripts/resource_sampler.sh data/loadtest/D 5
 # from the test machine:
-.venv/bin/python scripts/room_loadtest.py --rooms 1 --speakers 10 --concurrency 0 --minutes 60 --out data/loadtest/D
+.venv/bin/python scripts/room_loadtest.py --rooms 1 --speakers 10 --ramp 1,2,3,4,5,6,7,8,9,10 --step-minutes 7 --out data/loadtest/R10
 ```
 
 ## 3. Test matrix
@@ -50,12 +57,18 @@ scripts/resource_sampler.sh data/loadtest/D 5
 | Run | Rooms × bots | Talking at once | Length | Purpose |
 |---|---|---|---|---|
 | A | 1 × 5 | 1 | 15 min | Smoke test, baseline on the DGX |
+| R5 | 1 × 5 | ramp `1,2,3,4,5`, 12 min steps | 60 min | 5-user breaking point: exact number talking at once |
+| R10 | 1 × 10 | ramp `1,…,10`, 7 min steps | 70 min | 10-user breaking point (7 min, so a 5-minute p50 rise can show inside a step) |
 | B | 1 × 5 | all | 60+ min | 5-user endurance |
 | C | 1 × 10 | 1 | 60+ min | 10-user realistic meeting |
 | D | 1 × 10 | all | 60 min | 10-user worst case (expected break) |
 | E | 2, 4, 6, … × 5 | 1 per room | 20 min each | Multi-tenant capacity: rooms per worker before it breaks |
 | F | D and E again | | | With the GPU settings of section 1 |
 | G | D | | | `MAWIID_MT_MODEL=3b` vs `10b` |
+
+Order: A, then R5 and R10 to find the breaking point, then B/C/D as hour-long confirmations at
+the last good level and one above it (`--concurrency N`). A ramp step is short, so a slow leak or
+backlog only an hour shows is caught by B/C/D, not by R5/R10.
 
 Keep each run's `summary.json`, `captions.csv`, `clips.csv` and the sampler CSVs, plus the commit and
 `.env.production` model settings used (not the secrets).
