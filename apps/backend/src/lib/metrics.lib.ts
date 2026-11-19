@@ -70,7 +70,7 @@ function render(): string {
 const request_started_at = new WeakMap<Request, number>();
 
 export const lib_metrics = new Elysia({ name: 'metrics' })
-  .onRequest({ as: 'global' }, ({ request }) => {
+  .onRequest(({ request }) => {
     request_started_at.set(request, performance.now());
   })
   .onAfterHandle({ as: 'global' }, ({ request, set }) => {
