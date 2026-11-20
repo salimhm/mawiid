@@ -274,6 +274,7 @@ smoke: ## End-to-end endpoint checks against the running stack (make dev first)
 # Needs LiveKit and the AI worker running (make dev). TEST_BOT_ARGS="--clips 10 --auto-detect" for more.
 
 # OPTIONS
+# make test_bot WATCH=1                                  # watch and hear it live at http://localhost:8765
 # make test_bot TEST_BOT_ARGS="--clips 10"               # 10 sentences per language
 # make test_bot TEST_BOT_ARGS="--auto-detect"            # speakers on "Auto", also tests language detection
 # make test_bot TEST_BOT_ARGS="--warmup-s 900"           # wait up to 15 min if the worker is still loading
@@ -286,7 +287,7 @@ test_bot: ## Translation test bots: bots speak, listener bots read, captions sco
 		if [ ! -x $(AI)/.venv/bin/python ]; then echo "Run make ai-install first"; exit 1; fi; \
 		cd $(AI) && { [ -f data/translation/parallel.jsonl ] || .venv/bin/python scripts/fetch_samples.py --languages fr-FR en-US ar-SA; } && \
 		LIVEKIT_URL="$$livekit_url" LIVEKIT_API_KEY="$$livekit_key" LIVEKIT_API_SECRET="$$livekit_secret" \
-		.venv/bin/python scripts/translation_bot.py $(TEST_BOT_ARGS)
+		.venv/bin/python scripts/translation_bot.py $(if $(filter 1,$(WATCH)),--watch) $(TEST_BOT_ARGS)
 
 # Load test: LOAD_ROOMS rooms of LOAD_BOTS bots, LOAD_TALKING talking at once per room (0: all),
 # for LOAD_MINUTES. Each bot speaks FLEURS clips and times every caption; the resource sampler runs

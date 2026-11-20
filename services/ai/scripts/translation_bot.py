@@ -27,6 +27,7 @@ mean chrF of 54 on these sentences (README), and speech errors lower it further.
     python scripts/translation_bot.py --languages fr-FR en-US ar-SA --clips 5
 
 --auto-detect puts speakers on "I speak: Auto", so language detection is tested too.
+--watch serves a local page (http://localhost:8765) to watch and hear the run live.
 --rescore <run dir> scores a finished run again from its saved captions (no LiveKit needed).
 Only clips with reference translations are used: fetch_samples.py --per-language 30 gives more.
 
@@ -55,6 +56,14 @@ from livekit import rtc
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from benchmark import SAMPLES_DIR, error_rate, load_audio, normalize  # noqa: E402
 from room_loadtest import FRAME, SAMPLE_RATE, TOPICS, dispatch, token, trim_silence  # noqa: E402
+
+VIEWER = None  # bot_viewer.Viewer with --watch
+
+
+def emit(event: dict) -> None:
+    if VIEWER is not None:
+        VIEWER.emit(event)
+
 
 PARALLEL = Path(__file__).resolve().parent.parent / "data" / "translation" / "parallel.jsonl"
 SCRIPTS = {"ar": "ARABIC", "zh": "CJK", "en": "LATIN", "fr": "LATIN", "es": "LATIN", "de": "LATIN"}
@@ -169,6 +178,9 @@ def listen(listener: Listener, started: float) -> None:
                 except Exception:
                     return
                 attrs = dict(reader.info.attributes or {})
+                emit({"type": "caption", "listener": listener.language, "track": attrs.get("lk.transcribed_track_id", ""),
+                      "segment": attrs.get("lk.segment_id", ""), "final": attrs.get("lk.transcription_final") == "true",
+                      "topic": topic, "language": attrs.get("mawiid.language", ""), "text": text})
                 if attrs.get("lk.transcription_final") == "true":
                     listener.finals.append(Caption(time.monotonic() - started, topic, attrs.get("mawiid.language", ""),
                                                    attrs.get("lk.transcribed_track_id", ""), text))
@@ -429,6 +441,20 @@ async def main_async(args) -> int:
     print(f"room {room_name}: {len(sentences)} sentences, {', '.join(languages)}"
           f"{', speakers on auto-detect' if args.auto_detect else ''} -> {args.out}", flush=True)
 
+    if args.watch:
+        global VIEWER
+        from bot_viewer import Viewer, viewer_token
+        VIEWER = Viewer(args.watch_host, args.watch_port)
+        await VIEWER.start()
+        emit({"type": "setup", "room": room_name, "languages": languages, "livekit_url": os.environ["LIVEKIT_URL"],
+              "token": viewer_token(room_name), "tracks": {s.track_sid: language for language, s in speakers.items()}})
+        print(f"\nWatch it live: open {VIEWER.url} in your browser (waiting up to {args.watch_wait_s:.0f} s for it)\n", flush=True)
+        try:
+            await asyncio.wait_for(VIEWER.connected.wait(), args.watch_wait_s)
+        except asyncio.TimeoutError:
+            print("no browser connected: starting anyway (the page still shows everything when opened)", flush=True)
+        await asyncio.gather(*(s.quiet(2.0) for s in speakers.values()))  # time for the page to join the room
+
     # The worker may still be loading models: wait for a first caption before scoring anything.
     # The warm-up sentence is not scored, but it stays in the alignment so its late captions are
     # not credited to the first real sentence.
@@ -437,6 +463,9 @@ async def main_async(args) -> int:
     ready = False
     while time.monotonic() < deadline and not ready:
         t0 = time.monotonic() - started
+        emit({"type": "sentence", "language": warmup.language, "id": warmup.sentence_id, "warmup": True, "text": warmup.reference,
+              "references": warmup.references})
+        emit({"type": "status", "text": "warming up: waiting for the AI worker's first caption"})
         ended, got = await speak_and_collect(speakers[warmup.language], warmup.audio, listeners, started, 1.0, 30)
         played.append((None, warmup.reference, t0, ended))
         ready = any(got.values())
@@ -449,6 +478,9 @@ async def main_async(args) -> int:
     for i, sentence in enumerate(sentences, 1):
         speaker = speakers[sentence.language]
         t0 = time.monotonic() - started
+        emit({"type": "sentence", "language": sentence.language, "id": sentence.sentence_id, "warmup": False,
+              "text": sentence.reference, "references": sentence.references})
+        emit({"type": "status", "text": f"sentence {i} of {len(sentences)}"})
         ended, got = await speak_and_collect(speaker, sentence.audio, listeners, started, args.settle_s, args.timeout_s)
         played.append((sentence, sentence.reference, t0, ended))
         print(f"{i:>3}/{len(sentences)} {sentence.language} spoken, captions from {sum(1 for g in got.values() if g)}/{len(listeners)} listeners",
@@ -478,7 +510,14 @@ async def main_async(args) -> int:
         for sentence, ref, t0, t1 in played:
             w.writerow([f"{t0:.2f}", f"{t1:.2f}", sentence.language if sentence else warmup.language,
                         sentence.sentence_id if sentence else "warm-up", ref])
-    return finish(args, played, warmup, listeners, speakers, room_name, languages)
+    code = finish(args, played, warmup, listeners, speakers, room_name, languages)
+    if VIEWER is not None:
+        data = json.loads((args.out / "results.json").read_text(encoding="utf-8"))
+        emit({"type": "results", "sentences": data["sentences"], "limits": data["limits"], "passed": data["summary"]["passed"],
+              "problems": data["summary"]["problems"]})
+        await asyncio.sleep(1)
+        await VIEWER.stop()
+    return code
 
 
 def finish(args, played, warmup: Sentence, listeners: list[Listener], speakers: dict, room_name: str, languages: list[str]) -> int:
@@ -560,6 +599,10 @@ def main() -> int:
     parser.add_argument("--gap-s", type=float, default=1.0, help="extra silence between sentences")
     parser.add_argument("--warmup-s", type=float, default=300, help="how long to wait for the worker's first caption")
     parser.add_argument("--out", type=Path, default=Path("data/translation-bot") / time.strftime("%Y%m%d-%H%M%S"))
+    parser.add_argument("--watch", action="store_true", help="serve a local page to watch and hear the run live")
+    parser.add_argument("--watch-port", type=int, default=8765)
+    parser.add_argument("--watch-host", default="127.0.0.1", help="0.0.0.0 to watch from another machine")
+    parser.add_argument("--watch-wait-s", type=float, default=300, help="how long to wait for the page to be opened")
     parser.add_argument("--rescore", type=Path, metavar="RUN_DIR", help="score a finished run again from its saved captions")
     args = parser.parse_args()
     if args.rescore:
