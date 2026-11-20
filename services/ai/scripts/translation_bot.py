@@ -60,6 +60,17 @@ from room_loadtest import FRAME, SAMPLE_RATE, TOPICS, dispatch, token, trim_sile
 VIEWER = None  # bot_viewer.Viewer with --watch
 
 
+NAMES = {"fr-FR": "French", "en-US": "English", "ar-SA": "Arabic", "ar-MA": "Darija", "zh-CN": "Chinese", "zh-TW": "Chinese (TW)"}
+TRACK_LANGUAGE: dict[str, str] = {}  # speaker track sid -> language it speaks
+SPEECH_END: dict[str, float | None] = {}  # speaker track sid -> when its last sentence ended (None: speaking)
+SHOW = True  # print what is said and every final caption (off with --quiet)
+
+
+def show(line: str) -> None:
+    if SHOW:
+        print(line, flush=True)
+
+
 def emit(event: dict) -> None:
     if VIEWER is not None:
         VIEWER.emit(event)
@@ -182,6 +193,12 @@ def listen(listener: Listener, started: float) -> None:
                       "segment": attrs.get("lk.segment_id", ""), "final": attrs.get("lk.transcription_final") == "true",
                       "topic": topic, "language": attrs.get("mawiid.language", ""), "text": text})
                 if attrs.get("lk.transcription_final") == "true":
+                    spoken = TRACK_LANGUAGE.get(attrs.get("lk.transcribed_track_id", ""))
+                    if spoken:
+                        what = f"heard ({NAMES.get(spoken, spoken)})" if listener.language == spoken else f"→ {NAMES.get(listener.language, listener.language)}"
+                        end = SPEECH_END.get(attrs.get("lk.transcribed_track_id", ""))
+                        when = "while speaking" if end is None else f"+{time.monotonic() - started - end:.1f} s"
+                        show(f"      {what:<18} {text.strip()}   [{when}]")
                     listener.finals.append(Caption(time.monotonic() - started, topic, attrs.get("mawiid.language", ""),
                                                    attrs.get("lk.transcribed_track_id", ""), text))
             asyncio.ensure_future(read())
@@ -195,8 +212,10 @@ async def speak_and_collect(speaker: Speaker, audio: np.ndarray, listeners: list
                             settle_s: float, timeout_s: float) -> tuple[float, dict[str, list[Caption]]]:
     """Plays one sentence, then keeps sending silence until every listener has its caption(s)."""
     marks = {l.language: len(l.finals) for l in listeners}
+    SPEECH_END[speaker.track_sid] = None
     await speaker.say(audio)
     ended = time.monotonic() - started
+    SPEECH_END[speaker.track_sid] = ended
 
     def new(l: Listener) -> list[Caption]:
         return [c for c in l.finals[marks[l.language]:] if c.track == speaker.track_sid]
@@ -438,6 +457,7 @@ async def main_async(args) -> int:
         track = rtc.LocalAudioTrack.create_audio_track("mic", source)
         publication = await room.local_participant.publish_track(track, rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE))
         speakers[language] = Speaker(room, source, publication.sid)
+        TRACK_LANGUAGE[publication.sid] = language
     print(f"room {room_name}: {len(sentences)} sentences, {', '.join(languages)}"
           f"{', speakers on auto-detect' if args.auto_detect else ''} -> {args.out}", flush=True)
 
@@ -466,6 +486,7 @@ async def main_async(args) -> int:
         emit({"type": "sentence", "language": warmup.language, "id": warmup.sentence_id, "warmup": True, "text": warmup.reference,
               "references": warmup.references})
         emit({"type": "status", "text": "warming up: waiting for the AI worker's first caption"})
+        show(f"\n[warm-up, not scored] {NAMES.get(warmup.language, warmup.language)} bot says: {warmup.reference}")
         ended, got = await speak_and_collect(speakers[warmup.language], warmup.audio, listeners, started, 1.0, 30)
         played.append((None, warmup.reference, t0, ended))
         ready = any(got.values())
@@ -481,10 +502,15 @@ async def main_async(args) -> int:
         emit({"type": "sentence", "language": sentence.language, "id": sentence.sentence_id, "warmup": False,
               "text": sentence.reference, "references": sentence.references})
         emit({"type": "status", "text": f"sentence {i} of {len(sentences)}"})
+        show(f"\n[{i}/{len(sentences)}] {NAMES.get(sentence.language, sentence.language)} bot says (FLEURS {sentence.sentence_id}): "
+             f"{sentence.reference}")
         ended, got = await speak_and_collect(speaker, sentence.audio, listeners, started, args.settle_s, args.timeout_s)
         played.append((sentence, sentence.reference, t0, ended))
-        print(f"{i:>3}/{len(sentences)} {sentence.language} spoken, captions from {sum(1 for g in got.values() if g)}/{len(listeners)} listeners",
-              flush=True)
+        missing = [NAMES.get(l, l) for l, g in got.items() if not g]
+        if missing:
+            show(f"      (no caption yet for: {', '.join(missing)})")
+        elif not SHOW:
+            print(f"{i:>3}/{len(sentences)} {sentence.language} spoken, captions from all listeners", flush=True)
         await speaker.quiet(args.gap_s)
     # Stragglers: a slow worker can still be finishing the last sentences. Wait until no caption
     # has come for 10 s (at most --timeout-s).
@@ -599,12 +625,15 @@ def main() -> int:
     parser.add_argument("--gap-s", type=float, default=1.0, help="extra silence between sentences")
     parser.add_argument("--warmup-s", type=float, default=300, help="how long to wait for the worker's first caption")
     parser.add_argument("--out", type=Path, default=Path("data/translation-bot") / time.strftime("%Y%m%d-%H%M%S"))
+    parser.add_argument("--quiet", action="store_true", help="do not print what the bots say and every caption")
     parser.add_argument("--watch", action="store_true", help="serve a local page to watch and hear the run live")
     parser.add_argument("--watch-port", type=int, default=8765)
     parser.add_argument("--watch-host", default="127.0.0.1", help="0.0.0.0 to watch from another machine")
     parser.add_argument("--watch-wait-s", type=float, default=300, help="how long to wait for the page to be opened")
     parser.add_argument("--rescore", type=Path, metavar="RUN_DIR", help="score a finished run again from its saved captions")
     args = parser.parse_args()
+    global SHOW
+    SHOW = not args.quiet and not args.rescore
     if args.rescore:
         return rescore(args)
     return asyncio.run(main_async(args))
