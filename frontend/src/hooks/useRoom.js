@@ -15,6 +15,7 @@ const ATTRIBUTE = {
     userId: 'mawiid.user_id',
     role: 'mawiid.role',
     language: 'mawiid.language',
+    spokenLanguage: 'mawiid.spoken_language',
     translationEnabled: 'mawiid.translation_enabled',
     handRaised: 'mawiid.hand_raised',
 }
@@ -239,6 +240,7 @@ export function useRoom(roomUid, {
             name: isLocal ? `${participant.name || 'You'} (You)` : participant.name || participant.identity,
             role: attributes[ATTRIBUTE.role] || '',
             language: attributes[ATTRIBUTE.language] || '',
+            spokenLanguage: attributes[ATTRIBUTE.spokenLanguage] || 'auto',
             translationEnabled: attributes[ATTRIBUTE.translationEnabled] === 'true',
             handRaised: attributes[ATTRIBUTE.handRaised] === 'true',
             // The camera and a shared screen are kept apart: the room shows a shared screen
@@ -620,8 +622,7 @@ export function useRoom(roomUid, {
         [updateSelf, localUser.handRaised],
     )
 
-    // The worker detects the language of each phrase someone speaks, so changing
-    // what you read doesn't change how you are heard.
+    // Auto detects the language of each phrase, using the caption language as its first guess.
     // Captions already shown stay as they are: only new phrases come in the new language.
     // Picking a language means wanting captions in it, so captions are switched on too.
     const setLanguage = useCallback((language) => {
@@ -631,6 +632,11 @@ export function useRoom(roomUid, {
         localStorage.setItem(CAPTIONS_KEY, 'true')
         return updateSelf({ participant_language: language, participant_translation_enabled: true })
     }, [updateSelf, localUser.translationEnabled])
+
+    const setSpokenLanguage = useCallback(
+        (spokenLanguage) => updateSelf({ participant_spoken_language: spokenLanguage }),
+        [updateSelf],
+    )
 
     // Empties this person's caption box; new captions keep coming in.
     const clearCaptions = useCallback(() => {
@@ -794,6 +800,7 @@ export function useRoom(roomUid, {
         toggleScreenShare,
         toggleHand,
         setLanguage,
+        setSpokenLanguage,
         toggleTranslation,
         admit: (userId) => answerKnock(userId, true),
         deny: (userId) => answerKnock(userId, false),

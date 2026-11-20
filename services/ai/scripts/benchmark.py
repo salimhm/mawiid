@@ -68,8 +68,8 @@ def load_audio(path: Path) -> np.ndarray:
     return audio
 
 
-def run_clip(router, language: str, audio: np.ndarray) -> dict:
-    stream = router.open_stream(language)
+def run_clip(router, language: str, audio: np.ndarray, *, detect: bool = True, realtime: bool = False) -> dict:
+    stream = router.open_stream(language, detect=detect)
     padded = np.concatenate([audio, np.zeros(int(TAIL_SILENCE_S * SAMPLE_RATE), dtype=np.float32)])
     finals: list[str] = []
     final_delays: list[float] = []
@@ -78,7 +78,14 @@ def run_clip(router, language: str, audio: np.ndarray) -> dict:
     engines: set[str] = set()
 
     started = time.perf_counter()
+    pacing_time = 0.0
     for i in range(0, len(padded), CHUNK):
+        if realtime:
+            sleep_started = time.perf_counter()
+            wait = started + min(i + CHUNK, len(padded)) / SAMPLE_RATE - sleep_started
+            if wait > 0:
+                time.sleep(wait)
+                pacing_time += time.perf_counter() - sleep_started
         call_start = time.perf_counter()
         results = stream.push_audio(padded[i : i + CHUNK])
         took = time.perf_counter() - call_start
@@ -93,7 +100,8 @@ def run_clip(router, language: str, audio: np.ndarray) -> dict:
     for r in stream.flush():
         finals.append(r.text)
         engines.add(r.engine)
-    elapsed = time.perf_counter() - started
+    stream.close()
+    elapsed = time.perf_counter() - started - pacing_time
 
     return {
         "hypothesis": " ".join(finals),
@@ -109,6 +117,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--samples", type=Path, default=SAMPLES_DIR)
     parser.add_argument("--languages", nargs="+")
+    parser.add_argument("--fixed-language", action="store_true", help="treat the clip language as an explicit spoken-language selection")
+    parser.add_argument("--realtime", action="store_true", help="pace audio at meeting speed for streaming engines")
     parser.add_argument("--model", help="whisper model size, e.g. small, medium, large-v3-turbo")
     parser.add_argument("--beam", type=int, help="beam size for final results (default 5; 1 is faster)")
     parser.add_argument("--partials", action="store_true", help="also produce live partial results (slower)")
@@ -150,7 +160,7 @@ def main() -> int:
             errors, cers, rtfs, final_delays, partial_delays, durations = [], [], [], [], [], []
             for entry in group:
                 audio = load_audio(lang_dir / entry["audio"])
-                result = run_clip(router, language, audio)
+                result = run_clip(router, language, audio, detect=not args.fixed_language, realtime=args.realtime)
                 err = error_rate(entry["text"], result["hypothesis"], language)
                 errors.append(err)
                 cers.append(char_error_rate(entry["text"], result["hypothesis"], language))

@@ -34,11 +34,53 @@ MAWIID_STT_DARIJA_MODEL=data/models/whisper-darija-medium-ct2 ...  # pick anothe
 
 `make ai-models-darija` runs the `turbo` conversion if the model is missing. Without a converted model the engine is skipped, the worker logs an error and Darija goes to stock Whisper, which transcribes it as Standard Arabic. Output is Arabic script. Test clips come from DVoice v2.0 and adiren7/darija_speech_to_text (`fetch_samples.py --languages ar-MA`); the benchmark scores each source separately and also reports CER, because Darija has no standard spelling and WER counts every spelling variant as an error.
 
+### Voxtral Arabic trial
+
+Install the worker's optional client with `pip install -e '.[voxtral]'`. Run
+Voxtral in a separate environment on the GPU server and expose its realtime
+endpoint on loopback. For example, install `vllm==0.17.1` and
+`mistral-common[audio]` in that environment, then run:
+
+```bash
+vllm serve mistralai/Voxtral-Mini-4B-Realtime-Arabic \
+  --revision 7c60cf2acb1ceb823efe937ddbc88e5e7b6e7dc2 \
+  --host 127.0.0.1 --port 8000 --tokenizer-mode mistral \
+  --config-format mistral --load-format mistral --enforce-eager \
+  --gpu-memory-utilization 0.45 --max-model-len 4096 --max-num-seqs 8
+```
+
+The memory setting is for the 40 GB A100 trial. Select a GPU explicitly when
+Whisper and MADLAD are running on the same server.
+
+Set `MAWIID_STT_VOXTRAL_ENABLED=1` on the trial worker. Its defaults are
+`MAWIID_STT_VOXTRAL_URL=ws://127.0.0.1:8000/v1/realtime` and
+`MAWIID_STT_VOXTRAL_MODEL=mistralai/Voxtral-Mini-4B-Realtime-Arabic`.
+Use `LIVEKIT_TRANSLATOR_AGENT=mawiid-translator-voxtral` and dispatch that
+agent only to test rooms on the existing LiveKit server. Use one caption
+agent per room. Select **I speak: Darija** to exercise Voxtral. Auto uses
+Whisper language detection. All translation still goes through MADLAD.
+
+Run the same Darija clips once with `MAWIID_STT_VOXTRAL_ENABLED=0`, then again
+with it set to `1`. The STT benchmark's JSON records the engine used per clip.
+The pipeline benchmark shows the engine with `-v`.
+
+```bash
+python scripts/benchmark.py --samples path/to/samples --languages ar-MA \
+  --fixed-language --realtime --partials --json darija-results.json
+python scripts/pipeline_benchmark.py --samples path/to/samples --languages ar-MA \
+  --fixed-language -v
+```
+
+The router uses Whisper when Voxtral disconnects and replays unfinalized
+audio. For a quality rollback, dispatch new test rooms to
+`mawiid-translator` and let the trial rooms finish. To switch the trial worker
+itself to Whisper, restart that worker with `MAWIID_STT_VOXTRAL_ENABLED=0`.
+
 ### How it works
 
 - `vad.py`: Silero voice detection (bundled with faster-whisper, no PyTorch) cuts the stream into phrases at 500 ms pauses, max 6 s each, so non-stop speech still shows up.
 - `whisper_engine.py`: faster-whisper transcribes each phrase (finals) and the phrase so far, up to once per second (partials), using at most half the time so a slow machine shows fewer partials instead of falling behind. On a CPU it encodes the phrase plus 3 s of silence (at least 10 s) instead of Whisper's fixed 30 s, which is 3-4 times faster.
-- `router.py`: each language has an ordered engine list in `config.py` (`voxtral`, then `whisper`). Engines that aren't loaded are skipped. If the active engine crashes, or is too slow (above 3 s per call) while a backup exists, the stream switches engines and replays the audio since the last final, so no speech is lost. The failed engine is skipped by all streams for 60 s, then retried at the next phrase boundary.
+- `router.py` tries the loaded engines in the configured order for each spoken language. If an engine fails, the stream switches to a backup and replays the audio since the last final. The router also switches when a call takes more than 3 s and falls behind real time. It skips the failed engine for 60 s and can retry it at the next phrase boundary.
 - `postprocess.py`: whitespace clean-up and Simplified/Traditional Chinese conversion (OpenCC).
 
 Settings live in `config.py`; the Whisper ones can be overridden with environment variables: `MAWIID_STT_WHISPER_MODEL` (default `small`), `MAWIID_STT_WHISPER_DEVICE` (`auto`/`cpu`/`cuda`), `MAWIID_STT_WHISPER_COMPUTE_TYPE`, `MAWIID_STT_WHISPER_CPU_THREADS`, `MAWIID_STT_PARTIALS` (`auto`/`1`/`0`; auto = only with a GPU, a CPU can't keep up), `MAWIID_STT_PARTIAL_INTERVAL_S`, `MAWIID_STT_DETECT_LANGUAGE` (`1`/`0`, see below).

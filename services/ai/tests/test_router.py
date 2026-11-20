@@ -214,6 +214,24 @@ def test_engine_that_cannot_open_a_stream_is_skipped(clock):
     assert [r.engine for r in results] == ["whisper"]
 
 
+def test_initial_connection_failure_falls_back(clock):
+    primary, backup = FakeEngine("voxtral", clock), FakeEngine("whisper", clock)
+    primary.fail_open = True
+    stream = make_router(clock, primary, backup).open_stream("fr-FR")
+    assert stream.engine == "whisper"
+
+
+def test_failure_replays_only_unfinalized_part_of_chunk(clock):
+    primary, backup = FakeEngine("voxtral", clock), FakeEngine("whisper", clock)
+    stream = make_router(clock, primary, backup).open_stream("fr-FR")
+    assert len(stream.push_audio(np.zeros(SAMPLE_RATE + CHUNK, dtype=np.int16))) == 1
+    primary.crash = True
+    [final] = stream.flush()
+    assert backup.received == CHUNK
+    assert final.start == 1.0
+    assert final.engine == "whisper"
+
+
 def test_slow_replay_does_not_cascade_through_backups(clock):
     a, b, c = FakeEngine("voxtral", clock), FakeEngine("whisper-gpu", clock), FakeEngine("whisper", clock)
     stream = make_router(clock, a, b, c, slow=3.0).open_stream("fr-FR")

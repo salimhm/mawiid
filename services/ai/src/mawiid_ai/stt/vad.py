@@ -90,11 +90,13 @@ class VadSegmenter:
     def segment_start(self) -> int:
         return self._segment_start
 
-    def current_audio(self) -> np.ndarray:
-        """Audio of the phrase being spoken right now (empty when silent)."""
+    def current_audio(self, *, trim_trailing: bool = False) -> np.ndarray:
+        """Audio of the active phrase, optionally excluding silence beyond its padding."""
         if not self._windows:
             return np.zeros(0, dtype=np.float32)
-        return np.concatenate(self._windows)
+        audio = np.concatenate(self._windows)
+        trailing_cut = max(0, self._silence - self._pad) if trim_trailing else 0
+        return audio[: len(audio) - trailing_cut]
 
     def feed(self, audio: np.ndarray) -> list[SpeechSegment]:
         audio = np.concatenate([self._leftover, audio]) if len(self._leftover) else audio
@@ -156,11 +158,7 @@ class VadSegmenter:
     def _close_segment(self, forced: bool) -> SpeechSegment | None:
         if self._voiced < self._min_speech:
             return None
-        audio = self.current_audio()
-        trailing_cut = max(0, self._silence - self._pad)
-        if trailing_cut:
-            audio = audio[: len(audio) - trailing_cut]
-        return SpeechSegment(audio=audio, start_sample=self._segment_start, forced=forced)
+        return SpeechSegment(audio=self.current_audio(trim_trailing=True), start_sample=self._segment_start, forced=forced)
 
     def _end_phrase(self) -> None:
         self._in_speech = False

@@ -64,3 +64,23 @@ def test_without_darija_detection_darija_readers_go_straight_to_the_darija_model
     monkeypatch.setattr(factory, "load_engines", lambda settings: engines)
     router = factory.build_router(SttSettings(detect_darija=False))
     assert router.chain_for("ar-MA") == ["whisper-darija", "whisper"]
+
+
+@needs_languages("ar-MA")
+def test_voxtral_only_serves_explicit_darija(monkeypatch):
+    from mawiid_ai.stt import factory
+    from mawiid_ai.stt.config import SttSettings
+
+    clock = FakeClock()
+    voxtral = FakeEngine("voxtral-arabic", clock, languages=["ar-MA"])
+    voxtral.requires_explicit_language = True
+    engines = {
+        voxtral.name: voxtral,
+        "whisper": FakeEngine("whisper", clock, languages=list(LANGUAGES)),
+    }
+    monkeypatch.setattr(factory, "load_engines", lambda settings: engines)
+    router = factory.build_router(SttSettings())
+
+    assert router.open_stream("ar-MA").engine == "whisper"
+    assert router.open_stream("ar-MA", detect=False).engine == "voxtral-arabic"
+    assert router.chain_for("ar-SA", detect=False) == ["whisper"]

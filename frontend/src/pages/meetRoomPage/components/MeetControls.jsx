@@ -15,8 +15,7 @@ const LANGUAGE_CODES = {
   // 'Chinese (Simplified)': 'zh-CN',
   // 'Chinese (Traditional)': 'zh-TW',
 }
-// The worker detects the language each person speaks, Darija included, so only the
-// caption language is picked.
+const LANGUAGE_CHOICES = Object.entries(LANGUAGE_CODES)
 
 const REACTIONS = ['👍', '👏', '😂', '❤️', '🎉', '😮']
 
@@ -29,6 +28,7 @@ export default function MeetControls({
   camOn = false,
   handRaised = false,
   language = '',
+  spokenLanguage = 'auto',
   onMicToggle,
   onCamToggle,
   onScreenShareToggle,
@@ -36,6 +36,7 @@ export default function MeetControls({
   translationEnabled = false,
   onTranslationToggle,
   onLanguageChange,
+  onSpokenLanguageChange,
   onReaction,
   onLeave,
   roomCode = '',
@@ -54,6 +55,9 @@ export default function MeetControls({
     languages.find((name) => LANGUAGE_CODES[name] === code.split('-')[0]) ||
     'English'
   const curr_language = picked_language || language_name(language)
+  const spoken_language_code = LANGUAGE_CHOICES.find(([, code]) => code === spokenLanguage)?.[1]
+    || LANGUAGE_CHOICES.find(([, code]) => code === spokenLanguage.split('-')[0])?.[1]
+    || 'auto'
   const room_id = roomCode
 
   useEffect(() => {
@@ -342,6 +346,22 @@ export default function MeetControls({
               {language_name}
             </button>
           ))}
+          <label
+            className='flex items-center justify-between gap-2 border-t border-white/24 px-4 py-2.5 text-sm'
+            onClick={(event) => event.stopPropagation()}
+          >
+            I speak
+            <select
+              className='max-w-36 rounded-md border border-white/24 bg-neutral-900 px-2 py-1 text-white'
+              value={spoken_language_code}
+              onChange={(event) => onSpokenLanguageChange?.(event.target.value)}
+            >
+              <option value='auto'>Auto</option>
+              {LANGUAGE_CHOICES.map(([name, code]) => (
+                <option key={code} value={code}>{name}</option>
+              ))}
+            </select>
+          </label>
         </div>
       )}
 

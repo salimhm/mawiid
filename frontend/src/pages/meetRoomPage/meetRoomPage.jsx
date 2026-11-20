@@ -115,6 +115,7 @@ export default function MeetRoomPage() {
                 camOn={room.localUser.isCamOn}
                 handRaised={room.localUser.handRaised}
                 language={room.localUser.language}
+                spokenLanguage={room.localUser.spokenLanguage}
                 onMicToggle={room.toggleMic}
                 onCamToggle={room.toggleCam}
                 onScreenShareToggle={room.toggleScreenShare}
@@ -122,6 +123,7 @@ export default function MeetRoomPage() {
                 translationEnabled={room.localUser.translationEnabled}
                 onTranslationToggle={room.toggleTranslation}
                 onLanguageChange={room.setLanguage}
+                onSpokenLanguageChange={room.setSpokenLanguage}
                 onReaction={room.sendReaction}
                 onLeave={handleLeave}
                 roomCode={room.roomCode}

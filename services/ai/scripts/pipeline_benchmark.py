@@ -30,8 +30,10 @@ from mawiid_ai.stt import LANGUAGES, SAMPLE_RATE, ResultKind, SttSettings, Trans
 from mawiid_ai.translation import TranslationSettings, build_translator
 
 
-def run_clip(router, translator, language: str, audio: np.ndarray, room: list[str], verbose: bool) -> list[float]:
-    stream = router.open_stream(language)
+def run_clip(
+    router, translator, language: str, audio: np.ndarray, room: list[str], verbose: bool, *, detect: bool = True
+) -> list[float]:
+    stream = router.open_stream(language, detect=detect)
     padded = np.concatenate([audio, np.zeros(int(TAIL_SILENCE_S * SAMPLE_RATE), dtype=np.float32)])
     delays = []
     started = time.perf_counter()
@@ -46,11 +48,12 @@ def run_clip(router, translator, language: str, audio: np.ndarray, room: list[st
                 delay = time.perf_counter() - (started + result.end)
                 delays.append(delay)
                 if verbose:
-                    print(f"  {delay:5.2f}s  [{language}] {result.text}")
+                    print(f"  {delay:5.2f}s  [{language}/{result.engine}] {result.text}")
                     for subtitle in subtitles:
                         if subtitle.language != language:
                             print(f"         [{subtitle.language}] {subtitle.text}")
     stream.flush()  # anything left only after the 1 s of silence isn't a live result; not counted
+    stream.close()
     return delays
 
 
@@ -58,6 +61,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--samples", type=Path, default=SAMPLES_DIR)
     parser.add_argument("--languages", nargs="+", help="spoken languages (default: every sample language)")
+    parser.add_argument("--fixed-language", action="store_true", help="treat the clip language as an explicit spoken-language selection")
     parser.add_argument("--limit", type=int, default=3, help="clips per language")
     parser.add_argument("-v", "--verbose", action="store_true", help="print every final and its subtitles")
     args = parser.parse_args()
@@ -82,7 +86,10 @@ def main() -> int:
         entries = [json.loads(line) for line in (lang_dir / "manifest.jsonl").read_text(encoding="utf-8").splitlines()]
         delays: list[float] = []
         for entry in entries[: args.limit]:
-            delays += run_clip(router, translator, language, load_audio(lang_dir / entry["audio"]), room, args.verbose)
+            delays += run_clip(
+                router, translator, language, load_audio(lang_dir / entry["audio"]), room, args.verbose,
+                detect=not args.fixed_language,
+            )
         all_delays += delays
         if delays:
             print(f"{language:<8} {len(delays):>6} {median(delays):>6.2f}s {np.percentile(delays, 95):>5.2f}s {max(delays):>5.2f}s")

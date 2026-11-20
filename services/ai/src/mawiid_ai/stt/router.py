@@ -58,7 +58,7 @@ class SttRouter:
         self.clock = clock
         self.breaker = CircuitBreaker(settings.cooldown_s, clock)
 
-    def chain_for(self, language: str) -> list[str]:
+    def chain_for(self, language: str, detect: bool = True) -> list[str]:
         """Loaded engines that support the language, in preference order."""
         if language not in LANGUAGES:
             raise SttError(f"unsupported language: {language}")
@@ -66,11 +66,12 @@ class SttRouter:
             name
             for name in self.routes.get(language, [])
             if name in self.engines and self.engines[name].supports(language)
+            and not (detect and self.engines[name].requires_explicit_language)
         ]
 
     def open_stream(self, language: str, detect: bool = True) -> FailoverStream:
         """``detect``: ``language`` is only the first guess; each phrase's language is detected."""
-        chain = self.chain_for(language)
+        chain = self.chain_for(language, detect)
         if not chain:
             raise SttError(f"no speech-to-text engine loaded for {language}")
         return FailoverStream(self, language, chain, detect)
@@ -89,7 +90,16 @@ class FailoverStream(SttStream):
         self._samples_seen = 0
         self._switch_back_to: int | None = None
         self._index = self._first_available(0)
-        self._stream = self._open(self._index, time_offset=0.0)
+        while True:
+            try:
+                self._stream = self._open(self._index, time_offset=0.0)
+                break
+            except Exception as exc:
+                router.breaker.record_failure(self.engine, f"open failed: {exc!r}")
+                next_index = self._first_available(0, required=False)
+                if next_index is None:
+                    raise SttError(f"no healthy speech-to-text stream for {language}") from exc
+                self._index = next_index
 
     @property
     def engine(self) -> str:
@@ -221,7 +231,10 @@ class FailoverStream(SttStream):
             self._replay_samples -= len(dropped)
 
     def _forget_before(self, sample: int) -> None:
-        """Drop audio already covered by a final result, keeping the chunk that contains ``sample``."""
-        while len(self._replay) > 1 and self._replay[1][0] <= sample:
-            _, dropped = self._replay.popleft()
-            self._replay_samples -= len(dropped)
+        """Drop finalized audio, including the finalized prefix of a chunk."""
+        while self._replay and self._replay[0][0] < sample:
+            start, chunk = self._replay.popleft()
+            consumed = min(sample - start, len(chunk))
+            self._replay_samples -= consumed
+            if consumed < len(chunk):
+                self._replay.appendleft((start + consumed, chunk[consumed:]))

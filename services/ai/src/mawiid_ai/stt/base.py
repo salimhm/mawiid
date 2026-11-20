@@ -50,6 +50,7 @@ class SttEngine(ABC):
     """A loaded model that can open one stream per speaker."""
 
     name: str
+    requires_explicit_language = False
 
     @abstractmethod
     def supports(self, language: str) -> bool:

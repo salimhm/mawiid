@@ -33,11 +33,15 @@ def load_engines(settings: SttSettings) -> dict[str, SttEngine]:
             "MAWIID_STT_WHISPER_MODEL=medium or large-v3 if this machine can run it"
         )
 
-    # Voxtral Realtime needs a GPU; its engine is added once we test on GPU hardware.
-    # Until then routes that list "voxtral" fall through to the next engine.
-
     if not engines:
         raise RuntimeError("no speech-to-text engine could be loaded")
+    if settings.voxtral.enabled and "ar-MA" in LANGUAGES:
+        try:
+            from mawiid_ai.stt.voxtral_engine import VoxtralEngine
+
+            engines[VoxtralEngine.name] = VoxtralEngine(settings.voxtral, settings.vad)
+        except Exception:
+            log.exception("Voxtral engine failed to initialize; using the existing Darija route")
     return engines
 
 
@@ -71,6 +75,8 @@ def build_router(settings: SttSettings | None = None) -> SttRouter:
     if getattr(engines.get("whisper"), "dialect_engine", None) is None and "ar-MA" in routes:
         # No detection: whoever is on ar-MA (reads Darija) goes straight to the Darija model.
         routes = {**routes, "ar-MA": ["whisper-darija", "whisper"]}
+    if "voxtral-arabic" in engines and "ar-MA" in routes:
+        routes = {**routes, "ar-MA": ["voxtral-arabic", *routes["ar-MA"]]}
     router = SttRouter(engines, routes, settings.failover)
     dialect = getattr(router.engines.get("whisper"), "dialect_engine", None)
     for language, chain in engine_report(router).items():
@@ -79,4 +85,7 @@ def build_router(settings: SttSettings | None = None) -> SttRouter:
             log.info("stt route %s: %s%s", language, ", ".join(chain), arabic)
         else:
             log.error("stt route %s: no engine loaded, this language gets no captions", language)
+        explicit = router.chain_for(language, detect=False)
+        if explicit != chain:
+            log.info("stt route %s (explicit): %s", language, ", ".join(explicit))
     return router

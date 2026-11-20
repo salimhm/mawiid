@@ -118,6 +118,17 @@ def _darija_settings() -> WhisperSettings:
     return WhisperSettings(model=_env("DARIJA_MODEL", str(DEFAULT_DARIJA_MODEL_PATH)))
 
 
+VOXTRAL_ARABIC_MODEL = "mistralai/Voxtral-Mini-4B-Realtime-Arabic"
+
+
+@dataclass(frozen=True, slots=True)
+class VoxtralSettings:
+    enabled: bool = field(default_factory=lambda: _env("VOXTRAL_ENABLED", "0") == "1")
+    url: str = field(default_factory=lambda: _env("VOXTRAL_URL", "ws://127.0.0.1:8000/v1/realtime"))
+    model: str = field(default_factory=lambda: _env("VOXTRAL_MODEL", VOXTRAL_ARABIC_MODEL))
+    timeout_s: float = 3.0
+
+
 @dataclass(frozen=True, slots=True)
 class FailoverSettings:
     cooldown_s: float = 60.0  # how long a failed engine is skipped before it is retried
@@ -139,3 +150,4 @@ class SttSettings:
     detect_darija: bool = field(default_factory=lambda: _env("DETECT_DARIJA", "1") == "1")
     failover: FailoverSettings = field(default_factory=FailoverSettings)
     routes: dict[str, list[str]] = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_ROUTES.items()})
+    voxtral: VoxtralSettings = field(default_factory=VoxtralSettings)
