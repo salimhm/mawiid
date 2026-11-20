@@ -1,60 +1,72 @@
-# GPU VM Prometheus and Grafana
+# App VM Prometheus and Grafana
 
-Run this Compose stack on the Ubuntu GPU VM, beside the AI worker and its models. The Bun backend remains on its separate application VM.
+Run this Compose stack on the Ubuntu application VM where the Bun backend runs. The GPU VM remains dedicated to the AI worker and models; it does not run Prometheus, Grafana, or Docker monitoring containers.
 
-Prometheus uses Linux host networking to scrape these private endpoints:
+Prometheus runs in Docker on the app VM and scrapes these endpoints:
 
-- `127.0.0.1:9464/metrics` — the AI worker on the GPU VM.
-- `<APP_VM_PRIVATE_IP>:3000/metrics` — the Bun backend through the private VM network.
+- `host.docker.internal:3000/metrics` - Bun backend running directly on the app VM.
+- `<GPU_VM_PRIVATE_IP>:9464/metrics` - AI worker on the GPU VM through the private network.
 
-Grafana and Prometheus each bind only to `127.0.0.1` on the GPU VM. This Compose file is deliberately for Linux Docker Engine, not Docker Desktop.
+Grafana and Prometheus publish their UI ports only on `127.0.0.1` on the app VM. The Compose file maps `host.docker.internal` through Docker's host gateway so Prometheus can reach the Bun process without containerising it.
 
-## Start Prometheus and Grafana on the GPU VM
+## Start Prometheus and Grafana on the app VM
 
 ```sh
 cd infra/compose/observability
 cp .env.example .env
-# Edit .env: set a strong Grafana password and the application's private VM IP.
+# Edit .env: set a strong Grafana password and the GPU VM's private IP.
 docker compose up -d
 ```
 
-Use the actual private address of the app VM for `APP_VM_PRIVATE_IP`; it must be reachable from the GPU VM. Do not put a public IP here.
+Set `GPU_VM_PRIVATE_IP` to the actual private address of the GPU VM. It must be reachable from the app VM. Do not use a public IP.
 
-Use an SSH tunnel to open the dashboard from your laptop:
+Use an SSH tunnel from a laptop to open the dashboard:
 
 ```sh
-ssh -L 3001:127.0.0.1:3001 your-user@gpu-vm
+ssh -L 3001:127.0.0.1:3001 your-user@app-vm
 ```
 
-Then visit `http://localhost:3001` and sign in as `admin`. For Prometheus troubleshooting, tunnel port `9090` in the same way and open `http://localhost:9090/targets`.
+Then visit `http://localhost:3001` and sign in as `admin`. To inspect Prometheus targets, forward port `9090` in the same way and open `http://localhost:9090/targets`.
+
+## Run the Bun backend on the app VM
+
+Start the backend normally. It exposes `GET /metrics` on port `3000` by default. Prometheus reaches it through Docker's host gateway, so no additional backend firewall rule is needed for monitoring.
+
+```sh
+curl -fsS http://127.0.0.1:3000/metrics | head
+```
+
+The public Caddy route returns `404` for `/api/metrics`; do not expose the Bun port publicly.
 
 ## Run the AI worker on the GPU VM
 
-Start the worker on the GPU VM—the machine that has the models. Its metrics endpoint is private to that VM by default:
+The GPU VM runs only the AI worker and models. The worker's lightweight metrics endpoint must bind to the GPU VM's private interface so Prometheus on the app VM can scrape it:
 
 ```sh
-MAWIID_METRICS_HOST=127.0.0.1 \
+MAWIID_METRICS_HOST=<GPU_VM_PRIVATE_IP> \
 MAWIID_METRICS_PORT=9464 \
 python -m mawiid_ai.agent start
 ```
 
-Use the project's normal worker command if it differs in your deployment. The important part is that the worker process is running on the GPU VM and has `MAWIID_METRICS_ENABLED` unset or set to `true`.
-
-## Run the Bun backend on the app VM
-
-Start the backend normally on the app VM. It exposes `GET /metrics` on its Bun port (normally `3000`). Allow **only the GPU VM's private IP** to reach TCP port `3000`, for example with UFW:
+Allow only the app VM's private IP to reach the metrics port on the GPU VM, for example with UFW:
 
 ```sh
-sudo ufw allow from <GPU_VM_PRIVATE_IP> to any port 3000 proto tcp
+sudo ufw allow from <APP_VM_PRIVATE_IP> to any port 9464 proto tcp
 ```
 
-Do not expose the Bun port publicly. The Caddy deployment configuration also returns `404` for public `/api/metrics`; Prometheus reaches the backend port directly through the private network.
+The metrics endpoint contains operational counters and latency histograms only. It does not include caption text, room IDs, participant identities, or audio data.
 
 ## Verify
 
-Open Prometheus **Status → Targets**. Both `backend` and `ai` should be **UP**:
+On the app VM, confirm that the GPU worker is reachable:
 
-- If `backend` is down, check `APP_VM_PRIVATE_IP`, the backend process, and the private-network firewall rule.
-- If `ai` is down, check that the worker runs on the GPU VM and that port `9464` is listening on loopback.
+```sh
+curl -fsS http://<GPU_VM_PRIVATE_IP>:9464/metrics | head
+```
 
-Generate normal backend requests, then run a real caption session. Prometheus scrapes every five seconds, so dashboard series normally appear within 10–15 seconds. Caption p95 stays `No data` until at least one caption reaches the relevant pipeline stage; translation metrics only appear when a translation is actually produced.
+Open Prometheus **Status -> Targets**. The `backend`, `ai`, and `prometheus` targets should be **UP**.
+
+- If `backend` is down, make sure Bun is running and responding at `127.0.0.1:3000` on the app VM, then inspect the Prometheus container logs.
+- If `ai` is down, check the GPU worker, `MAWIID_METRICS_HOST`, GPU firewall or cloud security group, and private-network routing from the app VM.
+
+Generate ordinary backend requests and run a real caption session. Prometheus scrapes every five seconds, so dashboard series normally appear within 10-15 seconds. Caption p95 stays `No data` until a caption reaches that stage; translation metrics appear only after an actual translation is produced.
