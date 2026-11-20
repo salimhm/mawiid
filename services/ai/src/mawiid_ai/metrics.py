@@ -166,7 +166,9 @@ def start_metrics_server() -> None:
         global _server
         if _server is not None:
             return
-        host = os.environ.get("MAWIID_METRICS_HOST", "0.0.0.0")
+        # Prometheus runs on this GPU VM, so keep the exporter private by default.
+        # Set this explicitly only when a collector runs on another machine.
+        host = os.environ.get("MAWIID_METRICS_HOST", "127.0.0.1")
         port = int(os.environ.get("MAWIID_METRICS_PORT", "9464"))
 
         class Handler(BaseHTTPRequestHandler):

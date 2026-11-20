@@ -9,6 +9,10 @@
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
+  # Metrics are collected over the private VM network, never through the public API.
+  @metrics path /api/metrics
+  respond @metrics 404
+
   # handle_path removes /api before forwarding, matching the backend routes.
   handle_path /api/* {
     reverse_proxy backend:3000
