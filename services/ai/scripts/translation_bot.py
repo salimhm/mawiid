@@ -27,6 +27,8 @@ mean chrF of 54 on these sentences (README), and speech errors lower it further.
     python scripts/translation_bot.py --languages fr-FR en-US ar-SA --clips 5
 
 --auto-detect puts speakers on "I speak: Auto", so language detection is tested too.
+--rescore <run dir> scores a finished run again from its saved captions (no LiveKit needed).
+Only clips with reference translations are used: fetch_samples.py --per-language 30 gives more.
 
 Writes <out>/results.json, clips.csv and report.md (every sentence with what was heard and what
 each listener read, next to the references). Exit code 0: pass, 1: fail, 2: could not run.
@@ -187,13 +189,18 @@ async def speak_and_collect(speaker: Speaker, audio: np.ndarray, listeners: list
     def new(l: Listener) -> list[Caption]:
         return [c for c in l.finals[marks[l.language]:] if c.track == speaker.track_sid]
 
+    # At least the worker's 1.5 s hold plus the 0.5 s pause that ends a phrase, so it never joins
+    # the end of this sentence with the next one.
+    await speaker.quiet(2.5)
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         await speaker.quiet(0.25)
         got = [new(l) for l in listeners]
         last = max((c.t for g in got for c in g), default=None)
-        # Everyone has something and nothing new came for settle_s: a long sentence can arrive in parts.
-        if all(got) and last is not None and time.monotonic() - started - last >= settle_s:
+        # Every listener got a caption after the sentence ended (a long sentence is captioned in
+        # parts while it is spoken, so earlier parts do not count) and nothing new came for settle_s.
+        done = all(any(c.t >= ended for c in g) for g in got)
+        if done and last is not None and time.monotonic() - started - last >= settle_s:
             break
     return ended, {l.language: new(l) for l in listeners}
 
@@ -206,7 +213,9 @@ def grams(text: str, language: str) -> set[str]:
 def align(captions: list[Caption], spans: list[tuple[float, str]], language: str) -> list[list[Caption]]:
     """Assigns each caption of one speaker, in arrival order, to one of the sentences that speaker
     said, in order (monotone), maximizing text overlap with each sentence's reference. A caption
-    cannot belong to a sentence that started after it arrived. Returns the captions per sentence."""
+    cannot belong to a sentence that started after it arrived, and leans towards the sentence
+    spoken just before it (a long earlier sentence shares common letter groups with anything, so
+    it only wins when the text clearly matches it). Returns the captions per sentence."""
     n = len(spans)
     groups: list[list[Caption]] = [[] for _ in range(n)]
     if not captions or not n:
@@ -217,7 +226,17 @@ def align(captions: list[Caption], spans: list[tuple[float, str]], language: str
     for c in captions:
         g = grams(c.text, language)
         weight = max(1, len(g))
-        score.append([neg if c.t < spans[j][0] else weight * (len(g & refs[j]) / weight if g else 0.0) for j in range(n)])
+        latest = max((j for j in range(n) if spans[j][0] <= c.t), default=-1)
+        row = []
+        for j in range(n):
+            if c.t < spans[j][0]:
+                row.append(neg)
+                continue
+            # Matching letter groups, plus a prior on time: the latest sentence gets a bonus, the
+            # one before it nothing, older ones a penalty (a caption is rarely that late).
+            prior = 0.3 if j == latest else 0.0 if j == latest - 1 else -0.5
+            row.append(len(g & refs[j]) + prior * weight)
+        score.append(row)
     best = [[neg] * n for _ in captions]
     back = [[0] * n for _ in captions]
     for j in range(n):
@@ -459,8 +478,12 @@ async def main_async(args) -> int:
         for sentence, ref, t0, t1 in played:
             w.writerow([f"{t0:.2f}", f"{t1:.2f}", sentence.language if sentence else warmup.language,
                         sentence.sentence_id if sentence else "warm-up", ref])
+    return finish(args, played, warmup, listeners, speakers, room_name, languages)
+
+
+def finish(args, played, warmup: Sentence, listeners: list[Listener], speakers: dict, room_name: str, languages: list[str]) -> int:
     results = build_results(played, warmup, listeners, speakers, args)
-    summary = score(sentences, results, languages, args)
+    summary = score([], results, languages, args)
     meta = {"date": time.strftime("%Y-%m-%d %H:%M"), "room": room_name, "languages": languages, "auto_detect": args.auto_detect,
             "limits": {"max_wer": args.max_wer, "min_chrf": args.min_chrf}}
     (args.out / "results.json").write_text(json.dumps({**meta, "summary": summary, "sentences": results}, ensure_ascii=False, indent=2),
@@ -485,6 +508,46 @@ async def main_async(args) -> int:
     return 0 if summary["passed"] else 1
 
 
+def rescore(args) -> int:
+    """Scores a finished run again from its captions.csv and spoken.csv (no LiveKit needed)."""
+    from types import SimpleNamespace
+    run_dir = args.rescore
+    old = json.loads((run_dir / "results.json").read_text(encoding="utf-8")) if (run_dir / "results.json").exists() else {}
+    args.auto_detect = old.get("auto_detect", args.auto_detect)
+    parallel = [json.loads(line) for line in PARALLEL.read_text(encoding="utf-8").splitlines() if line.strip()]
+    with (run_dir / "spoken.csv").open(encoding="utf-8") as f:
+        spoken = list(csv.DictReader(f))
+    languages = list(dict.fromkeys(row["language"] for row in spoken))
+    with (run_dir / "captions.csv").open(encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    languages += [l for l in dict.fromkeys(r["listener"] for r in rows) if l not in languages]
+
+    def sentence_for(row) -> Sentence:
+        match = next((p for p in parallel if p.get(row["language"]) == row["text"]), {})
+        return Sentence(match.get("id", row["sentence_id"]), row["language"], np.zeros(0, dtype=np.int16), row["text"],
+                        {l: match.get(l, "") for l in languages})
+
+    played, warmup = [], None
+    for row in spoken:
+        sentence = sentence_for(row)
+        if row["sentence_id"] == "warm-up":
+            warmup = sentence
+            played.append((None, row["text"], float(row["start_s"]), float(row["end_s"])))
+        else:
+            played.append((sentence, row["text"], float(row["start_s"]), float(row["end_s"])))
+    if warmup is None:  # a run without warm-up rows: any sentence works, it is never scored
+        warmup = next(p[0] for p in played if p[0])
+    listeners = []
+    for language in languages:
+        listener = Listener(language, None)
+        listener.finals = [Caption(float(r["t_s"]), r["topic"], r["language"], r["speaker"], r["text"])
+                           for r in rows if r["listener"] == language and r["speaker"] != "?"]
+        listeners.append(listener)
+    speakers = {language: SimpleNamespace(track_sid=language) for language in languages}
+    args.out = run_dir
+    return finish(args, played, warmup, listeners, speakers, old.get("room", run_dir.name), languages)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--languages", nargs="+", default=["fr-FR", "en-US", "ar-SA"])
@@ -497,7 +560,11 @@ def main() -> int:
     parser.add_argument("--gap-s", type=float, default=1.0, help="extra silence between sentences")
     parser.add_argument("--warmup-s", type=float, default=300, help="how long to wait for the worker's first caption")
     parser.add_argument("--out", type=Path, default=Path("data/translation-bot") / time.strftime("%Y%m%d-%H%M%S"))
-    return asyncio.run(main_async(parser.parse_args()))
+    parser.add_argument("--rescore", type=Path, metavar="RUN_DIR", help="score a finished run again from its saved captions")
+    args = parser.parse_args()
+    if args.rescore:
+        return rescore(args)
+    return asyncio.run(main_async(args))
 
 
 if __name__ == "__main__":
