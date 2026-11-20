@@ -49,6 +49,18 @@ scripts/resource_sampler.sh data/loadtest/D 5
 .venv/bin/python scripts/room_loadtest.py --rooms 1 --speakers 10 --ramp 1,2,3,4,5,6,7,8,9,10 --step-minutes 7 --out data/loadtest/R10
 ```
 
+### Automatic report
+
+`make dev` also starts `scripts/test_report.py` in the background. Once the servers answer it runs
+the backend and AI unit tests, the smoke tests, live security probes (the production Caddyfile in a
+throwaway container, a 30-request login burst, Redis counter expiries, forged/expired JWTs, malformed
+input, CORS), then the load tests of `REPORT_PROFILE` with the resource sampler, and writes
+`reports/<timestamp>/report.md` and `report.html` (`reports/latest` points at the newest).
+`quick` (default) is ~15 min of load, `hour` runs B and C, `full` the whole matrix below, `none` skips
+load. `make report` reruns it against a running stack; `REPORT=0` turns it off. Facts it cannot
+measure (issue severity and ETA, the DGX hourly cost, Microintégrèle's answer) come from
+`docs/test-report-input.json`.
+
 ## 3. Test matrix
 
 "Breaks" = caption **p95 > 3.0 s**, or **drop rate > 2 %**, or p50 rising for 5 minutes in a row

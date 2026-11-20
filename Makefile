@@ -19,13 +19,19 @@ REDIS_IMAGE       := redis:7
 LIVEKIT_CONTAINER := mawiid-livekit
 LIVEKIT_IMAGE     := livekit/livekit-server
 
+# make dev starts scripts/test_report.py in the background: it waits for the servers, runs the tests,
+# security probes and load tests, and writes reports/<timestamp>/report.md and .html (reports/latest).
+# REPORT=0 turns it off; REPORT_PROFILE=quick|hour|full|none picks the load tests (see the script).
+REPORT ?= 1
+REPORT_PROFILE ?= quick
+
 # make dev AI_MODELS=0 skips the model conversion on machines without the disk or RAM for it.
 AI_MODELS ?= 1
 # Darija is switched off (services/ai/README.md); convert its model by hand when turning it back on.
 AI_MODEL_FILES := $(AI)/data/models/madlad400-3b-mt-ct2/model.bin
 
 .PHONY: mawiid azure mawiid-status mawiid-logs mawiid-down setup seed-if-missing ai-models ai-models-darija certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
-        tokens typecheck build test-unit test-ai check smoke test clean
+        tokens typecheck build test-unit test-ai check smoke report test clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -214,7 +220,8 @@ dev: stop setup infra seed-if-missing ## Set up and run everything: Redis, LiveK
 	@trap 'kill 0' INT TERM EXIT; \
 		$(MAKE) --no-print-directory backend & \
 		$(MAKE) --no-print-directory frontend & \
-		{ [ "$(AI_MODELS)" != 1 ] || $(MAKE) --no-print-directory ai-models; $(MAKE) --no-print-directory ai; } & \
+		{ [ "$(AI_MODELS)" != 1 ] || $(MAKE) --no-print-directory ai-models; MAWIID_STAGE_TIMINGS=$${MAWIID_STAGE_TIMINGS:-$(REPORT)} $(MAKE) --no-print-directory ai; } & \
+		{ [ "$(REPORT)" != 1 ] || $(PYTHON) scripts/test_report.py --profile $(REPORT_PROFILE) --quiet; } & \
 		wait
 
 # The [x] keeps each pattern from matching this shell's own command line.
@@ -261,6 +268,9 @@ check: typecheck test-unit build ## Static checks, no services needed
 
 smoke: ## End-to-end endpoint checks against the running stack (make dev first)
 	cd $(BACKEND) && NODE_TLS_REJECT_UNAUTHORIZED=0 FRONTEND_URL=$(FRONTEND_URL) bun postman/smoke.ts
+
+report: ## Test report against the running stack (make dev first): REPORT_PROFILE=quick|hour|full|none
+	@$(PYTHON) scripts/test_report.py --profile $(REPORT_PROFILE)
 
 test: check smoke ## Everything: static checks, then smoke tests
 

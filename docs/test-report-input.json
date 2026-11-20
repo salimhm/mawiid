@@ -1,0 +1,62 @@
+{
+  "_about": "Facts scripts/test_report.py cannot measure. Edit, commit, and the next report picks them up. Leave a field empty rather than guess: the report then says it is missing.",
+
+  "cost": {
+    "dgx_hourly_cost": null,
+    "electricity_per_kwh": null,
+    "currency": "MAD"
+  },
+
+  "microintegrele_feedback": {
+    "answer": "",
+    "date": ""
+  },
+
+  "known_issues": [
+    {
+      "severity": "Critical",
+      "issue": "One Turso group token opens every tenant database",
+      "impact": "Isolation between customers relies on backend code only; a leaked token or compromised backend exposes all customers",
+      "fix": "One token per customer database (Turso supports it)",
+      "eta": ""
+    },
+    {
+      "severity": "Medium",
+      "issue": "More than 100 customers active at once (DB_MAX_CACHED_TENANTS)",
+      "impact": "The oldest database client is closed, possibly mid-query, causing errors",
+      "fix": "Close a client only when idle, or raise the limit",
+      "eta": ""
+    },
+    {
+      "severity": "Medium",
+      "issue": "Account lockout by anyone",
+      "impact": "10 wrong passwords lock a known user out for 15 minutes",
+      "fix": "Also limit per IP address, or a CAPTCHA after several failures",
+      "eta": ""
+    },
+    {
+      "severity": "Medium",
+      "issue": "Deploy script picks MADLAD 10b on GPU hosts",
+      "impact": "About 3x slower translation than 3b",
+      "fix": "Decide after comparing 3b and 10b (run G)",
+      "eta": ""
+    },
+    {
+      "severity": "Low",
+      "issue": "CORS allows any origin",
+      "impact": "Low while login uses a bearer header, but any website can call the API from a browser",
+      "fix": "Allow only the app's own domain",
+      "eta": ""
+    }
+  ],
+
+  "not_completed": [
+    {"id": "F", "test": "Load runs D and E with the models spread over several GPUs (MAWIID_STT_WHISPER_DEVICE_INDEX, MAWIID_MT_DEVICE_INDEX)", "why": "Needs a multi-GPU server (the DGX)", "when": ""},
+    {"id": "G", "test": "Run D with MADLAD 3b vs 10b", "why": "Needs the GPU server with both models converted", "when": ""},
+    {"id": "Video", "test": "Video/SFU load alongside the bots (lk load-test --video-publishers 10 --subscribers 10 --duration 1h)", "why": "Not automated: the bots send audio only", "when": ""},
+    {"id": "Pentest 3", "test": "Cross-tenant: user of organisation A against a room of organisation B on every room, message, audit and participant route", "why": "The smoke tests cover non-members of one room only; two seeded organisations are needed", "when": ""},
+    {"id": "Pentest 4", "test": "Access token still accepted after logout or password reset (session_version)", "why": "Not automated yet", "when": ""},
+    {"id": "Pentest 6", "test": "Lobby knock flood; room locked/closed transitions", "why": "Not automated yet", "when": ""},
+    {"id": "Pentest 7", "test": "Reuse a LiveKit token after removal; join with a token for another room", "why": "Not automated yet", "when": ""}
+  ]
+}
