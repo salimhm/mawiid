@@ -31,7 +31,7 @@ AI_MODELS ?= 1
 AI_MODEL_FILES := $(AI)/data/models/madlad400-3b-mt-ct2/model.bin
 
 .PHONY: mawiid azure mawiid-status mawiid-logs mawiid-down setup seed-if-missing ai-models ai-models-darija certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
-        tokens typecheck build test-unit test-ai check smoke test_bot report test clean
+        tokens typecheck build test-unit test-ai check smoke test_bot loadtest report test clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -287,6 +287,36 @@ test_bot: ## Translation test bots: bots speak, listener bots read, captions sco
 		cd $(AI) && { [ -f data/translation/parallel.jsonl ] || .venv/bin/python scripts/fetch_samples.py --languages fr-FR en-US ar-SA; } && \
 		LIVEKIT_URL="$$livekit_url" LIVEKIT_API_KEY="$$livekit_key" LIVEKIT_API_SECRET="$$livekit_secret" \
 		.venv/bin/python scripts/translation_bot.py $(TEST_BOT_ARGS)
+
+# Load test: LOAD_ROOMS rooms of LOAD_BOTS bots, LOAD_TALKING talking at once per room (0: all),
+# for LOAD_MINUTES. Each bot speaks FLEURS clips and times every caption; the resource sampler runs
+# alongside (GPU, containers, host). Results: services/ai/data/loadtest/<LOAD_NAME>/.
+#   make loadtest                                   # 10 rooms x 10 bots, all talking, 10 min
+#   make loadtest LOAD_TALKING=1                    # 10 normal meetings: one person talks at a time
+#   make loadtest LOAD_MINUTES=60                   # the 1-hour session
+#   make loadtest LOAD_ROOMS=1 LOAD_BOTS=5          # smaller
+#   make loadtest LOAD_ARGS="--ramp 1,2,4,6,8,10 --step-minutes 5"   # find the breaking point
+LOAD_ROOMS   ?= 10
+LOAD_BOTS    ?= 10
+LOAD_TALKING ?= 0
+LOAD_MINUTES ?= 10
+LOAD_NAME    ?= $(LOAD_ROOMS)x$(LOAD_BOTS)-$(shell date +%Y%m%d-%H%M%S)
+LOAD_ARGS    ?=
+loadtest: ## Load test: 10 rooms x 10 bots talking (LOAD_ROOMS, LOAD_BOTS, LOAD_TALKING, LOAD_MINUTES; make dev first)
+	@set -a; . ./.env; set +a; \
+		livekit_url="$$LIVEKIT_URL"; livekit_key="$$LIVEKIT_API_KEY"; livekit_secret="$$LIVEKIT_API_SECRET"; \
+		set -a; . $(BACKEND)/postman/.env.postman; set +a; \
+		if [ ! -x $(AI)/.venv/bin/python ]; then echo "Run make ai-install first"; exit 1; fi; \
+		if ! curl -s -o /dev/null --max-time 3 "$$(echo $$livekit_url | sed 's#^ws#http#')"; then \
+			echo "LiveKit is not answering at $$livekit_url: start the stack first (make dev)"; exit 1; fi; \
+		cd $(AI) && { ls data/samples/ar-SA/*.wav >/dev/null 2>&1 || .venv/bin/python scripts/fetch_samples.py --languages fr-FR en-US ar-SA; } && \
+		out=data/loadtest/$(LOAD_NAME); mkdir -p $$out; \
+		bash scripts/resource_sampler.sh $$out 5 >/dev/null 2>&1 & sampler=$$!; \
+		trap 'kill $$sampler 2>/dev/null' EXIT INT TERM; \
+		echo "$(LOAD_ROOMS) rooms x $(LOAD_BOTS) bots, $$( [ "$(LOAD_TALKING)" = 0 ] && echo all || echo $(LOAD_TALKING)) talking per room, $(LOAD_MINUTES) min -> services/ai/$$out"; \
+		LIVEKIT_URL="$$livekit_url" LIVEKIT_API_KEY="$$livekit_key" LIVEKIT_API_SECRET="$$livekit_secret" PYTHONUNBUFFERED=1 \
+		.venv/bin/python scripts/room_loadtest.py --rooms $(LOAD_ROOMS) --speakers $(LOAD_BOTS) --concurrency $(LOAD_TALKING) \
+			--minutes $(LOAD_MINUTES) --out $$out $(LOAD_ARGS)
 
 report: ## Test report against the running stack (make dev first): REPORT_PROFILE=quick|hour|full|none
 	@$(PYTHON) scripts/test_report.py --profile $(REPORT_PROFILE)
