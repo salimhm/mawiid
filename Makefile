@@ -272,6 +272,12 @@ smoke: ## End-to-end endpoint checks against the running stack (make dev first)
 # Bots speak recorded sentences (FLEURS) in each language and listener bots read the captions;
 # each caption is scored against the human reference (WER for speech-to-text, chrF/BLEU for translation).
 # Needs LiveKit and the AI worker running (make dev). TEST_BOT_ARGS="--clips 10 --auto-detect" for more.
+
+# OPTIONS
+# make test_bot TEST_BOT_ARGS="--clips 10"               # 10 sentences per language
+# make test_bot TEST_BOT_ARGS="--auto-detect"            # speakers on "Auto", also tests language detection
+# make test_bot TEST_BOT_ARGS="--warmup-s 900"           # wait up to 15 min if the worker is still loading
+# make test_bot TEST_BOT_ARGS="--languages fr-FR en-US"  # only some languages
 TEST_BOT_ARGS ?=
 test_bot: ## Translation test bots: bots speak, listener bots read, captions scored (make dev first)
 	@set -a; . ./.env; set +a; \
