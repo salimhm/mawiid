@@ -8,6 +8,9 @@ The report follows the five points asked for: tests performed, measured results,
 fixed and retested, outstanding issues, tests not completed. Every number in it comes from this
 run (or from load-test folders already on this machine); anything not run is listed as not tested.
 
+With every profile except none, translation bots also check translation quality first
+(services/ai/scripts/translation_bot.py: bots speak, listener bots read, captions scored).
+
 Profiles (--profile, or REPORT_PROFILE with make):
   quick  about 15 min of load: a 5-user ramp (1..5 talking, 2 min steps) and 2 rooms at once
   hour   the two 1-hour sessions: 5 users all talking, then 10 users one at a time (~2 h 15)
@@ -205,6 +208,7 @@ class Report:
         self.load_note = ""  # why load tests did not run, if they did not
         self.resources: dict = {}
         self.earlier_runs: list[dict] = []
+        self.translation: dict | None = None  # results.json of the translation bots
         self.environment: dict = {}
         self.finished = False
 
@@ -596,6 +600,8 @@ def load_tests(report: Report, ai_wait_min: float) -> None:
                             "see the `make dev` output), so no load test could run. Rerun with `make report` once captions work.")
         return
 
+    translation_bots(report, py, lk_env)
+
     total = sum(r[3] for r in runs)
     say(f"AI worker ready. Running {len(runs)} load test(s), about {total} min")
     sampler = Sampler(report.out / "resources")
@@ -616,6 +622,32 @@ def load_tests(report: Report, ai_wait_min: float) -> None:
     finally:
         sampler.close()
     report.resources = summarize_resources(report.out / "resources")
+
+
+def translation_bots(report: Report, py: Path, lk_env: dict) -> None:
+    """Bots speak FLEURS sentences, listener bots read the captions, each scored against the reference."""
+    say("translation bots: speaking test sentences in every language (~5 min)")
+    out_dir = report.out / "translation-bot"
+    code, out, _ = run([str(py), "scripts/translation_bot.py", "--clips", "3", "--out", str(out_dir)],
+                       report.out / "translation-bot.log", cwd=AI, env=lk_env, timeout=1800)
+    results = out_dir / "results.json"
+    if not results.exists():
+        report.add("Translation", "Translation bots (speech → captions in every language)", SKIP,
+                   f"could not run (exit {code}); see translation-bot.log", "translation-bot.log")
+        return
+    report.translation = json.loads(results.read_text(encoding="utf-8"))
+    summary = report.translation["summary"]
+    for language, st in summary["speech_to_text"].items():
+        wer = "–" if st["wer"] is None else f"{st['wer']:.0%}"
+        report.add("Translation", f"Speech-to-text {language}", PASS if st["delivered"] == st["sentences"] and st["wer"] is not None
+                   and st["wer"] <= report.translation["limits"]["max_wer"] else FAIL,
+                   f"{st['delivered']}/{st['sentences']} sentences transcribed, word error rate {wer}", "translation-bot/report.md")
+    for name, st in summary["translation"].items():
+        ok = st["delivered"] == st["sentences"] and not st["wrong_language"] and not st["untranslated"] \
+            and st["chrf"] >= report.translation["limits"]["min_chrf"]
+        report.add("Translation", f"Translation {name}", PASS if ok else FAIL,
+                   f"{st['delivered']}/{st['sentences']} delivered, chrF {st['chrf']}, BLEU {st['bleu']}, "
+                   f"{st['wrong_language']} wrong language, delay p50 {st['latency_p50_s']} s", "translation-bot/report.md")
 
 
 def earlier_runs(report: Report) -> None:
@@ -719,12 +751,27 @@ def write(report: Report) -> None:
         add("### 2.3 Earlier load-test runs found on this machine (`services/ai/data/loadtest/`)")
         add("Not produced by this run; listed with their date so they can be compared.")
         add(table(["Date", *LOAD_HEAD], [[e["date"].strftime("%Y-%m-%d %H:%M"), *load_row(e["name"], "", e["summary"])] for e in report.earlier_runs]))
-    add("### 2.4 Resource consumption during the load tests")
+    add("### 2.4 Translation quality (bots, no human speaker)")
+    if report.translation:
+        t = report.translation
+        add("Bots spoke recorded FLEURS sentences; one listener bot per language read the captions. Speech-to-text is scored by "
+            "word error rate against the transcript, translation by chrF and BLEU against the human reference translation "
+            f"(0–100, higher is better; text-only reference on these sentences: chrF 54). Mean chrF: **{t['summary']['mean_chrf']}**. "
+            "Every sentence, with what was heard and read: `translation-bot/report.md`.")
+        add(table(["Spoken language", "Transcribed", "Word error rate"],
+                  [[k, f"{v['delivered']}/{v['sentences']}", "–" if v["wer"] is None else f"{v['wer']:.0%}"]
+                   for k, v in t["summary"]["speech_to_text"].items()]))
+        add(table(["Direction", "Delivered", "chrF", "BLEU", "Wrong language", "Delay p50 / max"],
+                  [[k, f"{v['delivered']}/{v['sentences']}", v["chrf"], v["bleu"], v["wrong_language"],
+                    f"{v['latency_p50_s']} s / {v['latency_max_s']} s"] for k, v in t["summary"]["translation"].items()]))
+    else:
+        add("Not measured in this run" + (f": {report.load_note}" if report.load_note else "."))
+    add("### 2.5 Resource consumption during the load tests")
     if report.resources:
         add(table(["Measure", "Value"], [[k, v] for k, v in report.resources.items() if not k.startswith("_")]))
     else:
         add("Not measured (no load test ran).")
-    add("### 2.5 Infrastructure cost")
+    add("### 2.6 Infrastructure cost")
     cost = inp.get("cost", {})
     hourly = cost.get("dgx_hourly_cost")
     multi = [r for r in report.load if r["name"].startswith("E") and r["summary"]]
@@ -793,7 +840,7 @@ def write(report: Report) -> None:
         add(f"Date of the answer: {feedback['date']}.")
 
     add("## Appendix: raw data")
-    add(f"Everything is in `{report.out.relative_to(ROOT)}/`: one log per command, `loadtest/<run>/` "
+    add(f"Everything is in `{os.path.relpath(report.out, ROOT)}/`: one log per command, `loadtest/<run>/` "
         "(summary.json, captions.csv, clips.csv) and `resources/` (gpu.csv, host.csv, containers.csv, ai_process.csv).")
 
     text = "\n\n".join(md) + "\n"

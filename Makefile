@@ -31,7 +31,7 @@ AI_MODELS ?= 1
 AI_MODEL_FILES := $(AI)/data/models/madlad400-3b-mt-ct2/model.bin
 
 .PHONY: mawiid azure mawiid-status mawiid-logs mawiid-down setup seed-if-missing ai-models ai-models-darija certs help install ai-install infra redis livekit infra-down infra-logs seed backend frontend ai dev stop users \
-        tokens typecheck build test-unit test-ai check smoke report test clean
+        tokens typecheck build test-unit test-ai check smoke test_bot report test clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -268,6 +268,19 @@ check: typecheck test-unit build ## Static checks, no services needed
 
 smoke: ## End-to-end endpoint checks against the running stack (make dev first)
 	cd $(BACKEND) && NODE_TLS_REJECT_UNAUTHORIZED=0 FRONTEND_URL=$(FRONTEND_URL) bun postman/smoke.ts
+
+# Bots speak recorded sentences (FLEURS) in each language and listener bots read the captions;
+# each caption is scored against the human reference (WER for speech-to-text, chrF/BLEU for translation).
+# Needs LiveKit and the AI worker running (make dev). TEST_BOT_ARGS="--clips 10 --auto-detect" for more.
+TEST_BOT_ARGS ?=
+test_bot: ## Translation test bots: bots speak, listener bots read, captions scored (make dev first)
+	@set -a; . ./.env; set +a; \
+		livekit_url="$$LIVEKIT_URL"; livekit_key="$$LIVEKIT_API_KEY"; livekit_secret="$$LIVEKIT_API_SECRET"; \
+		set -a; . $(BACKEND)/postman/.env.postman; set +a; \
+		if [ ! -x $(AI)/.venv/bin/python ]; then echo "Run make ai-install first"; exit 1; fi; \
+		cd $(AI) && { [ -f data/translation/parallel.jsonl ] || .venv/bin/python scripts/fetch_samples.py --languages fr-FR en-US ar-SA; } && \
+		LIVEKIT_URL="$$livekit_url" LIVEKIT_API_KEY="$$livekit_key" LIVEKIT_API_SECRET="$$livekit_secret" \
+		.venv/bin/python scripts/translation_bot.py $(TEST_BOT_ARGS)
 
 report: ## Test report against the running stack (make dev first): REPORT_PROFILE=quick|hour|full|none
 	@$(PYTHON) scripts/test_report.py --profile $(REPORT_PROFILE)

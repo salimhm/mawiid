@@ -49,12 +49,23 @@ scripts/resource_sampler.sh data/loadtest/D 5
 .venv/bin/python scripts/room_loadtest.py --rooms 1 --speakers 10 --ramp 1,2,3,4,5,6,7,8,9,10 --step-minutes 7 --out data/loadtest/R10
 ```
 
+### Translation bots (`make test_bot`)
+
+`services/ai/scripts/translation_bot.py` tests translation with no human speaking: one bot per
+language speaks FLEURS sentences one at a time, one listener bot per language reads the captions.
+FLEURS has the same sentences in every language, so each caption is scored against a human
+reference: word error rate for what the worker heard, chrF and BLEU for each translation direction,
+plus delivery (every listener got it, in the right language and script) and delay. Writes
+`results.json`, `clips.csv` and `report.md` (every sentence next to its references) under
+`services/ai/data/translation-bot/`. Needs `make dev` running. More: `make test_bot
+TEST_BOT_ARGS="--clips 10 --auto-detect"` (Auto-detect also tests language detection).
+
 ### Automatic report
 
 `make dev` also starts `scripts/test_report.py` in the background. Once the servers answer it runs
 the backend and AI unit tests, the smoke tests, live security probes (the production Caddyfile in a
 throwaway container, a 30-request login burst, Redis counter expiries, forged/expired JWTs, malformed
-input, CORS), then the load tests of `REPORT_PROFILE` with the resource sampler, and writes
+input, CORS), the translation bots (below), then the load tests of `REPORT_PROFILE` with the resource sampler, and writes
 `reports/<timestamp>/report.md` and `report.html` (`reports/latest` points at the newest).
 `quick` (default) is ~15 min of load, `hour` runs B and C, `full` the whole matrix below, `none` skips
 load. `make report` reruns it against a running stack; `REPORT=0` turns it off. Facts it cannot
