@@ -1,0 +1,71 @@
+/home/lhwask02/Downloads/mwd/services/ai/.venv/lib/python3.13/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 6 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  return self._jws.encode(
+run a953c3: 1 room(s) x 5 speakers, 10.0 min, ramp 1,2,3,4,5 every 2.0 min, languages fr-FR, en-US, ar-SA -> /home/lhwask02/Downloads/mwd/reports/20261120-114937/loadtest/R5-quick
+ min talk  clips   capt  drop    p50    p95    max  stt95  que95   mt95
+---- step 0: 1 talking at once per room
+   0    1      4     16     0  1.46s  5.38s  5.38s  0.69s  0.00s  2.85s !
+   1    1      5     20     0  1.92s  6.18s  6.18s  1.30s  0.00s  4.86s !
+---- step 1: 2 talking at once per room
+   2    2     11     38     0  5.98s 11.45s 15.84s  6.33s  0.01s  6.72s !
+   3    2      9     36     0  6.47s 12.98s 12.98s  7.31s  2.40s  7.63s !
+---- step 2: 3 talking at once per room
+   4    3     17     61     3  7.81s 18.85s 23.50s  9.00s  0.00s 10.76s !
+   5    3     19     63    10  7.88s 18.39s 19.93s 10.59s  0.00s 11.98s !
+---- step 3: 4 talking at once per room
+   6    4     18     68     1  6.04s 14.61s 20.45s 10.85s  4.01s 18.11s !
+   7    4     22     77     5 10.04s 21.15s 23.58s 10.82s  0.06s 12.35s !
+---- step 4: 5 talking at once per room
+   8    5     25     84     4 11.88s 20.09s 23.21s 10.69s  0.78s 12.20s !
+   9    5     26     86    18 15.87s 20.80s 21.67s 10.06s  4.80s 14.43s !
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 159
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 144
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 154
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 126
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 146
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 141
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 165
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 129
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 142
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 128
+step 0: 1 talking/room  p50 1.321s  p95 5.416s  drop 0.0  BREAKS: p95 5.42s > 3.0s
+step 1: 2 talking/room  p50 6.719s  p95 12.979s  drop 0.0  BREAKS: p95 12.98s > 3.0s
+step 2: 3 talking/room  p50 7.242s  p95 18.394s  drop 0.125  BREAKS: p95 18.39s > 3.0s; drop rate 12.5% > 2%
+step 3: 4 talking/room  p50 9.407s  p95 20.732s  drop 0.0671  BREAKS: p95 20.73s > 3.0s; drop rate 6.7% > 2%
+step 4: 5 talking/room  p50 13.904s  p95 20.795s  drop 0.149  BREAKS: p95 20.80s > 3.0s; drop rate 14.9% > 2%
+{
+  "verdict": {
+    "within_limits": false,
+    "last_good_talkers_per_room": null,
+    "breaking_point_talkers_per_room": 1,
+    "why": [
+      "p95 5.42s > 3.0s"
+    ]
+  },
+  "overall": {
+    "clips_spoken": 160,
+    "captions_matched": 580,
+    "dropped": 60,
+    "drop_rate": 0.0938,
+    "p50_s": 9.322,
+    "p95_s": 19.412,
+    "p99_s": 21.997,
+    "max_s": 23.578,
+    "stages": {
+      "stt": {
+        "p50_s": 7.212,
+        "p95_s": 10.615,
+        "max_s": 11.801
+      },
+      "queue": {
+        "p50_s": 0.0,
+        "p95_s": 2.817,
+        "max_s": 5.747
+      },
+      "mt": {
+        "p50_s": 8.894,
+        "p95_s": 14.434,
+        "max_s": 18.145
+      }
+    }
+  }
+}

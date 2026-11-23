@@ -1,0 +1,341 @@
+{
+  "date": "2026-11-20 11:58",
+  "room": "translation-bot-3f3d43",
+  "languages": [
+    "fr-FR",
+    "en-US",
+    "ar-SA"
+  ],
+  "auto_detect": false,
+  "limits": {
+    "max_wer": 0.5,
+    "min_chrf": 35
+  },
+  "summary": {
+    "passed": false,
+    "problems": [
+      "fr-FR: WER 56% > 50%",
+      "fr-FR→ar-SA: chrF 32.3 < 35",
+      "en-US→ar-SA: chrF 27.5 < 35"
+    ],
+    "speech_to_text": {
+      "fr-FR": {
+        "sentences": 3,
+        "delivered": 3,
+        "wer": 0.555,
+        "language_detected_ok": null
+      },
+      "en-US": {
+        "sentences": 3,
+        "delivered": 3,
+        "wer": 0.356,
+        "language_detected_ok": null
+      },
+      "ar-SA": {
+        "sentences": 3,
+        "delivered": 3,
+        "wer": 0.407,
+        "language_detected_ok": null
+      }
+    },
+    "translation": {
+      "fr-FR→en-US": {
+        "sentences": 3,
+        "delivered": 3,
+        "chrf": 38.1,
+        "bleu": 12.8,
+        "wrong_language": 0,
+        "untranslated": 0,
+        "latency_p50_s": 7.56,
+        "latency_max_s": 10.92
+      },
+      "fr-FR→ar-SA": {
+        "sentences": 3,
+        "delivered": 3,
+        "chrf": 32.3,
+        "bleu": 7.5,
+        "wrong_language": 0,
+        "untranslated": 0,
+        "latency_p50_s": 7.56,
+        "latency_max_s": 10.92
+      },
+      "en-US→fr-FR": {
+        "sentences": 3,
+        "delivered": 3,
+        "chrf": 46.2,
+        "bleu": 22.9,
+        "wrong_language": 0,
+        "untranslated": 0,
+        "latency_p50_s": 4.89,
+        "latency_max_s": 7.29
+      },
+      "en-US→ar-SA": {
+        "sentences": 3,
+        "delivered": 3,
+        "chrf": 27.5,
+        "bleu": 4.7,
+        "wrong_language": 0,
+        "untranslated": 0,
+        "latency_p50_s": 4.89,
+        "latency_max_s": 7.29
+      },
+      "ar-SA→fr-FR": {
+        "sentences": 3,
+        "delivered": 3,
+        "chrf": 35.7,
+        "bleu": 13.3,
+        "wrong_language": 0,
+        "untranslated": 0,
+        "latency_p50_s": 6.52,
+        "latency_max_s": 7.23
+      },
+      "ar-SA→en-US": {
+        "sentences": 3,
+        "delivered": 3,
+        "chrf": 45.8,
+        "bleu": 14.7,
+        "wrong_language": 0,
+        "untranslated": 0,
+        "latency_p50_s": 6.52,
+        "latency_max_s": 7.23
+      }
+    },
+    "mean_chrf": 37.6
+  },
+  "sentences": [
+    {
+      "sentence_id": "1690",
+      "language": "fr-FR",
+      "reference": "Nous sommes d'accord avec la déclaration de l'USOC (Comité olympique des États-Unis) selon laquelle les intérêts de nos athlètes et de nos clubs, ainsi que de leur sport, pourraient être mieux servis. Cela peut être fait en allant de l'avant et en procédant plutôt à des changements significatifs au sein de notre organisation, qu'à la révocation d'accréditation.",
+      "heard": "Nous sommes d'accord avec la déclaration de l'USOC, comité olympique des Etats-Unis, selon laquelle les intérêts de nos aînés et de nos clubs ainsi que de leur sport pour ta tête-tête au mieux servi. Cela peut être fait en allant de l'avant et en procédant plutôt à des changements significatifs au sein de notre organisation qu'à la révocation d'accréditation.",
+      "wer": 0.127,
+      "transcript_latency_s": 2.78,
+      "translations": {
+        "en-US": {
+          "text": "We agree with the statement of the USOC, the U.S. Olympic Committee, that the interests of our seniors and our clubs and their sport for your head-head at best served. This can be done by moving forward and making significant changes within our organization rather than revoking accreditation.",
+          "reference": "We agree with the USOC's statement that the interests of our athletes and clubs, and their sport, may be better served by moving forward with meaningful change within our organization, rather than decertification.",
+          "chrf": 60.5,
+          "latency_s": 10.92,
+          "language_ok": true,
+          "fallback_original": false
+        },
+        "ar-SA": {
+          "text": "نتفق مع بيان اللجنة الأولمبية الأمريكية، الذي يقول إن مصالح كبار السن والأندية ورياضة اللعبة التي يمارسونها تخدم على أفضل وجه. ويمكن تحقيق ذلك بالمضي قدما وإجراء تغييرات هامة داخل منظمتنا بدلا من سحب الاعتماد.",
+          "reference": "نتفق مع بيان اللجنة الأولمبية الأمريكية بأن مصالح الرياضيين والأندية، ورياضتهم، يمكن أن تُلبى بشكل أفضل من خلال المضي قدمًا في تغيير ذي مغزى داخل مؤسستنا، بدلًا من سحب التراخيص.",
+          "chrf": 49.0,
+          "latency_s": 10.92,
+          "language_ok": true,
+          "fallback_original": false
+        }
+      }
+    },
+    {
+      "sentence_id": "1857",
+      "language": "fr-FR",
+      "reference": "Il a ajouté qu’« on ne devrait cependant pas leur demander d’assumer des obligations qui dépassent leur stade de développement, leur responsabilité et leurs capacités. »",
+      "heard": "Et leur capacité.",
+      "wer": 0.962,
+      "transcript_latency_s": 5.81,
+      "translations": {
+        "en-US": {
+          "text": "And their capacity.",
+          "reference": "He added that \"they should not, however, be asked to take on obligations that go beyond their development stage, responsibility and capabilities.\"",
+          "chrf": 7.2,
+          "latency_s": 6.28,
+          "language_ok": true,
+          "fallback_original": false
+        },
+        "ar-SA": {
+          "text": "وقدرتها.",
+          "reference": "وأضاف أنه \"مع ذلك، لا ينبغي أن يُجبروا على تحمل التزامات تتجاوز مرحلة نموهم، ومسؤوليتهم وقدراتهم.\"",
+          "chrf": 3.7,
+          "latency_s": 6.28,
+          "language_ok": true,
+          "fallback_original": false
+        }
+      }
+    },
+    {
+      "sentence_id": "1913",
+      "language": "fr-FR",
+      "reference": "Le rugissement du tigre ne ressemble pas au rugissement ample du lion, mais plutôt à une phrase dont les mots seraient des cris et des grondements.",
+      "heard": "Rougissement du tigre n'en ressemble pas rougissement en plus du riant mais plutôt à une phrase dans l'humour. Comment seraient les cris et les gondements ?",
+      "wer": 0.577,
+      "transcript_latency_s": 5.8,
+      "translations": {
+        "en-US": {
+          "text": "Flushing of the tiger does not look like blushing in addition to laughing but rather like a phrase in humor. How would the screams and the gushing be?",
+          "reference": "The tiger's roar is not like the full-voiced roar of a lion, but more like a sentence of snarly, shouted words.",
+          "chrf": 25.9,
+          "latency_s": 7.56,
+          "language_ok": true,
+          "fallback_original": false
+        },
+        "ar-SA": {
+          "text": "\"حمر الوجه النمر\" لا يبدو مثل \"حمر الوجه\" بالإضافة إلى الضحك ولكنه يبدو مثل جملة في المزاح. كيف ستكون الصراخ والرقص ؟",
+          "reference": "زئير النمر ليس كزئير الأسد كامل الصوت، لكنه أقرب إلى الصياح بكلمات غاضبة.",
+          "chrf": 22.5,
+          "latency_s": 7.56,
+          "language_ok": true,
+          "fallback_original": false
+        }
+      }
+    },
+    {
+      "sentence_id": "1904",
+      "language": "en-US",
+      "reference": "However, due to the slow communication channels, styles in the west could lag behind by 25 to 30 year.",
+      "heard": "the West could lag behind by 25 to 30 years.",
+      "wer": 0.526,
+      "transcript_latency_s": 1.57,
+      "translations": {
+        "fr-FR": {
+          "text": "L’Occident pourrait prendre un retard de 25 à 30 ans.",
+          "reference": "Cependant, en raison de la lenteur des moyens de communication, les modes occidentales pouvaient accuser un retard de 25 à 30 ans.",
+          "chrf": 26.8,
+          "latency_s": 3.38,
+          "language_ok": true,
+          "fallback_original": false
+        },
+        "ar-SA": {
+          "text": "وقد يتخلف الغرب عن الركب بما يتراوح بين 25 و 30 سنة.",
+          "reference": "وعلى الرغم من ذلك، فنظرا لبطء قنوات التواصل، قد تتأخر الأنماط في الغرب قدر ما يقارب 25 إلى 30 سنة.",
+          "chrf": 17.0,
+          "latency_s": 3.38,
+          "language_ok": true,
+          "fallback_original": false
+        }
+      }
+    },
+    {
+      "sentence_id": "1675",
+      "language": "en-US",
+      "reference": "All nouns, alongside the word Sie for you, always begin with a capital letter, even in the middle of a sentence.",
+      "heard": "All nouns alongside the world say for you always begin with a capital letter. Even the middle of",
+      "wer": 0.238,
+      "transcript_latency_s": 2.16,
+      "translations": {
+        "fr-FR": {
+          "text": "Tous les noms à côté du monde disent pour vous commencent toujours par une lettre majuscule. Même au milieu de",
+          "reference": "Tous les noms, suivis du mot Sie qui signifie vous, commencent toujours par une majuscule, même au milieu d’une phrase.",
+          "chrf": 55.0,
+          "latency_s": 7.29,
+          "language_ok": true,
+          "fallback_original": false
+        },
+        "ar-SA": {
+          "text": "كل الأسماء إلى جانب العالم يقول لك دائما تبدأ بحرف كبير. حتى في منتصف",
+          "reference": "جميع الأسماء، بالإضافة إلى كلمة Sie بالنسبة لك، تبدأ دائماً بحرف كبير، حتى في منتصف الجملة.",
+          "chrf": 38.6,
+          "latency_s": 7.29,
+          "language_ok": true,
+          "fallback_original": false
+        }
+      }
+    },
+    {
+      "sentence_id": "1950",
+      "language": "en-US",
+      "reference": "To the north and within easy reach is the romantic and fascinating town of Sintra and which was made famous to foreigners after a glowing account of its splendours recorded by Lord Byron.",
+      "heard": "is a romantic and fascinating town of Centra and which was made famous to foreigners after a glowing account of its splendorous recorded by Lord Byron.",
+      "wer": 0.303,
+      "transcript_latency_s": 1.65,
+      "translations": {
+        "fr-FR": {
+          "text": "C'est une ville romantique et fascinante de Centra et qui a été rendue célèbre aux étrangers après un récit radieux de sa splendeur enregistré par Lord Byron.",
+          "reference": "La ville romantique et fascinante de Sintra, située au nord, est facilement accessible et a été rendue célèbre auprès des étrangers par le récit éclatant de sa splendeur qu'en a fait Lord Byron.",
+          "chrf": 52.5,
+          "latency_s": 4.89,
+          "language_ok": true,
+          "fallback_original": false
+        },
+        "ar-SA": {
+          "text": "مدينة سينترا رومانسية ورائعة و التي اشتهرت لدى الأجانب بعد رواية رائعة عن عظمتها سجلها اللورد بايرون",
+          "reference": "تقع مدينة سنترا الرومانتيكية ذات الجمال الخلاب ناحية الشمال في مكان يسهل الوصول إليه، وهي المدينة التي ذاع صيتها وسط الأجانب بعد سرد اللورد بايرن المبهر لروائعها.",
+          "chrf": 27.1,
+          "latency_s": 4.89,
+          "language_ok": true,
+          "fallback_original": false
+        }
+      }
+    },
+    {
+      "sentence_id": "1993",
+      "language": "ar-SA",
+      "reference": "تشكلت في المحيط الأطلسي اليوم عاشر عاصفة مُسماة لموسم الأعاصير الأطلسية، العاصفة شبه الاستوائية جيري.",
+      "heard": "تشكلت في المحيط الأطلسي اليوم عشر عاصفة مسمى لموسى من الأعاصر الأطلسية العاصفة",
+      "wer": 0.533,
+      "transcript_latency_s": 0.68,
+      "translations": {
+        "fr-FR": {
+          "text": "Dix tempêtes Moses de l'époque des tempêtes atlantiques se sont formées dans l'Atlantique aujourd'hui .",
+          "reference": "La tempête subtropicale Jerry, 10ème tempête de la saison des ouragans à porter un nom, est apparue ce jour dans l'océan Atlantique.",
+          "chrf": 31.9,
+          "latency_s": 7.23,
+          "language_ok": true,
+          "fallback_original": false
+        },
+        "en-US": {
+          "text": "Ten storms named Moses have formed in the Atlantic today.",
+          "reference": "The tenth named storm of the Atlantic Hurricane season, Subtropical Storm Jerry, formed in the Atlantic Ocean today.",
+          "chrf": 31.3,
+          "latency_s": 7.23,
+          "language_ok": true,
+          "fallback_original": false
+        }
+      }
+    },
+    {
+      "sentence_id": "1730",
+      "language": "ar-SA",
+      "reference": "تغادر الحافلات المحطة الداخلية بين المناطق (عبر النهر) في خلال اليوم على الرغم من أن معظمها وخاصة المتجهة منها إلى الشرق وجاكار/بومثانج تغادر بين 06:30 و 07:30.",
+      "heard": "تغادر بحافلات المحطة الدخلية بين المنوطق عبر النهر في خلال اليوم على الرغم من أن عظمها وخاصات المتجه منها إلى الشرق وجكارا بومثانج تغيد ربينا ستة وتلتي 37",
+      "wer": 0.467,
+      "transcript_latency_s": 1.22,
+      "translations": {
+        "fr-FR": {
+          "text": "Les bus partent de la gare d'entrée entre les zones de traversée pendant la journée, bien que 10. 10 h 30-11 h 30 : 11 h 30-13 h 30 : 13 h 30-15 h 30",
+          "reference": "Les bus partent de la gare routière interdistricts (située sur l'autre rive) tout au long de la journée, mais la plupart, tout particulièrement ceux qui desservent l'est et Jakar/Bumthang, partent entre 6 h 30 et 7 h 30 du matin.",
+          "chrf": 23.6,
+          "latency_s": 6.52,
+          "language_ok": true,
+          "fallback_original": false
+        },
+        "en-US": {
+          "text": "Buses leave the entrance station between the districts across the river during the day, although The skeleton and the parts of it heading east, Jakara, Bumthang, Tegid, Rabina, Six and Telte 37.",
+          "reference": "Buses depart the inter-district bus station (across the river) throughout the day, though most, especially those heading to the east and Jakar/Bumthang leave between 06:30 and 07:30.",
+          "chrf": 43.5,
+          "latency_s": 6.52,
+          "language_ok": true,
+          "fallback_original": false
+        }
+      }
+    },
+    {
+      "sentence_id": "1942",
+      "language": "ar-SA",
+      "reference": "نصنع بيوتنا وملابسنا من النباتات . معظم الطعام الذي نتناوله من النباتات كذلك. بدون النباتات، لا يمكن للحيوانات البقاء.",
+      "heard": "نعب يوتنا وملابسنا من النباتات مرزم الطعام الذي نتناوله من النباتات كذا بدون النباتات لا يمكن للحيوانات البقاء",
+      "wer": 0.222,
+      "transcript_latency_s": 2.65,
+      "translations": {
+        "fr-FR": {
+          "text": "Nous fabriquons nos vêtements et nos chaussures à partir de plantes , nous fabriquons notre nourriture à partir de plantes , etc. Sans plantes , les animaux ne peuvent pas survivre .",
+          "reference": "Nous fabriquons nos maisons et nos vêtements à base de plantes. La plupart des aliments que nous mangeons sont des plantes. Sans les plantes, les animaux ne survivraient pas.",
+          "chrf": 53.0,
+          "latency_s": 5.42,
+          "language_ok": true,
+          "fallback_original": false
+        },
+        "en-US": {
+          "text": "We make our blankets and clothes from plants , we make our food from plants , and so on . Without plants, animals cannot survive.",
+          "reference": "We make our houses from plants and make clothes from plants. Most foods that we eat are plants. Without plants, animals could not survive.",
+          "chrf": 60.3,
+          "latency_s": 5.42,
+          "language_ok": true,
+          "fallback_original": false
+        }
+      }
+    }
+  ]
+}

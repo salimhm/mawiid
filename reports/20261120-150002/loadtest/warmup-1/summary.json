@@ -1,0 +1,147 @@
+{
+  "run": "e76c7c",
+  "rooms": 1,
+  "speakers_per_room": 2,
+  "minutes": 1.0,
+  "concurrency": 1,
+  "ramp": null,
+  "languages": [
+    "fr-FR",
+    "en-US",
+    "ar-SA"
+  ],
+  "limits": {
+    "p95_s": 3.0,
+    "drop_rate": 0.02,
+    "rise_minutes": 5
+  },
+  "verdict": {
+    "within_limits": false,
+    "last_good_talkers_per_room": null,
+    "breaking_point_talkers_per_room": 1,
+    "why": [
+      "p95 4.58s > 3.0s"
+    ]
+  },
+  "steps": [
+    {
+      "step": 0,
+      "talkers_per_room": 1,
+      "minutes": [
+        0,
+        1
+      ],
+      "clips_spoken": 6,
+      "captions_matched": 6,
+      "dropped": 0,
+      "drop_rate": 0.0,
+      "p50_s": 2.212,
+      "p95_s": 4.575,
+      "p99_s": 4.849,
+      "max_s": 4.917,
+      "stages": {
+        "stt": {
+          "p50_s": 1.347,
+          "p95_s": 1.481,
+          "max_s": 1.496
+        },
+        "queue": {
+          "p50_s": 0.0,
+          "p95_s": 0.0,
+          "max_s": 0.0
+        },
+        "mt": {
+          "p50_s": 2.852,
+          "p95_s": 3.166,
+          "max_s": 3.201
+        }
+      },
+      "breaks": [
+        "p95 4.58s > 3.0s"
+      ]
+    }
+  ],
+  "overall": {
+    "clips_spoken": 6,
+    "captions_matched": 6,
+    "dropped": 0,
+    "drop_rate": 0.0,
+    "p50_s": 2.212,
+    "p95_s": 4.575,
+    "p99_s": 4.849,
+    "max_s": 4.917,
+    "stages": {
+      "stt": {
+        "p50_s": 1.347,
+        "p95_s": 1.481,
+        "max_s": 1.496
+      },
+      "queue": {
+        "p50_s": 0.0,
+        "p95_s": 0.0,
+        "max_s": 0.0
+      },
+      "mt": {
+        "p50_s": 2.852,
+        "p95_s": 3.166,
+        "max_s": 3.201
+      }
+    }
+  },
+  "per_minute": {
+    "0": {
+      "clips_spoken": 4,
+      "captions_matched": 4,
+      "dropped": 0,
+      "drop_rate": 0.0,
+      "p50_s": 1.682,
+      "p95_s": 3.414,
+      "p99_s": 3.522,
+      "max_s": 3.548,
+      "stages": {
+        "stt": {
+          "p50_s": 1.329,
+          "p95_s": 1.345,
+          "max_s": 1.347
+        },
+        "queue": {
+          "p50_s": 0.0,
+          "p95_s": 0.0,
+          "max_s": 0.0
+        },
+        "mt": {
+          "p50_s": 2.191,
+          "p95_s": 3.1,
+          "max_s": 3.201
+        }
+      }
+    },
+    "1": {
+      "clips_spoken": 2,
+      "captions_matched": 2,
+      "dropped": 0,
+      "drop_rate": 0.0,
+      "p50_s": 3.344,
+      "p95_s": 4.76,
+      "p99_s": 4.886,
+      "max_s": 4.917,
+      "stages": {
+        "stt": {
+          "p50_s": 1.496,
+          "p95_s": 1.496,
+          "max_s": 1.496
+        },
+        "queue": {
+          "p50_s": 0.0,
+          "p95_s": 0.0,
+          "max_s": 0.0
+        },
+        "mt": {
+          "p50_s": 2.852,
+          "p95_s": 2.852,
+          "max_s": 2.852
+        }
+      }
+    }
+  }
+}

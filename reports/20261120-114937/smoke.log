@@ -1,0 +1,22 @@
+Smoke test against https://localhost:3100 (room 88d65d89-b05c-4f77-b1a9-f8701ac6831e)
+
+  ok    frontend serves the app on client routes
+  ok    proxy reaches backend /health
+  ok    seeded room exists
+  ok    join without token is rejected
+  ok    join with an invalid token is rejected
+  ok    join an unknown room returns room-not-found
+  ok    non-member cannot join
+  ok    host joins and gets a LiveKit token
+  ok    member joins with the member role
+  ok    member cannot change room settings
+  ok    member cannot read the audit log
+  ok    host can read the audit log
+  ok    invalid body is rejected
+  ok    event socket answers ping with a valid ticket
+  ok    event socket rejects an invalid ticket with 4401
+  ok    password login by email sets a secure HttpOnly refresh cookie
+  ok    password login with a wrong password is rejected
+  ok    refresh rotates the cookie, logout revokes it
+
+All checks passed

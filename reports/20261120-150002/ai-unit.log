@@ -1,0 +1,38 @@
+s......................................ss............................... [ 43%]
+.........................................................s.s............ [ 86%]
+...................F...                                                  [100%]
+=================================== FAILURES ===================================
+__________ test_backup_takes_over_mid_sentence_without_losing_speech ___________
+
+whisper = <mawiid_ai.stt.whisper_engine.WhisperEngine object at 0x7fb4fa3d3c50>
+
+    def test_backup_takes_over_mid_sentence_without_losing_speech(whisper):
+        audio, _ = clip("fr-FR")
+        primary = CrashingEngine()
+        router = SttRouter({"voxtral": primary, "whisper": whisper}, DEFAULT_ROUTES, SttSettings().failover)
+>       stream = router.open_stream("fr-FR")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_whisper_integration.py:82: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mawiid_ai/stt/router.py:76: in open_stream
+    return FailoverStream(self, language, chain, detect)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/router.py:92: in __init__
+    self._stream = self._open(self._index, time_offset=0.0)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.stt.router.FailoverStream object at 0x7fb4edd24260>, index = 0
+time_offset = 0.0
+
+    def _open(self, index: int, time_offset: float) -> SttStream:
+        engine = self._router.engines[self._chain[index]]
+>       return engine.open_stream(self._language, time_offset=time_offset, detect=self._detect)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: CrashingEngine.open_stream() got an unexpected keyword argument 'detect'
+
+src/mawiid_ai/stt/router.py:201: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_whisper_integration.py::test_backup_takes_over_mid_sentence_without_losing_speech
+1 failed, 161 passed, 5 skipped in 17.90s

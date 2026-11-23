@@ -1,0 +1,36 @@
+/home/lhwask02/Downloads/mwd/services/ai/.venv/lib/python3.13/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 6 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  return self._jws.encode(
+room translation-bot-3f3d43: 9 sentences, fr-FR, en-US, ar-SA -> /home/lhwask02/Downloads/mwd/reports/20261120-114937/translation-bot
+  1/9 fr-FR spoken, captions from 3/3 listeners
+  2/9 fr-FR spoken, captions from 3/3 listeners
+  3/9 fr-FR spoken, captions from 3/3 listeners
+  4/9 en-US spoken, captions from 3/3 listeners
+  5/9 en-US spoken, captions from 3/3 listeners
+  6/9 en-US spoken, captions from 3/3 listeners
+  7/9 ar-SA spoken, captions from 3/3 listeners
+  8/9 ar-SA spoken, captions from 3/3 listeners
+  9/9 ar-SA spoken, captions from 3/3 listeners
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 61
+fr-FR 1690: WER  13%  chrF 60 49  missing 0
+fr-FR 1857: WER  96%  chrF 7 4  missing 0
+fr-FR 1913: WER  58%  chrF 26 22  missing 0
+en-US 1904: WER  53%  chrF 27 17  missing 0
+en-US 1675: WER  24%  chrF 55 39  missing 0
+en-US 1950: WER  30%  chrF 52 27  missing 0
+ar-SA 1993: WER  53%  chrF 32 31  missing 0
+ar-SA 1730: WER  47%  chrF 24 44  missing 0
+ar-SA 1942: WER  22%  chrF 53 60  missing 0
+
+speech-to-text fr-FR: 3/3 transcribed, WER 56%
+speech-to-text en-US: 3/3 transcribed, WER 36%
+speech-to-text ar-SA: 3/3 transcribed, WER 41%
+translation fr-FR→en-US: 3/3 delivered, chrF 38.1, BLEU 12.8, delay p50 7.56 s
+translation fr-FR→ar-SA: 3/3 delivered, chrF 32.3, BLEU 7.5, delay p50 7.56 s
+translation en-US→fr-FR: 3/3 delivered, chrF 46.2, BLEU 22.9, delay p50 4.89 s
+translation en-US→ar-SA: 3/3 delivered, chrF 27.5, BLEU 4.7, delay p50 4.89 s
+translation ar-SA→fr-FR: 3/3 delivered, chrF 35.7, BLEU 13.3, delay p50 6.52 s
+translation ar-SA→en-US: 3/3 delivered, chrF 45.8, BLEU 14.7, delay p50 6.52 s
+
+FAIL: fr-FR: WER 56% > 50%; fr-FR→ar-SA: chrF 32.3 < 35; en-US→ar-SA: chrF 27.5 < 35
+report: /home/lhwask02/Downloads/mwd/reports/20261120-114937/translation-bot/report.md
+livekit_ffi::room_apis::server:279:livekit_ffi::room_apis::server - Attempted to drop unknown FFI handle: 95

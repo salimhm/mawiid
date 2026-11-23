@@ -1,0 +1,111 @@
+{
+  "run": "7608b1",
+  "rooms": 2,
+  "speakers_per_room": 3,
+  "minutes": 4.0,
+  "concurrency": 1,
+  "ramp": null,
+  "languages": [
+    "fr-FR",
+    "en-US",
+    "ar-SA"
+  ],
+  "limits": {
+    "p95_s": 3.0,
+    "drop_rate": 0.02,
+    "rise_minutes": 5
+  },
+  "verdict": {
+    "within_limits": false,
+    "last_good_talkers_per_room": null,
+    "breaking_point_talkers_per_room": 1,
+    "why": [
+      "drop rate 100.0% > 2%",
+      "no caption at all"
+    ]
+  },
+  "steps": [
+    {
+      "step": 0,
+      "talkers_per_room": 1,
+      "minutes": [
+        0,
+        4
+      ],
+      "clips_spoken": 41,
+      "captions_matched": 0,
+      "dropped": 82,
+      "drop_rate": 1.0,
+      "p50_s": NaN,
+      "p95_s": NaN,
+      "p99_s": NaN,
+      "max_s": NaN,
+      "breaks": [
+        "drop rate 100.0% > 2%",
+        "no caption at all"
+      ]
+    }
+  ],
+  "overall": {
+    "clips_spoken": 41,
+    "captions_matched": 0,
+    "dropped": 82,
+    "drop_rate": 1.0,
+    "p50_s": NaN,
+    "p95_s": NaN,
+    "p99_s": NaN,
+    "max_s": NaN
+  },
+  "per_minute": {
+    "0": {
+      "clips_spoken": 7,
+      "captions_matched": 0,
+      "dropped": 14,
+      "drop_rate": 1.0,
+      "p50_s": NaN,
+      "p95_s": NaN,
+      "p99_s": NaN,
+      "max_s": NaN
+    },
+    "1": {
+      "clips_spoken": 9,
+      "captions_matched": 0,
+      "dropped": 18,
+      "drop_rate": 1.0,
+      "p50_s": NaN,
+      "p95_s": NaN,
+      "p99_s": NaN,
+      "max_s": NaN
+    },
+    "2": {
+      "clips_spoken": 10,
+      "captions_matched": 0,
+      "dropped": 20,
+      "drop_rate": 1.0,
+      "p50_s": NaN,
+      "p95_s": NaN,
+      "p99_s": NaN,
+      "max_s": NaN
+    },
+    "3": {
+      "clips_spoken": 10,
+      "captions_matched": 0,
+      "dropped": 20,
+      "drop_rate": 1.0,
+      "p50_s": NaN,
+      "p95_s": NaN,
+      "p99_s": NaN,
+      "max_s": NaN
+    },
+    "4": {
+      "clips_spoken": 5,
+      "captions_matched": 0,
+      "dropped": 10,
+      "drop_rate": 1.0,
+      "p50_s": NaN,
+      "p95_s": NaN,
+      "p99_s": NaN,
+      "max_s": NaN
+    }
+  }
+}

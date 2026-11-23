@@ -1,0 +1,30 @@
+bun test v1.4.3 (c6da4a4d3)
+
+src/lib/middleware.test.ts:
+
+src/lib/livekit.test.ts:
+
+src/module/main/auth/auth-registration.test.ts:
+(pass) POST /auth/login failed-attempt limit > a parallel burst of guesses cannot get past the limit while passwords are hashed [197.84ms]
+
+src/module/main/auth/auth-verification.test.ts:
+
+src/module/main/auth/auth-token.test.ts:
+
+src/module/main/vault/vault.test.ts:
+
+src/module/main/email/email.test.ts:
+
+src/module/main/presence/presence.test.ts:
+
+src/module/main/message/message.test.ts:
+
+src/module/main/transcript/transcript.test.ts:
+
+src/module/tenant/room/room.test.ts:
+
+ 1 pass
+ 267 filtered out
+ 0 fail
+ 2 expect() calls
+Ran 1 test across 11 files. [383.00ms]

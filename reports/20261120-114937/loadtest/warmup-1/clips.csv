@@ -1,0 +1,7 @@
+clip_id,room,speaker,language,step,start_s,end_s,duration_s
+1,loadtest-be770d-0,loadbot_0,fr-FR,0,1.329,9.367,8.04
+2,loadtest-be770d-0,loadbot_1,en-US,0,11.388,21.751,10.36
+3,loadtest-be770d-0,loadbot_0,fr-FR,0,23.752,30.968,7.22
+4,loadtest-be770d-0,loadbot_1,en-US,0,32.988,43.967,10.98
+5,loadtest-be770d-0,loadbot_0,fr-FR,0,45.968,63.888,17.92
+6,loadtest-be770d-0,loadbot_1,en-US,0,65.909,74.588,8.68
