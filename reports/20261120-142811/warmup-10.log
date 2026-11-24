@@ -1,0 +1,30 @@
+Nvidia Decoder is supported.
+run 62c4cd: 1 room(s) x 2 speakers, 1.0 min, 0/2 bots ready, concurrency 1, languages fr-FR, en-US, ar-SA -> /mnt/c/Users/HM/Desktop/mawiid_new/reports/20261120-142811/loadtest/warmup-10
+could not connect all bots and subscribe the worker: TimeoutError()
+/mnt/c/Users/HM/Desktop/mawiid_new/services/ai/.venv/lib/python3.12/site-packages/numpy/lib/_nanfunctions_impl.py:1396: RuntimeWarning: All-NaN slice encountered
+  return _nanquantile_unchecked(
+/mnt/c/Users/HM/Desktop/mawiid_new/services/ai/scripts/room_loadtest.py:284: RuntimeWarning: All-NaN slice encountered
+  "max_s": round(float(np.nanmax(lat)), 3),
+step 0: 1 talking/room  p50 nans  p95 nans  drop None  BREAKS: no completed speech clips
+{
+  "verdict": {
+    "within_limits": false,
+    "last_good_talkers_per_room": null,
+    "first_failed_talkers_per_room": 1,
+    "breaking_point_talkers_per_room": null,
+    "why": [
+      "could not connect all bots and subscribe the worker: TimeoutError()"
+    ]
+  },
+  "overall": {
+    "clips_spoken": 0,
+    "captions_matched": 0,
+    "dropped": 0,
+    "early_only": 0,
+    "drop_rate": null,
+    "p50_s": NaN,
+    "p95_s": NaN,
+    "p99_s": NaN,
+    "max_s": NaN
+  }
+}

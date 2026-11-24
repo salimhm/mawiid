@@ -1,0 +1,22 @@
+/api/health → 200 (control, must stay 200)
+GET /api/openapi → 404 through Caddy (backend direct: 200)
+POST /api/transcript/internal → 404 through Caddy (backend direct: 422)
+POST /api/webhook/livekit → 404 through Caddy (backend direct: 401)
+
+{"level":"info","ts":1795183836.1033368,"msg":"maxprocs: Leaving GOMAXPROCS=16: CPU quota undefined"}
+{"level":"info","ts":1795183836.1033864,"msg":"GOMEMLIMIT is updated","GOMEMLIMIT":15022286438,"previous":9223372036854775807}
+{"level":"info","ts":1795183836.1033938,"msg":"using config from file","file":"/etc/caddy/Caddyfile"}
+{"level":"info","ts":1795183836.103397,"msg":"adapted config to JSON","adapter":"caddyfile"}
+{"level":"warn","ts":1795183836.1033995,"msg":"Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies","adapter":"caddyfile","file":"/etc/caddy/Caddyfile","line":3}
+{"level":"info","ts":1795183836.118453,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+{"level":"info","ts":1795183836.1188552,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0x3c7180353a80"}
+{"level":"warn","ts":1795183836.1195104,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":18080"}
+{"level":"warn","ts":1795183836.1195407,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":18080"}
+{"level":"info","ts":1795183836.1195471,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+{"level":"warn","ts":1795183836.1195977,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":18081"}
+{"level":"warn","ts":1795183836.1196015,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":18081"}
+{"level":"info","ts":1795183836.1196036,"logger":"http.log","msg":"server running","name":"srv1","protocols":["h1","h2","h3"]}
+{"level":"info","ts":1795183836.1227984,"msg":"autosaved config (load with --resume flag)","file":"/config/caddy/autosave.json"}
+{"level":"info","ts":1795183836.1228437,"msg":"serving initial configuration"}
+{"level":"info","ts":1795183836.1302016,"logger":"tls","msg":"cleaning storage unit","storage":"FileStorage:/data/caddy"}
+{"level":"info","ts":1795183836.1361356,"logger":"tls","msg":"finished cleaning storage units"}

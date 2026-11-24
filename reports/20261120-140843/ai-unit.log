@@ -1,0 +1,100 @@
+s.....................................FssFF............................. [ 43%]
+.........................................................s.s............ [ 86%]
+..................ss...                                                  [100%]
+=================================== FAILURES ===================================
+__________ test_french_sentence_is_translated_into_english_and_arabic __________
+
+madlad = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x74a7d86e34d0>
+
+    def test_french_sentence_is_translated_into_english_and_arabic(madlad):
+>       en, ar = madlad.translate("Le chat dort sur le canapé.", "fr-FR", ["en-US", "ar-SA"])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_madlad_integration.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mawiid_ai/translation/madlad_engine.py:114: in translate
+    outputs = self._decode(batch)
+              ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x74a7d86e34d0>
+batch = [['▁', '<2en>', '▁Le', '▁chat', '▁dort', '▁sur', ...], ['▁', '<2ar>', '▁Le', '▁chat', '▁dort', '▁sur', ...]]
+
+    def _decode(self, batch: list[list[str]]) -> list[str]:
+        limit = min(_MAX_DECODING, 2 * max(map(len, batch)) + 10)
+        options = {"beam_size": self.settings.beam_size, "max_decoding_length": limit}
+>       hypotheses = [r.hypotheses[0] for r in self._translator.translate_batch(batch, **options)]
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+
+src/mawiid_ai/translation/madlad_engine.py:124: RuntimeError
+_____________________ test_runaway_repetition_is_recovered _____________________
+
+madlad = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x74a7d86e34d0>
+
+    def test_runaway_repetition_is_recovered(madlad):
+        # FLEURS sentence on which MADLAD loops "1-2-2-1-1-1-1-..." instead of translating.
+        text = "Swirl the two dry powders together and then, with clean wet hands, squeeze them into a ball."
+>       [ar] = madlad.translate(text, "en-US", ["ar-SA"])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_madlad_integration.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mawiid_ai/translation/madlad_engine.py:114: in translate
+    outputs = self._decode(batch)
+              ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x74a7d86e34d0>
+batch = [['▁', '<2ar>', '▁Swi', 'rl', '▁the', '▁two', ...]]
+
+    def _decode(self, batch: list[list[str]]) -> list[str]:
+        limit = min(_MAX_DECODING, 2 * max(map(len, batch)) + 10)
+        options = {"beam_size": self.settings.beam_size, "max_decoding_length": limit}
+>       hypotheses = [r.hypotheses[0] for r in self._translator.translate_batch(batch, **options)]
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+
+src/mawiid_ai/translation/madlad_engine.py:124: RuntimeError
+____________ test_translator_produces_subtitles_with_the_real_model ____________
+
+madlad = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x74a7d86e34d0>
+
+    def test_translator_produces_subtitles_with_the_real_model(madlad):
+        from mawiid_ai.translation.translator import SubtitleTranslator
+    
+        translator = SubtitleTranslator({"madlad": madlad}, TranslationSettings(engines=["madlad"]))
+        final = Transcript(ResultKind.FINAL, "Hello everyone, can you hear me?", "en-US", 0.0, 2.0, "whisper")
+>       subs = {s.language: s.text for s in translator.translate(final, ["fr-FR", "en-US"])}
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_madlad_integration.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mawiid_ai/translation/translator.py:62: in translate
+    outputs, engine = self._translate(source, transcript.language, representatives)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.translation.translator.SubtitleTranslator object at 0x74a7d34ceba0>
+text = 'Hello everyone, can you hear me?', source = 'en-US', targets = ['fr-FR']
+
+    def _translate(self, text: str, source: str, targets: list[str]) -> tuple[list[str], str]:
+        able = [name for name in self.order if all(self.engines[name].supports(source, t) for t in targets)]
+        # Everything cooling down: try anyway rather than leave listeners without subtitles.
+        healthy = [name for name in able if self.breaker.available(name)] or able
+        for name in healthy:
+            try:
+                return self.engines[name].translate(text, source, targets), name
+            except Exception as exc:  # any engine crash moves on to the next one
+                self.breaker.record_failure(name, repr(exc))
+>       raise TranslationError(f"no translation engine could translate {source} -> {', '.join(targets)}")
+E       mawiid_ai.translation.base.TranslationError: no translation engine could translate en-US -> fr-FR
+
+src/mawiid_ai/translation/translator.py:83: TranslationError
+------------------------------ Captured log call -------------------------------
+WARNING  mawiid_ai.stt.router:router.py:44 engine madlad marked down for 60s: RuntimeError('Library libcublas.so.12 is not found or cannot be loaded')
+=========================== short test summary info ============================
+FAILED tests/test_madlad_integration.py::test_french_sentence_is_translated_into_english_and_arabic
+FAILED tests/test_madlad_integration.py::test_runaway_repetition_is_recovered
+FAILED tests/test_madlad_integration.py::test_translator_produces_subtitles_with_the_real_model
+3 failed, 157 passed, 7 skipped in 54.55s

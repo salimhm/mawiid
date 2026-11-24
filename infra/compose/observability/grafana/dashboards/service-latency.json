@@ -212,7 +212,7 @@
         },
         "textMode": "auto"
       },
-      "targets": [{ "expr": "up{job=~\"backend|ai\"}", "refId": "A" }],
+      "targets": [{ "expr": "up{job=~\"backend|ai|vllm|livekit\",location=~\"laptop|gpu-server|lds-server\"}", "legendFormat": "{{job}} ({{location}})", "refId": "A" }],
       "title": "Service scrape health (1 = up)",
       "type": "stat"
     }
@@ -225,5 +225,5 @@
   "timezone": "browser",
   "title": "Local service latency",
   "uid": "mawiid-local-service-latency",
-  "version": 1
+  "version": 2
 }

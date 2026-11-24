@@ -3,7 +3,7 @@ global:
   evaluation_interval: 5s
 
   external_labels:
-    environment: production
+    environment: development
     project: mawiid
 
 scrape_configs:
@@ -11,15 +11,30 @@ scrape_configs:
     static_configs:
       - targets: ["host.docker.internal:3000"]
         labels:
-          location: app-vm
+          location: laptop
     metrics_path: /metrics
 
   - job_name: ai
     static_configs:
-      - targets: ["gpu-vm.private:9464"]
+      - targets: ["host.docker.internal:19465"]
         labels:
-          location: gpu-vm
+          location: gpu-server
+          server: "100.66.229.114"
     metrics_path: /metrics
+
+  - job_name: vllm
+    static_configs:
+      - targets: ["host.docker.internal:18000"]
+        labels:
+          location: gpu-server
+          server: "100.66.229.114"
+
+  - job_name: livekit
+    static_configs:
+      - targets: ["host.docker.internal:16789"]
+        labels:
+          location: lds-server
+          server: "152.53.82.54"
 
   - job_name: prometheus
     static_configs:

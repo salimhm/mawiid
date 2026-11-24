@@ -1,0 +1,65 @@
+{
+  "run": "0ae5ad",
+  "rooms": 1,
+  "speakers_per_room": 2,
+  "minutes": 1.0,
+  "concurrency": 1,
+  "ramp": null,
+  "languages": [
+    "fr-FR",
+    "en-US",
+    "ar-SA"
+  ],
+  "ready_bots": 0,
+  "errors": [
+    "could not connect all bots and subscribe the worker: TimeoutError()"
+  ],
+  "limits": {
+    "p95_s": 3.0,
+    "drop_rate": 0.02,
+    "rise_minutes": 5
+  },
+  "verdict": {
+    "within_limits": false,
+    "last_good_talkers_per_room": null,
+    "first_failed_talkers_per_room": 1,
+    "breaking_point_talkers_per_room": null,
+    "why": [
+      "could not connect all bots and subscribe the worker: TimeoutError()"
+    ]
+  },
+  "steps": [
+    {
+      "step": 0,
+      "talkers_per_room": 1,
+      "minutes": [
+        0,
+        1
+      ],
+      "clips_spoken": 0,
+      "captions_matched": 0,
+      "dropped": 0,
+      "early_only": 0,
+      "drop_rate": null,
+      "p50_s": NaN,
+      "p95_s": NaN,
+      "p99_s": NaN,
+      "max_s": NaN,
+      "breaks": [
+        "no completed speech clips"
+      ]
+    }
+  ],
+  "overall": {
+    "clips_spoken": 0,
+    "captions_matched": 0,
+    "dropped": 0,
+    "early_only": 0,
+    "drop_rate": null,
+    "p50_s": NaN,
+    "p95_s": NaN,
+    "p99_s": NaN,
+    "max_s": NaN
+  },
+  "per_minute": {}
+}

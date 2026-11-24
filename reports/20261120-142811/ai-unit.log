@@ -1,0 +1,371 @@
+s.....................................FssFF............................. [ 43%]
+.........................................................s.s............ [ 86%]
+..................FF...                                                  [100%]
+=================================== FAILURES ===================================
+__________ test_french_sentence_is_translated_into_english_and_arabic __________
+
+madlad = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x71a2ed8f5430>
+
+    def test_french_sentence_is_translated_into_english_and_arabic(madlad):
+>       en, ar = madlad.translate("Le chat dort sur le canapé.", "fr-FR", ["en-US", "ar-SA"])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_madlad_integration.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mawiid_ai/translation/madlad_engine.py:114: in translate
+    outputs = self._decode(batch)
+              ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x71a2ed8f5430>
+batch = [['▁', '<2en>', '▁Le', '▁chat', '▁dort', '▁sur', ...], ['▁', '<2ar>', '▁Le', '▁chat', '▁dort', '▁sur', ...]]
+
+    def _decode(self, batch: list[list[str]]) -> list[str]:
+        limit = min(_MAX_DECODING, 2 * max(map(len, batch)) + 10)
+        options = {"beam_size": self.settings.beam_size, "max_decoding_length": limit}
+>       hypotheses = [r.hypotheses[0] for r in self._translator.translate_batch(batch, **options)]
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+
+src/mawiid_ai/translation/madlad_engine.py:124: RuntimeError
+_____________________ test_runaway_repetition_is_recovered _____________________
+
+madlad = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x71a2ed8f5430>
+
+    def test_runaway_repetition_is_recovered(madlad):
+        # FLEURS sentence on which MADLAD loops "1-2-2-1-1-1-1-..." instead of translating.
+        text = "Swirl the two dry powders together and then, with clean wet hands, squeeze them into a ball."
+>       [ar] = madlad.translate(text, "en-US", ["ar-SA"])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_madlad_integration.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mawiid_ai/translation/madlad_engine.py:114: in translate
+    outputs = self._decode(batch)
+              ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x71a2ed8f5430>
+batch = [['▁', '<2ar>', '▁Swi', 'rl', '▁the', '▁two', ...]]
+
+    def _decode(self, batch: list[list[str]]) -> list[str]:
+        limit = min(_MAX_DECODING, 2 * max(map(len, batch)) + 10)
+        options = {"beam_size": self.settings.beam_size, "max_decoding_length": limit}
+>       hypotheses = [r.hypotheses[0] for r in self._translator.translate_batch(batch, **options)]
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+
+src/mawiid_ai/translation/madlad_engine.py:124: RuntimeError
+____________ test_translator_produces_subtitles_with_the_real_model ____________
+
+madlad = <mawiid_ai.translation.madlad_engine.MadladEngine object at 0x71a2ed8f5430>
+
+    def test_translator_produces_subtitles_with_the_real_model(madlad):
+        from mawiid_ai.translation.translator import SubtitleTranslator
+    
+        translator = SubtitleTranslator({"madlad": madlad}, TranslationSettings(engines=["madlad"]))
+        final = Transcript(ResultKind.FINAL, "Hello everyone, can you hear me?", "en-US", 0.0, 2.0, "whisper")
+>       subs = {s.language: s.text for s in translator.translate(final, ["fr-FR", "en-US"])}
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_madlad_integration.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mawiid_ai/translation/translator.py:62: in translate
+    outputs, engine = self._translate(source, transcript.language, representatives)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.translation.translator.SubtitleTranslator object at 0x71a2ed893050>
+text = 'Hello everyone, can you hear me?', source = 'en-US', targets = ['fr-FR']
+
+    def _translate(self, text: str, source: str, targets: list[str]) -> tuple[list[str], str]:
+        able = [name for name in self.order if all(self.engines[name].supports(source, t) for t in targets)]
+        # Everything cooling down: try anyway rather than leave listeners without subtitles.
+        healthy = [name for name in able if self.breaker.available(name)] or able
+        for name in healthy:
+            try:
+                return self.engines[name].translate(text, source, targets), name
+            except Exception as exc:  # any engine crash moves on to the next one
+                self.breaker.record_failure(name, repr(exc))
+>       raise TranslationError(f"no translation engine could translate {source} -> {', '.join(targets)}")
+E       mawiid_ai.translation.base.TranslationError: no translation engine could translate en-US -> fr-FR
+
+src/mawiid_ai/translation/translator.py:83: TranslationError
+------------------------------ Captured log call -------------------------------
+WARNING  mawiid_ai.stt.router:router.py:44 engine madlad marked down for 60s: RuntimeError('Library libcublas.so.12 is not found or cannot be loaded')
+_______________________ test_french_clip_is_transcribed ________________________
+
+self = <mawiid_ai.stt.whisper_engine.WhisperEngine object at 0x71a2e8cc3dd0>
+audio = array([6.9737434e-06, 2.0325184e-05, 6.5565109e-07, ..., 2.5592446e-03,
+       2.5785565e-03, 2.6518703e-03], shape=(16384,), dtype=float32)
+
+    def language_probs(self, audio: np.ndarray) -> dict[str, float]:
+        """Whisper's probability, per model language code ("fr", "ar", ...), that the phrase is in it."""
+        try:
+            if self._lock is not None:
+                with self._lock:
+                    _, _, probs = self._model.detect_language(audio)
+            else:
+>               _, _, probs = self._model.detect_language(audio)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+src/mawiid_ai/stt/whisper_engine.py:180: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/faster_whisper/transcribe.py:1819: in detect_language
+    encoder_output = self.encode(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <faster_whisper.transcribe.WhisperModel object at 0x71a2aaec48c0>
+features =  -1.0024 -0.934374 -1.01381 ... 0 0 0
+[cpu:0 float32 storage viewed as 1x80x3000]
+
+    def encode(self, features: np.ndarray) -> ctranslate2.StorageView:
+        # When the model is running on multiple GPUs, the encoder output should be moved
+        # to the CPU since we don't know which GPU will handle the next job.
+        to_cpu = self.model.device == "cuda" and len(self.model.device_index) > 1
+    
+        if features.ndim == 2:
+            features = np.expand_dims(features, 0)
+        features = get_ctranslate2_storage(features)
+    
+>       return self.model.encode(features, to_cpu=to_cpu)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+
+.venv/lib/python3.12/site-packages/faster_whisper/transcribe.py:1400: RuntimeError
+
+The above exception was the direct cause of the following exception:
+
+self = <mawiid_ai.stt.router.FailoverStream object at 0x71a2a88901a0>
+op = <function FailoverStream.push_audio.<locals>.<lambda> at 0x71a2a88ffc40>
+flush = False, audio_s = 0.02
+
+    def _call(self, op: Callable[[SttStream], list[Transcript]], flush: bool, audio_s: float) -> list[Transcript]:
+        replaying = False
+        if self._switch_back_to is not None:
+            target, self._switch_back_to = self._switch_back_to, None
+            if self._try_switch(target):
+                log.info("stt %s: back to %s", self._language, self.engine)
+                op, replaying = self._replay_op(flush), True  # the replay already contains the new chunk
+    
+        collected: list[Transcript] = []
+        while True:
+            name = self.engine
+            started = self._router.clock()
+            try:
+>               results = op(self._stream)
+                          ^^^^^^^^^^^^^^^^
+
+src/mawiid_ai/stt/router.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mawiid_ai/stt/router.py:102: in <lambda>
+    return self._call(lambda stream: stream.push_audio(chunk), flush=False, audio_s=len(chunk) / SAMPLE_RATE)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/whisper_engine.py:254: in push_audio
+    partial = self._maybe_partial()
+              ^^^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/whisper_engine.py:319: in _maybe_partial
+    self._partial_language = self._known_variant(self._detect(audio))  # once per phrase; the final checks again
+                                                 ^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/whisper_engine.py:270: in _detect
+    probs = self._engine.language_probs(audio)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.stt.whisper_engine.WhisperEngine object at 0x71a2e8cc3dd0>
+audio = array([6.9737434e-06, 2.0325184e-05, 6.5565109e-07, ..., 2.5592446e-03,
+       2.5785565e-03, 2.6518703e-03], shape=(16384,), dtype=float32)
+
+    def language_probs(self, audio: np.ndarray) -> dict[str, float]:
+        """Whisper's probability, per model language code ("fr", "ar", ...), that the phrase is in it."""
+        try:
+            if self._lock is not None:
+                with self._lock:
+                    _, _, probs = self._model.detect_language(audio)
+            else:
+                _, _, probs = self._model.detect_language(audio)
+        except Exception as exc:
+>           raise SttError(f"{self.name} language detection failed: {exc}") from exc
+E           mawiid_ai.stt.base.SttError: whisper language detection failed: Library libcublas.so.12 is not found or cannot be loaded
+
+src/mawiid_ai/stt/whisper_engine.py:182: SttError
+
+During handling of the above exception, another exception occurred:
+
+whisper = <mawiid_ai.stt.whisper_engine.WhisperEngine object at 0x71a2e8cc3dd0>
+
+    def test_french_clip_is_transcribed(whisper):
+        audio, reference = clip("fr-FR")
+        router = SttRouter({"whisper": whisper}, DEFAULT_ROUTES, SttSettings().failover)
+>       finals = [r for r in stream_through(router.open_stream("fr-FR"), audio) if r.kind is ResultKind.FINAL]
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_whisper_integration.py:72: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_whisper_integration.py:39: in stream_through
+    results += stream.push_audio(audio[i : i + CHUNK])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/router.py:102: in push_audio
+    return self._call(lambda stream: stream.push_audio(chunk), flush=False, audio_s=len(chunk) / SAMPLE_RATE)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/router.py:131: in _call
+    self._take_over()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.stt.router.FailoverStream object at 0x71a2a88901a0>
+
+    def _take_over(self) -> None:
+        while True:
+            nxt = self._first_available(0, required=False, exclude=self._index)
+            if nxt is None:
+>               raise SttError(f"all speech-to-text engines failed for {self._language}")
+E               mawiid_ai.stt.base.SttError: all speech-to-text engines failed for fr-FR
+
+src/mawiid_ai/stt/router.py:179: SttError
+------------------------------ Captured log call -------------------------------
+WARNING  mawiid_ai.stt.router:router.py:44 engine whisper marked down for 60s: SttError('whisper language detection failed: Library libcublas.so.12 is not found or cannot be loaded')
+__________ test_backup_takes_over_mid_sentence_without_losing_speech ___________
+
+self = <mawiid_ai.stt.whisper_engine.WhisperEngine object at 0x71a2e8cc3dd0>
+audio = array([6.9737434e-06, 2.0325184e-05, 6.5565109e-07, ..., 2.5592446e-03,
+       2.5785565e-03, 2.6518703e-03], shape=(16384,), dtype=float32)
+
+    def language_probs(self, audio: np.ndarray) -> dict[str, float]:
+        """Whisper's probability, per model language code ("fr", "ar", ...), that the phrase is in it."""
+        try:
+            if self._lock is not None:
+                with self._lock:
+                    _, _, probs = self._model.detect_language(audio)
+            else:
+>               _, _, probs = self._model.detect_language(audio)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+src/mawiid_ai/stt/whisper_engine.py:180: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/faster_whisper/transcribe.py:1819: in detect_language
+    encoder_output = self.encode(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <faster_whisper.transcribe.WhisperModel object at 0x71a2aaec48c0>
+features =  -1.0024 -0.934374 -1.01381 ... 0 0 0
+[cpu:0 float32 storage viewed as 1x80x3000]
+
+    def encode(self, features: np.ndarray) -> ctranslate2.StorageView:
+        # When the model is running on multiple GPUs, the encoder output should be moved
+        # to the CPU since we don't know which GPU will handle the next job.
+        to_cpu = self.model.device == "cuda" and len(self.model.device_index) > 1
+    
+        if features.ndim == 2:
+            features = np.expand_dims(features, 0)
+        features = get_ctranslate2_storage(features)
+    
+>       return self.model.encode(features, to_cpu=to_cpu)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       RuntimeError: Library libcublas.so.12 is not found or cannot be loaded
+
+.venv/lib/python3.12/site-packages/faster_whisper/transcribe.py:1400: RuntimeError
+
+The above exception was the direct cause of the following exception:
+
+self = <mawiid_ai.stt.router.FailoverStream object at 0x71a2a834ba10>
+op = <function FailoverStream.push_audio.<locals>.<lambda> at 0x71a2a447cb80>
+flush = False, audio_s = 0.02
+
+    def _call(self, op: Callable[[SttStream], list[Transcript]], flush: bool, audio_s: float) -> list[Transcript]:
+        replaying = False
+        if self._switch_back_to is not None:
+            target, self._switch_back_to = self._switch_back_to, None
+            if self._try_switch(target):
+                log.info("stt %s: back to %s", self._language, self.engine)
+                op, replaying = self._replay_op(flush), True  # the replay already contains the new chunk
+    
+        collected: list[Transcript] = []
+        while True:
+            name = self.engine
+            started = self._router.clock()
+            try:
+>               results = op(self._stream)
+                          ^^^^^^^^^^^^^^^^
+
+src/mawiid_ai/stt/router.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mawiid_ai/stt/router.py:102: in <lambda>
+    return self._call(lambda stream: stream.push_audio(chunk), flush=False, audio_s=len(chunk) / SAMPLE_RATE)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/whisper_engine.py:254: in push_audio
+    partial = self._maybe_partial()
+              ^^^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/whisper_engine.py:319: in _maybe_partial
+    self._partial_language = self._known_variant(self._detect(audio))  # once per phrase; the final checks again
+                                                 ^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/whisper_engine.py:270: in _detect
+    probs = self._engine.language_probs(audio)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.stt.whisper_engine.WhisperEngine object at 0x71a2e8cc3dd0>
+audio = array([6.9737434e-06, 2.0325184e-05, 6.5565109e-07, ..., 2.5592446e-03,
+       2.5785565e-03, 2.6518703e-03], shape=(16384,), dtype=float32)
+
+    def language_probs(self, audio: np.ndarray) -> dict[str, float]:
+        """Whisper's probability, per model language code ("fr", "ar", ...), that the phrase is in it."""
+        try:
+            if self._lock is not None:
+                with self._lock:
+                    _, _, probs = self._model.detect_language(audio)
+            else:
+                _, _, probs = self._model.detect_language(audio)
+        except Exception as exc:
+>           raise SttError(f"{self.name} language detection failed: {exc}") from exc
+E           mawiid_ai.stt.base.SttError: whisper language detection failed: Library libcublas.so.12 is not found or cannot be loaded
+
+src/mawiid_ai/stt/whisper_engine.py:182: SttError
+
+During handling of the above exception, another exception occurred:
+
+whisper = <mawiid_ai.stt.whisper_engine.WhisperEngine object at 0x71a2e8cc3dd0>
+
+    def test_backup_takes_over_mid_sentence_without_losing_speech(whisper):
+        audio, _ = clip("fr-FR")
+        primary = CrashingEngine()
+        router = SttRouter({"voxtral": primary, "whisper": whisper}, DEFAULT_ROUTES, SttSettings().failover)
+        stream = router.open_stream("fr-FR")
+        assert stream.engine == "voxtral"
+    
+        # The primary dies 3 s into the sentence; whisper must still produce the whole sentence.
+>       results = stream_through(stream, audio, crash_at=3.0, engine=primary)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_whisper_integration.py:86: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_whisper_integration.py:39: in stream_through
+    results += stream.push_audio(audio[i : i + CHUNK])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/router.py:102: in push_audio
+    return self._call(lambda stream: stream.push_audio(chunk), flush=False, audio_s=len(chunk) / SAMPLE_RATE)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/mawiid_ai/stt/router.py:131: in _call
+    self._take_over()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <mawiid_ai.stt.router.FailoverStream object at 0x71a2a834ba10>
+
+    def _take_over(self) -> None:
+        while True:
+            nxt = self._first_available(0, required=False, exclude=self._index)
+            if nxt is None:
+>               raise SttError(f"all speech-to-text engines failed for {self._language}")
+E               mawiid_ai.stt.base.SttError: all speech-to-text engines failed for fr-FR
+
+src/mawiid_ai/stt/router.py:179: SttError
+------------------------------ Captured log call -------------------------------
+WARNING  mawiid_ai.stt.router:router.py:44 engine voxtral marked down for 60s: RuntimeError('GPU out of memory')
+WARNING  mawiid_ai.stt.router:router.py:180 stt fr-FR: switching voxtral -> whisper
+WARNING  mawiid_ai.stt.router:router.py:44 engine whisper marked down for 60s: SttError('whisper language detection failed: Library libcublas.so.12 is not found or cannot be loaded')
+=========================== short test summary info ============================
+FAILED tests/test_madlad_integration.py::test_french_sentence_is_translated_into_english_and_arabic
+FAILED tests/test_madlad_integration.py::test_runaway_repetition_is_recovered
+FAILED tests/test_madlad_integration.py::test_translator_produces_subtitles_with_the_real_model
+FAILED tests/test_whisper_integration.py::test_french_clip_is_transcribed - m...
+FAILED tests/test_whisper_integration.py::test_backup_takes_over_mid_sentence_without_losing_speech
+5 failed, 157 passed, 5 skipped in 43.56s

@@ -10,7 +10,6 @@ services:
       - "127.0.0.1:9090:9090"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-      - "gpu-vm.private:${GPU_VM_PRIVATE_IP:?Copy .env.example to .env and set GPU_VM_PRIVATE_IP}"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus

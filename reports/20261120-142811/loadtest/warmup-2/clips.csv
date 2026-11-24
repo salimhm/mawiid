@@ -1,0 +1,7 @@
+clip_id,room,speaker,language,step,start_s,end_s,duration_s
+1,loadtest-03bca4-0,loadbot_0,fr-FR,0,4.030,12.069,8.04
+2,loadtest-03bca4-0,loadbot_1,en-US,0,14.074,24.434,10.36
+3,loadtest-03bca4-0,loadbot_0,fr-FR,0,26.449,33.669,7.22
+4,loadtest-03bca4-0,loadbot_1,en-US,0,35.674,46.655,10.98
+5,loadtest-03bca4-0,loadbot_0,fr-FR,0,48.669,66.589,17.92
+6,loadtest-03bca4-0,loadbot_1,en-US,0,68.594,77.274,8.68
