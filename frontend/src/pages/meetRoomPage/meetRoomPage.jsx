@@ -2,6 +2,7 @@ import MeetHeader from './components/MeetHeader'
 import MeetMain from './components/MeetMain'
 import MeetControls from './components/MeetControls'
 import MeetCaptions from './components/MeetCaptions'
+import MeetTimer from './components/MeetTimer'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useRoom } from '../../hooks/useRoom'
@@ -96,6 +97,7 @@ export default function MeetRoomPage() {
                 onRetryMessage={room.retryMessage}
                 onLoadOlderMessages={room.loadOlderMessages}
             />
+            <MeetTimer active={room.status === 'connected'} />
             <MeetMain
                 localUser={room.localUser}
                 participants={room.participants}
