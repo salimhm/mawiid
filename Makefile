@@ -208,6 +208,7 @@ ai: ## Run the AI translation worker on its own (make ai-install first)
 		LIVEKIT_URL="$$livekit_url" \
 		LIVEKIT_API_KEY="$$livekit_key" \
 		LIVEKIT_API_SECRET="$$livekit_secret" \
+		MAWIID_LOG_FILE="$${MAWIID_LOG_FILE:-data/logs/worker.log}" \
 		bash scripts/run-with-cuda.sh .venv/bin/python -m mawiid_ai.agent dev
 
 certs: ## Create the self-signed development HTTPS certificate if needed

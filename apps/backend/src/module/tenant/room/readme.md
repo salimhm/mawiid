@@ -138,6 +138,11 @@ Clients call `POST /room/join` on every join and rejoin so permission checks alw
 - Always set `canPublish` and `canSubscribe` explicitly.
 - Server-set attributes in the token: `mawiid.user_id`, `mawiid.role`, `mawiid.language`.
 - Self-hosted LiveKit does not revoke tokens, hence the short TTL.
+  Keep it short: connected clients get refreshed tokens from LiveKit, so the TTL only bounds the
+  first connection. A client that LiveKit fully disconnects (after its own reconnect attempts)
+  calls `POST /room/join` again for a fresh token (`useRoom.js`, `rejoin`); banned users are refused there.
+- LiveKit `maxParticipants` is `room_max_participants + 1`: the extra seat is the caption agent's.
+  People are capped by the `room_full` check in `join`, which a rejoin by an active member skips.
 
 ### Leave Flow
 

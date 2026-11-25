@@ -119,6 +119,23 @@ def script_ok(text: str, language: str) -> bool:
     return hits / len(letters) >= 0.6
 
 
+# FLEURS clips are recorded very quietly (some peak at -44 dBFS). A browser microphone has
+# automatic gain control on (LiveKit's default), so people reach the worker much louder. Played
+# raw, the first quiet words of a sentence stay under the worker's VAD threshold and are cut
+# ("However, due to..." heard as "the West could lag..."). Each clip is brought to this peak.
+MIC_PEAK = 0.5  # -6 dBFS
+MIC_MAX_GAIN = 200.0
+RAW_LEVEL = False  # --raw-level: play the clips as recorded
+
+
+def mic_level(audio: np.ndarray) -> np.ndarray:
+    """The clip at the level a browser microphone with gain control would send."""
+    peak = float(np.abs(audio).max()) if len(audio) else 0.0
+    if RAW_LEVEL or peak <= 0:
+        return audio
+    return audio * min(MIC_MAX_GAIN, MIC_PEAK / peak)
+
+
 def load_sentences(languages: list[str], per_language: int) -> list[Sentence]:
     if not PARALLEL.exists():
         raise SystemExit(f"{PARALLEL} is missing: run scripts/fetch_samples.py --languages {' '.join(languages)}")
@@ -135,7 +152,7 @@ def load_sentences(languages: list[str], per_language: int) -> list[Sentence]:
             row = by_text.get(entry["text"])
             if row is None or not all(row.get(other) for other in languages):
                 continue  # no reference translation for this clip
-            audio = trim_silence(load_audio(SAMPLES_DIR / language / entry["audio"]))
+            audio = mic_level(trim_silence(load_audio(SAMPLES_DIR / language / entry["audio"])))
             sentences.append(Sentence(row["id"], language, (np.clip(audio, -1, 1) * 32767).astype(np.int16),
                                       entry["text"], {k: row[k] for k in languages}))
             count += 1
@@ -631,9 +648,12 @@ def main() -> int:
     parser.add_argument("--watch-host", default="127.0.0.1", help="0.0.0.0 to watch from another machine")
     parser.add_argument("--watch-wait-s", type=float, default=300, help="how long to wait for the page to be opened")
     parser.add_argument("--rescore", type=Path, metavar="RUN_DIR", help="score a finished run again from its saved captions")
+    parser.add_argument("--raw-level", action="store_true",
+                        help="play the clips at their recorded level instead of a microphone's (tests quiet speakers)")
     args = parser.parse_args()
-    global SHOW
+    global SHOW, RAW_LEVEL
     SHOW = not args.quiet and not args.rescore
+    RAW_LEVEL = args.raw_level
     if args.rescore:
         return rescore(args)
     return asyncio.run(main_async(args))

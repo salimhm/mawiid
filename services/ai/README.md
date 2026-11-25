@@ -124,6 +124,17 @@ Stock Whisper is trained mostly on Standard Arabic and `small` is weak in Arabic
 
 Without the converted MADLAD model, step 3 is skipped and everyone gets captions in the spoken language. The topics and attributes are described in `apps/backend/src/module/main/participants/integration.md` (section 8). The code: `pipeline.py` (one room, no LiveKit code, tested with fakes in `tests/test_pipeline.py`), `uploader.py` (transcript batches), `worker.py` (LiveKit wiring). Rooms run as threads in one process, so every room shares the models loaded once.
 
+### Capacity and overload
+
+Rooms run as threads in one process and share the translation model (~3 GB). Speech-to-text is split into `MAWIID_STT_INSTANCES` model copies (default: one per 4 cores on CPU, at most 4; one on GPU), each with its own lock, CPU threads (cores split between copies unless `MAWIID_STT_WHISPER_CPU_THREADS` is set) and thread pool. Each room uses the copy serving the fewest rooms, so a busy room only slows rooms on the same copy.
+
+When speech-to-text falls behind, the worker degrades captions instead of memory or media:
+
+- Each speaker holds at most `MAWIID_AGENT_MAX_BACKLOG_S` (default 5) of audio waiting; beyond that the stale backlog is dropped (`agent/backlog.py`, metric `mawiid_caption_audio_dropped_seconds_total`).
+- A room whose speakers stay 3 s behind, or drop audio, sheds load one level every 5 s: 1 no partials, 2 no Darija model, 3 originals only (no translation). After 30 s calm it steps back down. Listeners with captions on get `{"level": n, "reduced": bool}` on `mawiid.captions.status.v1` and the caption box says so (metrics `mawiid_caption_shedding_changes_total`, `mawiid_caption_degraded_rooms`).
+- `MAWIID_LOG_FILE` also writes the worker log (INFO and up, timestamped, rotated at 50 MB x 5) to a file; `make ai` and `make dev` set it to `services/ai/data/logs/worker.log`.
+- `MAWIID_AGENT_MAX_ROOMS` caps the rooms one worker accepts (default no cap); LiveKit dispatches further rooms to other worker replicas.
+
 ### Running it
 
 From the repository root, with the backend's LiveKit settings in `.env`:

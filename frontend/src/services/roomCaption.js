@@ -6,6 +6,8 @@
 export const CAPTION_TOPIC = {
     transcription: 'lk.transcription',
     translation: 'mawiid.translation.v1',
+    // {"level": 0..3, "reduced": bool}: the worker reduced captions to keep up with the load.
+    status: 'mawiid.captions.status.v1',
 }
 
 const ATTRIBUTE = {
@@ -17,7 +19,7 @@ const ATTRIBUTE = {
 
 const TEXT_MAX_LENGTH = 2000
 
-export function createRoomCaptions(room, { onCaption } = {}) {
+export function createRoomCaptions(room, { onCaption, onStatus } = {}) {
     const handle = (translated) => async (reader, participantInfo) => {
         // Anyone can publish on a topic: only the AI worker's captions are shown.
         if (!room.remoteParticipants.get(participantInfo.identity)?.isAgent)
@@ -41,12 +43,26 @@ export function createRoomCaptions(room, { onCaption } = {}) {
         })
     }
 
+    const handleStatus = async (reader, participantInfo) => {
+        if (!room.remoteParticipants.get(participantInfo.identity)?.isAgent)
+            return
+        try {
+            const { level } = JSON.parse(await reader.readAll())
+            if (Number.isInteger(level) && level >= 0 && level <= 3)
+                onStatus?.({ level })
+        } catch {
+            // Not a status message: ignore it.
+        }
+    }
+
     room.registerTextStreamHandler(CAPTION_TOPIC.transcription, handle(false))
     room.registerTextStreamHandler(CAPTION_TOPIC.translation, handle(true))
+    room.registerTextStreamHandler(CAPTION_TOPIC.status, handleStatus)
 
     const close = () => {
         room.unregisterTextStreamHandler(CAPTION_TOPIC.transcription)
         room.unregisterTextStreamHandler(CAPTION_TOPIC.translation)
+        room.unregisterTextStreamHandler(CAPTION_TOPIC.status)
     }
 
     return { close }

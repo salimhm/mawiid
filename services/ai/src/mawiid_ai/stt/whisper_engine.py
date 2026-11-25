@@ -248,6 +248,10 @@ class WhisperStream(SttStream):
         self._candidates = candidates if len({LANGUAGES[c].model_code for c in candidates}) > 1 else []
         self._detect_min = int(settings.detect_min_s * SAMPLE_RATE)
         self._partial_language: str | None = None  # detected for the phrase being spoken
+        self._degraded = 0  # see SttStream.degrade
+
+    def degrade(self, level: int) -> None:
+        self._degraded = level
 
     def push_audio(self, audio: np.ndarray | bytes) -> list[Transcript]:
         results = [r for seg in self._vad.feed(to_float32(audio)) if (r := self._final(seg.audio, seg.start_sample))]
@@ -291,7 +295,7 @@ class WhisperStream(SttStream):
         if normalized == self._last_final and len(normalized) >= _MIN_REPEATED_FINAL_CHARS:
             return None
         self._last_final = normalized
-        if self._tell_arabic_apart and language in _ARABIC_VARIANTS:
+        if self._tell_arabic_apart and self._degraded < 2 and language in _ARABIC_VARIANTS:
             variant = self._arabic.update(text)
             if variant != language:
                 log.info("stt: speaker switched %s -> %s (from the words)", language, variant)
@@ -301,7 +305,7 @@ class WhisperStream(SttStream):
         return self._result(ResultKind.FINAL, text, language, start_sample, start_sample + len(audio), engine.name)
 
     def _maybe_partial(self) -> Transcript | None:
-        if not self._engine.partials or not self._vad.in_speech:
+        if not self._engine.partials or self._degraded >= 1 or not self._vad.in_speech:
             return None
         start = self._vad.segment_start
         if start != self._partial_segment:  # a new phrase started
@@ -336,7 +340,7 @@ class WhisperStream(SttStream):
 
     def _engine_for(self, language: str):
         dialect = getattr(self._engine, "dialect_engine", None)
-        if dialect is not None and language in _ARABIC_VARIANTS:
+        if dialect is not None and self._degraded < 2 and language in _ARABIC_VARIANTS:
             return dialect
         return self._engine
 

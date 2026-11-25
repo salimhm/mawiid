@@ -105,7 +105,7 @@ export default function MeetRoomPage() {
                 spotlightId={room.spotlightId}
                 onStopScreenShare={room.toggleScreenShare}
             />
-            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} onClear={room.clearCaptions} fullScreen={fullScreen} colorOf={colorOf} />
+            <MeetCaptions open={room.localUser.translationEnabled} captions={room.captions} level={room.captionLevel} onClear={room.clearCaptions} fullScreen={fullScreen} colorOf={colorOf} />
             <MeetControls
                 fullScreen={fullScreen}
                 setFullScreen={setFullScreen}
@@ -130,6 +130,11 @@ export default function MeetRoomPage() {
             {overlayMessage && (
                 <div className='fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-black/85 backdrop-blur-sm px-6 text-center'>
                     <p className='text-primary-white font-montserrat text-lg sm:text-2xl'>{overlayMessage}</p>
+                    {room.status === 'lost' && (
+                        <button className='rounded-full bg-[#2346FA] px-6 py-2 text-white hover:bg-blue-500 transition cursor-pointer' onClick={room.rejoin}>
+                            Rejoin
+                        </button>
+                    )}
                     {['error', 'disconnected', 'removed', 'replaced', 'ended', 'lost', 'waiting'].includes(room.status) && (
                         <button className='rounded-full border border-white/30 px-6 py-2 text-white hover:bg-white/10 transition cursor-pointer' onClick={() => navigate('/')}>
                             Back to home

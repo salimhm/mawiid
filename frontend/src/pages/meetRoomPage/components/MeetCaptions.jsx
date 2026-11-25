@@ -21,7 +21,14 @@ function turnDirection(turn) {
 // It spans the width of the video area (same side margins as the tiles) and takes its
 // own room below them: while `open` it slides open and the tiles shrink with it, so it
 // never covers anyone. In full screen it floats over the video.
-export default function MeetCaptions({ captions = [], open = false, fullScreen = false, colorOf = participantColor, onClear })
+// Shown while the AI worker reduces captions to keep up with the load (level from useRoom).
+const REDUCED_TEXT = {
+    1: 'Captions reduced: the server is busy',
+    2: 'Captions reduced: the server is busy',
+    3: 'Translations paused: the server is busy',
+}
+
+export default function MeetCaptions({ captions = [], open = false, fullScreen = false, colorOf = participantColor, onClear, level = 0 })
 {
     const listRef = useRef(null)
     const [following, setFollowing] = useState(true)
@@ -62,6 +69,11 @@ export default function MeetCaptions({ captions = [], open = false, fullScreen =
 
     const box = (
             <div className='relative rounded-2xl bg-black/20 text-white backdrop-blur-[2px] [text-shadow:0_1px_3px_rgb(0_0_0/0.9)]'>
+                {REDUCED_TEXT[level] && (
+                    <div className='absolute left-2 top-1.5 z-10 rounded-full bg-amber-500/80 px-2 py-0.5 text-xs text-black [text-shadow:none]' role='status'>
+                        {REDUCED_TEXT[level]}
+                    </div>
+                )}
                 <div className='absolute right-2 top-1.5 z-10 flex gap-1'>
                     {onClear && (
                         <button

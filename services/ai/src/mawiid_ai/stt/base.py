@@ -45,6 +45,11 @@ class SttStream(ABC):
     def close(self) -> None:  # noqa: B027 - optional hook
         """Release resources held by the stream."""
 
+    def degrade(self, level: int) -> None:  # noqa: B027 - optional hook
+        """Spend less compute while the machine is behind. Level 0: everything on; 1: no partial
+        transcripts; 2: also no Darija model for Arabic phrases. Called from the event loop while
+        another thread may be using the stream, so implementations only flip flags."""
+
 
 class SttEngine(ABC):
     """A loaded model that can open one stream per speaker."""

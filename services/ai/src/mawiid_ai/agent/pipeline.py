@@ -16,10 +16,13 @@ needs a publish function, so the whole flow is tested with fakes (tests/test_pip
 from __future__ import annotations
 
 import asyncio
+import functools
+import json
 import logging
 import time
 import uuid
 from collections.abc import AsyncIterable, Awaitable, Callable
+from concurrent.futures import Executor
 from dataclasses import dataclass, replace
 
 import numpy as np
@@ -28,9 +31,11 @@ from mawiid_ai.stt import LANGUAGES, ResultKind, SttRouter, SttStream, Transcrip
 from mawiid_ai.translation import SubtitleTranslator
 from mawiid_ai.metrics import (
     caption_active_tracks,
+    caption_degraded_rooms,
     caption_events,
     caption_processing_latency,
     caption_publish_duration,
+    caption_shedding_changes,
     caption_transcription_duration,
     caption_translation_duration,
     caption_translation_queue_duration,
@@ -41,6 +46,9 @@ log = logging.getLogger(__name__)
 # The topic and attributes LiveKit's own agents use, so LiveKit UI components can render them too.
 TRANSCRIPTION_TOPIC = "lk.transcription"
 TRANSLATION_TOPIC = "mawiid.translation.v1"
+# {"level": 0..3, "reduced": bool}, sent to everyone with captions on when the room's caption
+# quality changes to keep up with the load (see LoadShedder), and to whoever switches captions on.
+CAPTION_STATUS_TOPIC = "mawiid.captions.status.v1"
 SEGMENT_ATTRIBUTE = "lk.segment_id"
 TRACK_ATTRIBUTE = "lk.transcribed_track_id"
 FINAL_ATTRIBUTE = "lk.transcription_final"
@@ -57,6 +65,17 @@ AUTO = "auto"  # detect the language of each phrase (also when no spoken languag
 
 DEFAULT_LANGUAGE = "en-US"  # backend default for accounts without user_language
 OPEN_RETRY_S = 5.0
+
+# Load shedding, from the audio a room's speakers have waiting (agent/backlog.py). Each level
+# keeps the previous ones: 1 no partial transcripts, 2 no Darija model, 3 originals only (no
+# translation). Media is never touched; only caption quality goes down, and listeners are told.
+SHED_MAX_LEVEL = 3
+# A speaker this far behind (or audio dropped) raises the level. Not lower: one final decode
+# alone can block a speaker ~1.5 s on CPU, which is normal.
+SHED_UP_BACKLOG_S = 3.0
+SHED_UP_EVERY_S = 5.0  # ...at most this often, so one level gets time to help
+SHED_DOWN_BACKLOG_S = 0.5  # every speaker under this...
+SHED_DOWN_AFTER_S = 30.0  # ...for this long lowers the level by one
 
 # A live translation is sent once at least this many more words are stable.
 MIN_NEW_WORDS = 2
@@ -152,6 +171,8 @@ class _Speaker:
         self.unit_attributes: dict[str, str] = {}
         self.hold_timer: asyncio.Task[None] | None = None
         self.stt_s = 0.0  # duration of the last speech-to-text call that returned results
+        self.backlog_s = 0.0  # audio waiting for this speaker's speech-to-text
+        self.overflows = 0  # times its backlog overflowed and was dropped
 
 
 class RoomPipeline:
@@ -164,9 +185,19 @@ class RoomPipeline:
         clock: Callable[[], float] = time.monotonic,
         hold_s: float = HOLD_S,
         stage_timings: bool = False,
+        executor: Executor | None = None,
+        name: str = "",
     ) -> None:
-        """Without a translator (no translation model on this machine), only the originals are sent."""
+        """Without a translator (no translation model on this machine), only the originals are sent.
+        ``executor`` runs this room's speech-to-text calls (default: asyncio's shared pool). Give each
+        speech-to-text model its own, so threads waiting on one model's lock never hold up another's."""
         self._router = router
+        self._name = name or "room"  # for the log only
+        self._executor = executor
+        self._speakers: set[_Speaker] = set()
+        self.shed_level = 0
+        self._shed_changed_at = clock()
+        self._calm_since = clock()
         self._hold_s = hold_s
         self._stage_timings = stage_timings
         self._translator = translator
@@ -197,6 +228,8 @@ class RoomPipeline:
     def set_captions(self, identity: str, enabled: bool) -> None:
         """Record a participant's own captions switch."""
         if enabled:
+            if identity not in self._captions and self.shed_level:
+                self._spawn_status([identity])  # they would otherwise read reduced captions unaware
             self._captions.add(identity)
         else:
             self._captions.discard(identity)
@@ -228,9 +261,11 @@ class RoomPipeline:
     async def run_speaker(self, identity: str, track_sid: str, audio: AsyncIterable[np.ndarray | bytes]) -> None:
         """Transcribe one audio track (16 kHz mono chunks) until it ends."""
         speaker = _Speaker(identity, track_sid)
+        self._speakers.add(speaker)
         caption_active_tracks.inc()
         try:
             async for chunk in audio:
+                self._observe_backlog(speaker, audio)
                 if not self._captions:
                     await self._close(speaker)
                     continue
@@ -243,16 +278,90 @@ class RoomPipeline:
                     continue
                 await self._feed(speaker, lambda stream: stream.push_audio(chunk))
         finally:
+            self._speakers.discard(speaker)
             await self._close(speaker)
             if speaker.translating is not None:
                 await speaker.translating
             caption_active_tracks.dec()
 
+    def close(self) -> None:
+        """The room is done: stop counting it as degraded."""
+        if self.shed_level:
+            caption_degraded_rooms.dec()
+            self.shed_level = 0
+
+    # -- load shedding -----------------------------------------------------
+
+    def _observe_backlog(self, speaker: _Speaker, audio: object) -> None:
+        speaker.backlog_s = float(getattr(audio, "backlog_s", 0.0))
+        overflows = int(getattr(audio, "overflows", 0))
+        overflowed, speaker.overflows = overflows > speaker.overflows, overflows
+        if overflowed:
+            log.warning(
+                "%s: %s fell %.0f s behind, its waiting audio was dropped (%.1f s dropped so far)",
+                self._name, speaker.identity, float(getattr(audio, "max_backlog_s", 0.0)),
+                float(getattr(audio, "dropped_s", 0.0)),
+            )
+        now = self._clock()
+        worst = max(s.backlog_s for s in self._speakers)
+        if worst > SHED_DOWN_BACKLOG_S or overflowed:
+            self._calm_since = now
+        if (overflowed or worst >= SHED_UP_BACKLOG_S) and self.shed_level < SHED_MAX_LEVEL:
+            if now - self._shed_changed_at >= SHED_UP_EVERY_S or self.shed_level == 0:
+                self._set_shed_level(self.shed_level + 1)
+        elif (
+            self.shed_level
+            and now - self._calm_since >= SHED_DOWN_AFTER_S
+            and now - self._shed_changed_at >= SHED_DOWN_AFTER_S
+        ):
+            self._set_shed_level(self.shed_level - 1)
+
+    def _set_shed_level(self, level: int) -> None:
+        previous, self.shed_level = self.shed_level, level
+        self._shed_changed_at = self._clock()
+        if previous == 0:
+            caption_degraded_rooms.inc()
+        elif level == 0:
+            caption_degraded_rooms.dec()
+        caption_shedding_changes.inc({"level": str(level)})
+        worst = max((s.backlog_s for s in self._speakers), default=0.0)
+        log.warning(
+            "%s: captions %s to level %d to keep up with the load (worst speaker backlog %.1f s)",
+            self._name, "reduced" if level > previous else "restored", level, worst,
+        )
+        for speaker in self._speakers:
+            if speaker.stream is not None:
+                speaker.stream.degrade(level)
+        if self._captions:
+            self._spawn_status(sorted(self._captions))
+
+    def _spawn_status(self, identities: list[str]) -> None:
+        text = json.dumps({"level": self.shed_level, "reduced": self.shed_level > 0})
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.create_task(self._publish_status(text, identities))
+
+    async def _publish_status(self, text: str, identities: list[str]) -> None:
+        try:
+            await self._publish(text, CAPTION_STATUS_TOPIC, {}, identities)
+        except Exception:
+            log.exception("publishing the caption status failed")
+
+    async def _stt(self, fn: Callable[..., object], *args: object):
+        """Run a blocking speech-to-text call on this room's executor."""
+        if self._executor is None:
+            return await asyncio.to_thread(fn, *args)
+        return await asyncio.get_running_loop().run_in_executor(self._executor, functools.partial(fn, *args))
+
     async def _open(self, speaker: _Speaker, language: str, detect: bool) -> bool:
         if self._clock() < speaker.retry_at:
             return False
         try:
-            speaker.stream = await asyncio.to_thread(self._router.open_stream, language, detect)
+            speaker.stream = await self._stt(self._router.open_stream, language, detect)
+            if self.shed_level:
+                speaker.stream.degrade(self.shed_level)
         except Exception:
             log.exception("could not open speech-to-text for %s (%s)", speaker.identity, language)
             speaker.retry_at = self._clock() + OPEN_RETRY_S
@@ -266,7 +375,7 @@ class RoomPipeline:
         if stream is not None:
             await self._feed(speaker, lambda _: stream.flush(), stream)
             try:
-                await asyncio.to_thread(stream.close)
+                await self._stt(stream.close)
             except Exception:
                 log.exception("closing speech-to-text for %s failed", speaker.identity)
         self._close_unit(speaker)  # the speaker stopped or changed language: nothing more joins it
@@ -280,7 +389,7 @@ class RoomPipeline:
         try:
             # Whisper blocks for a whole phrase; other speakers and the room keep running meanwhile.
             started = time.monotonic()
-            results = await asyncio.to_thread(op, stream)
+            results = await self._stt(op, stream)
             if results:
                 speaker.stt_s = time.monotonic() - started
         except Exception:
@@ -443,13 +552,21 @@ class RoomPipeline:
         # Listeners of the spoken language read the original.
         groups = {language: ids for language, ids in self.listeners().items() if language != transcript.language}
         translations: dict[str, str] = {}
-        if self._translator is not None and groups:
+        if groups and self.shed_level >= SHED_MAX_LEVEL and self._translator is not None:
+            # Shedding load: no translation, but the original beats nothing (finals only).
+            if not live:
+                readers = sorted(identity for ids in groups.values() for identity in ids)
+                await self._send(
+                    transcript.text, TRANSCRIPTION_TOPIC, attributes, readers,
+                    transcript.kind, self._source_ended_at(speaker, transcript),
+                )
+        elif self._translator is not None and groups:
             started = time.monotonic()
             try:
                 subtitles = await asyncio.to_thread(self._translator.translate, transcript, list(groups))
             except Exception:
                 caption_translation_duration.observe(
-                    self._clock() - started_at, {"engine": "unknown", "outcome": "error"}
+                    time.monotonic() - started, {"engine": "unknown", "outcome": "error"}
                 )
                 caption_events.inc({"component": "translation", "outcome": "error"})
                 log.exception("translation failed for %s", speaker.identity)

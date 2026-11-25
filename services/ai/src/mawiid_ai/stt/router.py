@@ -88,6 +88,7 @@ class FailoverStream(SttStream):
         self._replay_samples = 0
         self._samples_seen = 0
         self._switch_back_to: int | None = None
+        self._degraded = 0
         self._index = self._first_available(0)
         self._stream = self._open(self._index, time_offset=0.0)
 
@@ -109,6 +110,10 @@ class FailoverStream(SttStream):
 
     def close(self) -> None:
         self._stream.close()
+
+    def degrade(self, level: int) -> None:
+        self._degraded = level
+        self._stream.degrade(level)
 
     # -- internals ---------------------------------------------------------
 
@@ -198,7 +203,10 @@ class FailoverStream(SttStream):
 
     def _open(self, index: int, time_offset: float) -> SttStream:
         engine = self._router.engines[self._chain[index]]
-        return engine.open_stream(self._language, time_offset=time_offset, detect=self._detect)
+        stream = engine.open_stream(self._language, time_offset=time_offset, detect=self._detect)
+        if self._degraded:
+            stream.degrade(self._degraded)
+        return stream
 
     def _first_available(self, start: int, required: bool = True, exclude: int | None = None) -> int | None:
         for i in range(start, len(self._chain)):

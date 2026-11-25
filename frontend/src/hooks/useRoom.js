@@ -57,6 +57,12 @@ function localStatus(reason) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// After LiveKit gives up reconnecting on its own, the page joins again with a fresh token
+// (the one it joined with may have expired). Delays between attempts, then a "Rejoin" button.
+const REJOIN_DELAYS_MS = [0, 1000, 2000, 4000, 8000, 10000, 10000, 10000]
+// Answers from POST /room/join that another attempt cannot change.
+const REJOIN_FATAL = new Set([401, 403, 404, 410])
+
 const userIdOf = (identity, attributes) =>
     Number(attributes[ATTRIBUTE.userId]) || Number(/^user_(\d+)$/.exec(identity)?.[1]) || null
 
@@ -170,6 +176,10 @@ export function useRoom(roomUid, {
     const [reactions, setReactions] = useState([])
     const [settings, setSettings] = useState({ locked: false, lobby: false })
     const [captions, setCaptions] = useState([])
+    // The AI worker reduces captions when it cannot keep up: 0 normal, 1-2 fewer live
+    // previews, 3 originals only (no translation). See services/ai agent/pipeline.py.
+    const [captionLevel, setCaptionLevel] = useState(0)
+    const rejoinRef = useRef(null)
     // Segment ids the reader cleared: a late update for one of them must not bring it back.
     const clearedCaptionsRef = useRef(new Set())
     const [messages, setMessages] = useState([])
@@ -377,7 +387,13 @@ export function useRoom(roomUid, {
             onReaction: (participant, event) => showReaction(participant.name || participant.identity, event),
         })
         signalRef.current = signal
-        const captionFeed = createRoomCaptions(room, { onCaption: showCaption })
+        const captionFeed = createRoomCaptions(room, {
+            onCaption: showCaption,
+            onStatus: ({ level }) => {
+                if (!cancelled)
+                    setCaptionLevel(level)
+            },
+        })
 
         const onMetadata = (metadata) => {
             const next = readSettings(metadata)
@@ -437,6 +453,77 @@ export function useRoom(roomUid, {
             refresh()
         }
 
+        // What this person was sending, to turn it back on after a rejoin. Turning the mic or
+        // camera off mutes it; unpublishing is left out because a disconnect unpublishes
+        // everything, which is not their choice.
+        const media = { mic: initialMicOn, cam: initialCamOn }
+        const rememberMedia = () => {
+            if (room.state !== 'connected')
+                return
+            media.mic = room.localParticipant.isMicrophoneEnabled
+            media.cam = room.localParticipant.isCameraEnabled
+        }
+
+        // One rejoin at a time, however many disconnects or clicks ask for it.
+        let rejoining = null
+        const rejoin = () => {
+            if (rejoining || cancelled)
+                return rejoining
+            rejoining = (async () => {
+                setStatus('reconnecting')
+                notify.warning({
+                    id: 'room-connection-state',
+                    title: 'Connection interrupted',
+                    message: 'Rejoining the meeting…',
+                    dismissAfter: 0,
+                    showDismissButton: false,
+                    allowDuplicate: true,
+                })
+                for (const delay of REJOIN_DELAYS_MS) {
+                    await sleep(delay)
+                    if (cancelled)
+                        return
+                    try {
+                        // A fresh token every time: the first one may have expired.
+                        const joined = await join()
+                        if (cancelled || !joined)
+                            return
+                        await room.connect(reachableUrl(joined.server_url), joined.participant_token)
+                        if (cancelled)
+                            return
+                        addRoomEvent('Reconnected')
+                        notify.update('room-connection-state', {
+                            status: 'success',
+                            title: 'Connection restored',
+                            message: 'Rejoined the meeting.',
+                            dismissible: true,
+                            showDismissButton: true,
+                            dismissAfter: 3000,
+                        })
+                        await afterConnect(joined, media)
+                        catchUpMessages().catch(() => {})
+                        return
+                    } catch (err) {
+                        if (err instanceof ApiError && REJOIN_FATAL.has(err.status)) {
+                            if (!cancelled) {
+                                setStatus('error')
+                                setError(errorMessage(err))
+                            }
+                            notify.dismiss('room-connection-state')
+                            return
+                        }
+                    }
+                }
+                notify.dismiss('room-connection-state')
+                if (!cancelled)
+                    setStatus('lost')  // the page offers a "Rejoin" button
+            })().finally(() => {
+                rejoining = null
+            })
+            return rejoining
+        }
+        rejoinRef.current = rejoin
+
         room
             .on(RoomEvent.ParticipantConnected, onParticipantConnected)
             .on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected)
@@ -477,9 +564,17 @@ export function useRoom(roomUid, {
                 catchUpMessages().catch(() => {})
             })
             .on(RoomEvent.Disconnected, (reason) => {
+                if (!cancelled && localStatus(reason) === 'lost') {
+                    rejoin()
+                    return
+                }
                 notify.dismiss('room-connection-state')
                 onDisconnected(reason)
             })
+            .on(RoomEvent.Connected, rememberMedia)
+            .on(RoomEvent.LocalTrackPublished, rememberMedia)
+            .on(RoomEvent.TrackMuted, rememberMedia)
+            .on(RoomEvent.TrackUnmuted, rememberMedia)
 
         const join = async () => {
             while (!cancelled) {
@@ -510,7 +605,6 @@ export function useRoom(roomUid, {
             if (cancelled)
                 return
 
-            setStatus('connected')
             addRoomEvent('You joined the meeting')
             api.listMessages(roomUid, { take: MESSAGE_PAGE })
                 .then((page) => {
@@ -524,6 +618,12 @@ export function useRoom(roomUid, {
                     if (!cancelled)
                         setNotice('Unable to load the chat history')
                 })
+            await afterConnect(joined, { mic: initialMicOn, cam: initialCamOn })
+        }
+
+        // Shared by the first join and every rejoin.
+        const afterConnect = async (joined, { mic, cam }) => {
+            setStatus('connected')
             setSettings(readSettings(room.metadata) || toSettings(joined.room || {}))
             // A new connection starts with captions off: bring back this person's own choice.
             if (localStorage.getItem(CAPTIONS_KEY) === 'true')
@@ -532,14 +632,14 @@ export function useRoom(roomUid, {
 
             if (room.localParticipant.permissions?.canPublish === false)
                 return
-            if (initialCamOn) {
+            if (cam) {
                 try {
                     await room.localParticipant.setCameraEnabled(true)
                 } catch {
                     setNotice('Unable to access camera')
                 }
             }
-            if (initialMicOn) {
+            if (mic) {
                 try {
                     await room.localParticipant.setMicrophoneEnabled(true)
                 } catch {
@@ -552,6 +652,7 @@ export function useRoom(roomUid, {
         setMessages([])
         setRoomEvents([])
         setCaptions([])
+        setCaptionLevel(0)
         setHasOlderMessages(false)
         setJoinedAtMessageId(0)
         setSpotlightId(null)
@@ -569,6 +670,7 @@ export function useRoom(roomUid, {
             signal.close()
             captionFeed.close()
             signalRef.current = null
+            rejoinRef.current = null
             room.removeAllListeners()
             room.disconnect()
             audioElements.forEach((element) => element.remove())
@@ -761,6 +863,10 @@ export function useRoom(roomUid, {
 
     const clearNotice = useCallback(() => setNotice(''), [])
 
+    const rejoin = useCallback(() => {
+        rejoinRef.current?.()
+    }, [])
+
     return {
         status,
         error,
@@ -781,6 +887,7 @@ export function useRoom(roomUid, {
         loadOlderMessages,
         settings,
         captions,
+        captionLevel,
         clearCaptions,
         spotlightId,
         isStaff: STAFF_ROLES.includes(localUser.role),
@@ -798,5 +905,6 @@ export function useRoom(roomUid, {
         admit: (userId) => answerKnock(userId, true),
         deny: (userId) => answerKnock(userId, false),
         leave,
+        rejoin,
     }
 }

@@ -75,5 +75,7 @@ describe('lib_livekit_ensure', () => {
     const [with_translation, without_translation] = create_room.mock.calls.map(([options]) => options)
     expect(with_translation?.agents?.map((agent) => agent.agentName)).toEqual([agent_name])
     expect(without_translation?.agents).toBeUndefined()
+    // The caption agent gets a seat of its own: people keep all 12.
+    expect(with_translation?.maxParticipants).toBe(13)
   })
 })

@@ -68,10 +68,10 @@ class Counter:
         self._values: dict[tuple[str, ...], float] = defaultdict(float)
         self._lock = threading.Lock()
 
-    def inc(self, labels: Mapping[str, str] | None = None) -> None:
+    def inc(self, labels: Mapping[str, str] | None = None, amount: float = 1.0) -> None:
         values = tuple((labels or {}).get(label, "") for label in self.label_names)
         with self._lock:
-            self._values[values] += 1
+            self._values[values] += amount
 
     def render(self) -> list[str]:
         rows = [f"# HELP {self.name} {self.description}", f"# TYPE {self.name} counter"]
@@ -96,6 +96,10 @@ class Gauge:
     def dec(self) -> None:
         with self._lock:
             self._value = max(0, self._value - 1)
+
+    def set(self, value: float) -> None:
+        with self._lock:
+            self._value = value
 
     def render(self) -> list[str]:
         with self._lock:
@@ -137,6 +141,23 @@ caption_active_tracks = Gauge(
     "mawiid_caption_active_tracks",
     "Audio tracks currently handled by the caption pipeline.",
 )
+caption_audio_dropped_seconds = Counter(
+    "mawiid_caption_audio_dropped_seconds_total",
+    "Speaker audio discarded because speech-to-text was behind (bounded backlog overflow).",
+)
+caption_shedding_changes = Counter(
+    "mawiid_caption_shedding_changes_total",
+    "Load-shedding level changes of a room, by the level entered (0 normal .. 3 originals only).",
+    ("level",),
+)
+caption_degraded_rooms = Gauge(
+    "mawiid_caption_degraded_rooms",
+    "Rooms whose captions are currently reduced to keep up with the load.",
+)
+caption_active_rooms = Gauge(
+    "mawiid_caption_active_rooms",
+    "Rooms this worker is captioning.",
+)
 
 _metrics = (
     caption_transcription_duration,
@@ -146,6 +167,10 @@ _metrics = (
     caption_processing_latency,
     caption_events,
     caption_active_tracks,
+    caption_audio_dropped_seconds,
+    caption_shedding_changes,
+    caption_degraded_rooms,
+    caption_active_rooms,
 )
 
 

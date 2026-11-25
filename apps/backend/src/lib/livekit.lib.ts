@@ -107,7 +107,9 @@ export async function lib_livekit_ensure(room: {
       name: room.room_uid,
       emptyTimeout: 300,
       departureTimeout: 20,
-      maxParticipants: room.room_max_participants,
+      // People are capped by room_max_participants in room.service join; the extra seat is the
+      // caption agent's, so it never takes a person's place (it can be dispatched at any time).
+      maxParticipants: room.room_max_participants > 0 ? room.room_max_participants + 1 : 0,
       metadata: room.room_metadata,
       agents: room.room_translation_enabled ? [lib_livekit_translator(room.room_uid)] : undefined,
     }),

@@ -36,6 +36,10 @@ class FakeStream(SttStream):
         self.chunks = 0
         self.phrases = 0
         self.closed = False
+        self.degraded = 0
+
+    def degrade(self, level):
+        self.degraded = level
 
     def push_audio(self, audio):
         if self.router.crash:

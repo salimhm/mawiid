@@ -5,6 +5,8 @@ export const room_topic = {
   reaction: 'mawiid.reaction.v1',
   transcription: 'lk.transcription',
   translation: 'mawiid.translation.v1',
+  // {"level": 0..3, "reduced": bool}: the AI worker reduced captions to keep up with the load.
+  caption_status: 'mawiid.captions.status.v1',
 } as const
 
 export const room_attribute = {

@@ -32,6 +32,7 @@ apps/desktop/src-tauri/target/
 
 # Local runtime data
 
+services/ai/data/logs/
 models/
 *.db
 *.db-shm
