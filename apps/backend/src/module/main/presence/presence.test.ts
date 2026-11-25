@@ -21,6 +21,7 @@ function create_fake_redis() {
   };
   const redis = {
     async set(key: string, value: string, ...options: (string | number)[]) {
+      if (options.includes('NX') && values.has(key)) return null;
       values.set(key, value);
       const ex = options.indexOf('EX');
       if (ex >= 0) ttls.set(key, Number(options[ex + 1]));

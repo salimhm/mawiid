@@ -84,7 +84,15 @@ class MadladEngine(TranslationEngine):
         self.device, self.compute_type = _resolve_device(settings)
         log.info("loading madlad from %s on %s (%s)", path, self.device, self.compute_type)
         self._translator = ctranslate2.Translator(
-            str(path), device=self.device, compute_type=self.compute_type, intra_threads=settings.cpu_threads
+            str(path),
+            device=self.device,
+            compute_type=self.compute_type,
+            intra_threads=settings.cpu_threads,
+            **(
+                {"device_index": settings.device_index or [0], "inter_threads": max(1, settings.inter_threads)}
+                if self.device == "cuda"
+                else {}
+            ),
         )
         self._sp = sentencepiece.SentencePieceProcessor(model_file=str(path / "spiece.model"))
         # CTranslate2 handles concurrent calls, but on CPU they just fight over cores.

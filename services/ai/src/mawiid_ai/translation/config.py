@@ -35,6 +35,12 @@ class MadladSettings:
     device: str = field(default_factory=lambda: _env("DEVICE", "auto"))  # auto | cpu | cuda
     compute_type: str = field(default_factory=lambda: _env("COMPUTE_TYPE", "default"))
     cpu_threads: int = field(default_factory=lambda: int(_env("CPU_THREADS", "0")))
+    # GPU only. One model copy per listed GPU ("0,1"), each translating inter_threads batches at once.
+    # With the defaults every room's translations queue on one copy on GPU 0.
+    device_index: list[int] = field(
+        default_factory=lambda: [int(part) for part in _env("DEVICE_INDEX", "0").split(",") if part.strip()]
+    )
+    inter_threads: int = field(default_factory=lambda: int(_env("INTER_THREADS", "1")))
     # Greedy decoding scored the same as beam 4 on FLEURS (COMET 0.857 vs 0.856) and is faster.
     beam_size: int = 1
 
