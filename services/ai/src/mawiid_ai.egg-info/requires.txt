@@ -21,6 +21,3 @@ pytest>=8.0
 
 [mic]
 sounddevice>=0.4.6
-
-[voxtral]
-websockets<17,>=15

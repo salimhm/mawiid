@@ -816,3 +816,14 @@ describe('POST /auth/password/reset', () => {
     expect((await refresh(cookie)).status).toBe(200)
   })
 })
+
+describe('POST /auth/login failed-attempt limit', () => {
+  test('a parallel burst of guesses cannot get past the limit while passwords are hashed', async () => {
+    const { request, login, body } = create_fixture()
+    await request()
+    const responses = await Promise.all(Array.from({ length: 30 }, () => login(body.user_email, 'Wrong-password-123!')))
+    const checked = responses.filter((response) => response.status !== 429)
+    expect(checked.length).toBe(10)
+    expect((await login(body.user_email, 'Wrong-password-123!')).status).toBe(429)
+  })
+})

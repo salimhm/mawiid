@@ -140,6 +140,11 @@ class WhisperEngine(SttEngine):
             device=self.device,
             compute_type=self.compute_type,
             cpu_threads=settings.cpu_threads or (_default_cpu_threads() if self.device == "cpu" else 0),
+            **(
+                {"device_index": settings.device_index or [0], "num_workers": max(1, settings.num_workers)}
+                if self.device == "cuda"
+                else {}
+            ),
         )
         # CTranslate2 handles concurrent calls, but on CPU they just fight over cores.
         self._lock = threading.Lock() if self.device == "cpu" else None

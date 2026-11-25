@@ -1,7 +1,10 @@
 README.md
 pyproject.toml
 src/mawiid_ai/__init__.py
+<<<<<<< HEAD
 src/mawiid_ai/metrics.py
+=======
+>>>>>>> security_test
 src/mawiid_ai.egg-info/PKG-INFO
 src/mawiid_ai.egg-info/SOURCES.txt
 src/mawiid_ai.egg-info/dependency_links.txt
@@ -20,7 +23,6 @@ src/mawiid_ai/stt/factory.py
 src/mawiid_ai/stt/postprocess.py
 src/mawiid_ai/stt/router.py
 src/mawiid_ai/stt/vad.py
-src/mawiid_ai/stt/voxtral_engine.py
 src/mawiid_ai/stt/whisper_engine.py
 src/mawiid_ai/translation/__init__.py
 src/mawiid_ai/translation/base.py
@@ -35,7 +37,6 @@ tests/test_darija_translation.py
 tests/test_dialect.py
 tests/test_language_detection.py
 tests/test_madlad_integration.py
-tests/test_metrics.py
 tests/test_pipeline.py
 tests/test_postprocess.py
 tests/test_router.py
@@ -46,7 +47,6 @@ tests/test_translation_postprocess.py
 tests/test_translator.py
 tests/test_uploader.py
 tests/test_vad.py
-tests/test_voxtral_engine.py
 tests/test_whisper_context.py
 tests/test_whisper_integration.py
 tests/test_whisper_padding.py

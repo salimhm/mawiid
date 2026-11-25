@@ -67,10 +67,11 @@ def normalize_for_compare(text: str) -> str:
     return " ".join(_PUNCTUATION.sub("", text.lower()).split())
 
 
-# Fast speech is about 15-20 characters a second with spaces, in every enabled language. The
-# fixed allowance covers short phrases, where the voice detector's cut is barely longer than the
-# words ("D'accord, merci." in 0.6 s).
-MAX_CHARS_PER_SECOND = 20.0
+# Conversational speech is about 15-20 characters a second with spaces, but fast read speech
+# reaches 24 (FLEURS fr-FR 1857: 144 correct characters in 6.0 s, dropped at 20). Made-up text
+# runs at several times that, so 30 still catches it. The fixed allowance covers short phrases,
+# where the voice detector's cut is barely longer than the words ("D'accord, merci." in 0.6 s).
+MAX_CHARS_PER_SECOND = 30.0
 SHORT_PHRASE_ALLOWANCE_CHARS = 15
 _MIN_PLAUSIBILITY_AUDIO_S = 0.2
 

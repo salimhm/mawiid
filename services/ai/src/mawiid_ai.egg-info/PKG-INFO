@@ -17,8 +17,6 @@ Requires-Dist: soundfile>=0.12; extra == "bench"
 Requires-Dist: sacrebleu>=2.4; extra == "bench"
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0; extra == "dev"
-Provides-Extra: voxtral
-Requires-Dist: websockets<17,>=15; extra == "voxtral"
 Provides-Extra: convert
 Requires-Dist: torch>=2.2; extra == "convert"
 Requires-Dist: transformers<5,>=4.40; extra == "convert"

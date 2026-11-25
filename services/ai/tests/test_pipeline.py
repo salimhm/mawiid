@@ -105,7 +105,9 @@ class Sent:
 
 
 class Room:
-    def __init__(self, translate: bool = True, partials: bool = False, router=None, hold_s: float = 60.0) -> None:
+    def __init__(
+        self, translate: bool = True, partials: bool = False, router=None, hold_s: float = 60.0, stage_timings: bool = False
+    ) -> None:
         self.router = router or FakeRouter()
         self.engine = FakeEngine()
         settings = TranslationSettings(engines=["fake"], partials=partials)
@@ -113,7 +115,8 @@ class Room:
         self.sent: list[Sent] = []
         self.segments: list[Segment] = []
         self.pipeline = RoomPipeline(
-            self.router, self.translator, self.publish, self.segments.append, clock=lambda: 0.0, hold_s=hold_s
+            self.router, self.translator, self.publish, self.segments.append, clock=lambda: 0.0, hold_s=hold_s,
+            stage_timings=stage_timings,
         )
 
         # Everyone has captions on unless a test says otherwise.
@@ -622,3 +625,24 @@ def test_changing_language_does_not_resend_earlier_subtitles():
     # The next phrase comes in the new language.
     room.speak("user_1", PHRASE_CHUNKS)
     assert [(s.text, s.identities) for s in room.topic(TRANSLATION_TOPIC)] == [("<en-US>fr-FR final 1.", ["user_2"])]
+
+
+def test_stage_timings_ride_on_final_translations_only_when_switched_on():
+    timing = (pipeline.STT_MS_ATTRIBUTE, pipeline.QUEUE_MS_ATTRIBUTE, pipeline.MT_MS_ATTRIBUTE)
+    for enabled in (False, True):
+        room = Room(partials=True, stage_timings=enabled)
+        room.router.punctuate = True
+        room.pipeline.set_language("user_1", "fr")
+        room.pipeline.set_language("user_2", "en")
+
+        room.speak("user_1", PHRASE_CHUNKS)
+
+        translations = room.topic(TRANSLATION_TOPIC)
+        finals = [sent for sent in translations if sent.attributes[FINAL_ATTRIBUTE] == "true"]
+        assert finals
+        for sent in translations:
+            has = [key in sent.attributes for key in timing]
+            final = sent.attributes[FINAL_ATTRIBUTE] == "true"
+            assert has == [enabled and final] * 3
+            if enabled and final:
+                assert all(int(sent.attributes[key]) >= 0 for key in timing)

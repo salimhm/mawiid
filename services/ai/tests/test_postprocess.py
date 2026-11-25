@@ -46,6 +46,10 @@ def test_text_far_too_long_for_its_audio_is_made_up():
     assert not implausible_length("D'accord, merci.", 0.6)
     assert not implausible_length("x" * 200, 10.0)
     assert not implausible_length("x" * 200, 0.1)  # too short to judge
+    # fast read French (FLEURS fr-FR 1857), transcribed right: not made up
+    fast = ("Il ajoutait qu'on ne devrait cependant pas leur demander d'assumer des obligations "
+            "qui dépassent leur stade de développement, de responsabilité.")
+    assert not implausible_length(fast, 5.98)
 
 
 from mawiid_ai.stt.postprocess import collapse_repeats

@@ -1,0 +1,10 @@
+t_s,room,listener,speaker,topic,language,segment_id,clip_id,step,latency_s,chars,stt_s,queue_s,mt_s
+31.869,loadtest-5ee41c-0,loadbot_7,loadbot_4,mawiid.translation.v1,ar-SA,SG_50644a6410e9,,,,21,3.169,0.000,3.531
+62.459,loadtest-5ee41c-0,loadbot_6,loadbot_4,lk.transcription,en-US,SG_50644a6410e9,2,0,9.426,21,,,
+62.488,loadtest-5ee41c-0,loadbot_4,loadbot_4,mawiid.translation.v1,ar-SA,SG_50644a6410e9,,,,21,3.169,0.000,3.531
+66.595,loadtest-5ee41c-0,loadbot_5,loadbot_4,mawiid.translation.v1,fr-FR,SG_50644a6410e9,2,0,13.563,24,3.169,0.000,3.531
+76.764,loadtest-5ee41c-0,loadbot_8,loadbot_4,mawiid.translation.v1,fr-FR,SG_50644a6410e9,,,,24,3.169,0.000,3.531
+78.449,loadtest-5ee41c-0,loadbot_1,loadbot_4,mawiid.translation.v1,ar-SA,SG_50644a6410e9,,,,21,3.169,0.000,3.531
+79.539,loadtest-5ee41c-0,loadbot_0,loadbot_4,lk.transcription,en-US,SG_50644a6410e9,,,,21,,,
+80.207,loadtest-5ee41c-0,loadbot_9,loadbot_4,lk.transcription,en-US,SG_50644a6410e9,,,,21,,,
+84.231,loadtest-5ee41c-0,loadbot_3,loadbot_4,lk.transcription,en-US,SG_50644a6410e9,,,,21,,,
