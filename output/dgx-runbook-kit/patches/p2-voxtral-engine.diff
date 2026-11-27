@@ -1,0 +1,631 @@
+diff --git a/services/ai/README.md b/services/ai/README.md
+index ee42aea..af0b1f8 100644
+--- a/services/ai/README.md
++++ b/services/ai/README.md
+@@ -34,11 +34,53 @@ MAWIID_STT_DARIJA_MODEL=data/models/whisper-darija-medium-ct2 ...  # pick anothe
+ 
+ `make ai-models-darija` runs the `turbo` conversion if the model is missing. Without a converted model the engine is skipped, the worker logs an error and Darija goes to stock Whisper, which transcribes it as Standard Arabic. Output is Arabic script. Test clips come from DVoice v2.0 and adiren7/darija_speech_to_text (`fetch_samples.py --languages ar-MA`); the benchmark scores each source separately and also reports CER, because Darija has no standard spelling and WER counts every spelling variant as an error.
+ 
++### Voxtral Arabic trial
++
++Install the worker's optional client with `pip install -e '.[voxtral]'`. Run
++Voxtral in a separate environment on the GPU server and expose its realtime
++endpoint on loopback. For example, install `vllm==0.17.1` and
++`mistral-common[audio]` in that environment, then run:
++
++```bash
++vllm serve mistralai/Voxtral-Mini-4B-Realtime-Arabic \
++  --revision 7c60cf2acb1ceb823efe937ddbc88e5e7b6e7dc2 \
++  --host 127.0.0.1 --port 8000 --tokenizer-mode mistral \
++  --config-format mistral --load-format mistral --enforce-eager \
++  --gpu-memory-utilization 0.45 --max-model-len 4096 --max-num-seqs 8
++```
++
++The memory setting is for the 40 GB A100 trial. Select a GPU explicitly when
++Whisper and MADLAD are running on the same server.
++
++Set `MAWIID_STT_VOXTRAL_ENABLED=1` on the trial worker. Its defaults are
++`MAWIID_STT_VOXTRAL_URL=ws://127.0.0.1:8000/v1/realtime` and
++`MAWIID_STT_VOXTRAL_MODEL=mistralai/Voxtral-Mini-4B-Realtime-Arabic`.
++Use `LIVEKIT_TRANSLATOR_AGENT=mawiid-translator-voxtral` and dispatch that
++agent only to test rooms on the existing LiveKit server. Use one caption
++agent per room. Select **I speak: Darija** to exercise Voxtral. Auto uses
++Whisper language detection. All translation still goes through MADLAD.
++
++Run the same Darija clips once with `MAWIID_STT_VOXTRAL_ENABLED=0`, then again
++with it set to `1`. The STT benchmark's JSON records the engine used per clip.
++The pipeline benchmark shows the engine with `-v`.
++
++```bash
++python scripts/benchmark.py --samples path/to/samples --languages ar-MA \
++  --fixed-language --realtime --partials --json darija-results.json
++python scripts/pipeline_benchmark.py --samples path/to/samples --languages ar-MA \
++  --fixed-language -v
++```
++
++The router uses Whisper when Voxtral disconnects and replays unfinalized
++audio. For a quality rollback, dispatch new test rooms to
++`mawiid-translator` and let the trial rooms finish. To switch the trial worker
++itself to Whisper, restart that worker with `MAWIID_STT_VOXTRAL_ENABLED=0`.
++
+ ### How it works
+ 
+ - `vad.py`: Silero voice detection (bundled with faster-whisper, no PyTorch) cuts the stream into phrases at 500 ms pauses, max 6 s each, so non-stop speech still shows up.
+ - `whisper_engine.py`: faster-whisper transcribes each phrase (finals) and the phrase so far, up to once per second (partials), using at most half the time so a slow machine shows fewer partials instead of falling behind. On a CPU it encodes the phrase plus 3 s of silence (at least 10 s) instead of Whisper's fixed 30 s, which is 3-4 times faster.
+-- `router.py`: each language has an ordered engine list in `config.py` (`voxtral`, then `whisper`). Engines that aren't loaded are skipped. If the active engine crashes, or is too slow (above 3 s per call) while a backup exists, the stream switches engines and replays the audio since the last final, so no speech is lost. The failed engine is skipped by all streams for 60 s, then retried at the next phrase boundary.
++- `router.py` tries the loaded engines in the configured order for each spoken language. If an engine fails, the stream switches to a backup and replays the audio since the last final. The router also switches when a call takes more than 3 s and falls behind real time. It skips the failed engine for 60 s and can retry it at the next phrase boundary.
+ - `postprocess.py`: whitespace clean-up and Simplified/Traditional Chinese conversion (OpenCC).
+ 
+ Settings live in `config.py`; the Whisper ones can be overridden with environment variables: `MAWIID_STT_WHISPER_MODEL` (default `small`), `MAWIID_STT_WHISPER_DEVICE` (`auto`/`cpu`/`cuda`), `MAWIID_STT_WHISPER_COMPUTE_TYPE`, `MAWIID_STT_WHISPER_CPU_THREADS`, `MAWIID_STT_PARTIALS` (`auto`/`1`/`0`; auto = only with a GPU, a CPU can't keep up), `MAWIID_STT_PARTIAL_INTERVAL_S`, `MAWIID_STT_DETECT_LANGUAGE` (`1`/`0`, see below).
+diff --git a/services/ai/pyproject.toml b/services/ai/pyproject.toml
+index b8b1408..fef7a4b 100644
+--- a/services/ai/pyproject.toml
++++ b/services/ai/pyproject.toml
+@@ -16,6 +16,7 @@ dependencies = [
+ mic = ["sounddevice>=0.4.6"]
+ bench = ["jiwer>=3.0", "soundfile>=0.12", "sacrebleu>=2.4"]
+ dev = ["pytest>=8.0"]
++voxtral = ["websockets>=15,<17"]
+ # One-time model conversion (scripts/convert_translation_model.py); install torch's CPU build first.
+ convert = ["torch>=2.2", "transformers>=4.40,<5", "protobuf>=4", "peft>=0.14"]
+ 
+diff --git a/services/ai/scripts/benchmark.py b/services/ai/scripts/benchmark.py
+index c36b8a9..e241ed0 100644
+--- a/services/ai/scripts/benchmark.py
++++ b/services/ai/scripts/benchmark.py
+@@ -68,8 +68,8 @@ def load_audio(path: Path) -> np.ndarray:
+     return audio
+ 
+ 
+-def run_clip(router, language: str, audio: np.ndarray) -> dict:
+-    stream = router.open_stream(language)
++def run_clip(router, language: str, audio: np.ndarray, *, detect: bool = True, realtime: bool = False) -> dict:
++    stream = router.open_stream(language, detect=detect)
+     padded = np.concatenate([audio, np.zeros(int(TAIL_SILENCE_S * SAMPLE_RATE), dtype=np.float32)])
+     finals: list[str] = []
+     final_delays: list[float] = []
+@@ -78,7 +78,14 @@ def run_clip(router, language: str, audio: np.ndarray) -> dict:
+     engines: set[str] = set()
+ 
+     started = time.perf_counter()
++    pacing_time = 0.0
+     for i in range(0, len(padded), CHUNK):
++        if realtime:
++            sleep_started = time.perf_counter()
++            wait = started + min(i + CHUNK, len(padded)) / SAMPLE_RATE - sleep_started
++            if wait > 0:
++                time.sleep(wait)
++                pacing_time += time.perf_counter() - sleep_started
+         call_start = time.perf_counter()
+         results = stream.push_audio(padded[i : i + CHUNK])
+         took = time.perf_counter() - call_start
+@@ -93,7 +100,8 @@ def run_clip(router, language: str, audio: np.ndarray) -> dict:
+     for r in stream.flush():
+         finals.append(r.text)
+         engines.add(r.engine)
+-    elapsed = time.perf_counter() - started
++    stream.close()
++    elapsed = time.perf_counter() - started - pacing_time
+ 
+     return {
+         "hypothesis": " ".join(finals),
+@@ -109,6 +117,8 @@ def main() -> int:
+     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+     parser.add_argument("--samples", type=Path, default=SAMPLES_DIR)
+     parser.add_argument("--languages", nargs="+")
++    parser.add_argument("--fixed-language", action="store_true", help="treat the clip language as an explicit spoken-language selection")
++    parser.add_argument("--realtime", action="store_true", help="pace audio at meeting speed for streaming engines")
+     parser.add_argument("--model", help="whisper model size, e.g. small, medium, large-v3-turbo")
+     parser.add_argument("--beam", type=int, help="beam size for final results (default 5; 1 is faster)")
+     parser.add_argument("--partials", action="store_true", help="also produce live partial results (slower)")
+@@ -150,7 +160,7 @@ def main() -> int:
+             errors, cers, rtfs, final_delays, partial_delays, durations = [], [], [], [], [], []
+             for entry in group:
+                 audio = load_audio(lang_dir / entry["audio"])
+-                result = run_clip(router, language, audio)
++                result = run_clip(router, language, audio, detect=not args.fixed_language, realtime=args.realtime)
+                 err = error_rate(entry["text"], result["hypothesis"], language)
+                 errors.append(err)
+                 cers.append(char_error_rate(entry["text"], result["hypothesis"], language))
+diff --git a/services/ai/scripts/pipeline_benchmark.py b/services/ai/scripts/pipeline_benchmark.py
+index 126039e..2a6001e 100644
+--- a/services/ai/scripts/pipeline_benchmark.py
++++ b/services/ai/scripts/pipeline_benchmark.py
+@@ -30,8 +30,10 @@ from mawiid_ai.stt import LANGUAGES, SAMPLE_RATE, ResultKind, SttSettings, Trans
+ from mawiid_ai.translation import TranslationSettings, build_translator
+ 
+ 
+-def run_clip(router, translator, language: str, audio: np.ndarray, room: list[str], verbose: bool) -> list[float]:
+-    stream = router.open_stream(language)
++def run_clip(
++    router, translator, language: str, audio: np.ndarray, room: list[str], verbose: bool, *, detect: bool = True
++) -> list[float]:
++    stream = router.open_stream(language, detect=detect)
+     padded = np.concatenate([audio, np.zeros(int(TAIL_SILENCE_S * SAMPLE_RATE), dtype=np.float32)])
+     delays = []
+     started = time.perf_counter()
+@@ -46,11 +48,12 @@ def run_clip(router, translator, language: str, audio: np.ndarray, room: list[st
+                 delay = time.perf_counter() - (started + result.end)
+                 delays.append(delay)
+                 if verbose:
+-                    print(f"  {delay:5.2f}s  [{language}] {result.text}")
++                    print(f"  {delay:5.2f}s  [{language}/{result.engine}] {result.text}")
+                     for subtitle in subtitles:
+                         if subtitle.language != language:
+                             print(f"         [{subtitle.language}] {subtitle.text}")
+     stream.flush()  # anything left only after the 1 s of silence isn't a live result; not counted
++    stream.close()
+     return delays
+ 
+ 
+@@ -58,6 +61,7 @@ def main() -> int:
+     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+     parser.add_argument("--samples", type=Path, default=SAMPLES_DIR)
+     parser.add_argument("--languages", nargs="+", help="spoken languages (default: every sample language)")
++    parser.add_argument("--fixed-language", action="store_true", help="treat the clip language as an explicit spoken-language selection")
+     parser.add_argument("--limit", type=int, default=3, help="clips per language")
+     parser.add_argument("-v", "--verbose", action="store_true", help="print every final and its subtitles")
+     args = parser.parse_args()
+@@ -82,7 +86,10 @@ def main() -> int:
+         entries = [json.loads(line) for line in (lang_dir / "manifest.jsonl").read_text(encoding="utf-8").splitlines()]
+         delays: list[float] = []
+         for entry in entries[: args.limit]:
+-            delays += run_clip(router, translator, language, load_audio(lang_dir / entry["audio"]), room, args.verbose)
++            delays += run_clip(
++                router, translator, language, load_audio(lang_dir / entry["audio"]), room, args.verbose,
++                detect=not args.fixed_language,
++            )
+         all_delays += delays
+         if delays:
+             print(f"{language:<8} {len(delays):>6} {median(delays):>6.2f}s {np.percentile(delays, 95):>5.2f}s {max(delays):>5.2f}s")
+diff --git a/services/ai/src/mawiid_ai/stt/base.py b/services/ai/src/mawiid_ai/stt/base.py
+index f4a6319..6758f53 100644
+--- a/services/ai/src/mawiid_ai/stt/base.py
++++ b/services/ai/src/mawiid_ai/stt/base.py
+@@ -55,6 +55,7 @@ class SttEngine(ABC):
+     """A loaded model that can open one stream per speaker."""
+ 
+     name: str
++    requires_explicit_language = False
+ 
+     @abstractmethod
+     def supports(self, language: str) -> bool:
+diff --git a/services/ai/src/mawiid_ai/stt/config.py b/services/ai/src/mawiid_ai/stt/config.py
+index 1782e2a..48ba6e9 100644
+--- a/services/ai/src/mawiid_ai/stt/config.py
++++ b/services/ai/src/mawiid_ai/stt/config.py
+@@ -127,6 +127,17 @@ def _darija_settings() -> WhisperSettings:
+     return WhisperSettings(model=_env("DARIJA_MODEL", str(DEFAULT_DARIJA_MODEL_PATH)))
+ 
+ 
++VOXTRAL_ARABIC_MODEL = "mistralai/Voxtral-Mini-4B-Realtime-Arabic"
++
++
++@dataclass(frozen=True, slots=True)
++class VoxtralSettings:
++    enabled: bool = field(default_factory=lambda: _env("VOXTRAL_ENABLED", "0") == "1")
++    url: str = field(default_factory=lambda: _env("VOXTRAL_URL", "ws://127.0.0.1:8000/v1/realtime"))
++    model: str = field(default_factory=lambda: _env("VOXTRAL_MODEL", VOXTRAL_ARABIC_MODEL))
++    timeout_s: float = 3.0
++
++
+ @dataclass(frozen=True, slots=True)
+ class FailoverSettings:
+     cooldown_s: float = 60.0  # how long a failed engine is skipped before it is retried
+@@ -148,3 +159,4 @@ class SttSettings:
+     detect_darija: bool = field(default_factory=lambda: _env("DETECT_DARIJA", "1") == "1")
+     failover: FailoverSettings = field(default_factory=FailoverSettings)
+     routes: dict[str, list[str]] = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_ROUTES.items()})
++    voxtral: VoxtralSettings = field(default_factory=VoxtralSettings)
+diff --git a/services/ai/src/mawiid_ai/stt/factory.py b/services/ai/src/mawiid_ai/stt/factory.py
+index bd0835d..a1a0779 100644
+--- a/services/ai/src/mawiid_ai/stt/factory.py
++++ b/services/ai/src/mawiid_ai/stt/factory.py
+@@ -33,11 +33,15 @@ def load_engines(settings: SttSettings) -> dict[str, SttEngine]:
+             "MAWIID_STT_WHISPER_MODEL=medium or large-v3 if this machine can run it"
+         )
+ 
+-    # Voxtral Realtime needs a GPU; its engine is added once we test on GPU hardware.
+-    # Until then routes that list "voxtral" fall through to the next engine.
+-
+     if not engines:
+         raise RuntimeError("no speech-to-text engine could be loaded")
++    if settings.voxtral.enabled and "ar-MA" in LANGUAGES:
++        try:
++            from mawiid_ai.stt.voxtral_engine import VoxtralEngine
++
++            engines[VoxtralEngine.name] = VoxtralEngine(settings.voxtral, settings.vad)
++        except Exception:
++            log.exception("Voxtral engine failed to initialize; using the existing Darija route")
+     return engines
+ 
+ 
+@@ -71,6 +75,8 @@ def build_router(settings: SttSettings | None = None) -> SttRouter:
+     if getattr(engines.get("whisper"), "dialect_engine", None) is None and "ar-MA" in routes:
+         # No detection: whoever is on ar-MA (reads Darija) goes straight to the Darija model.
+         routes = {**routes, "ar-MA": ["whisper-darija", "whisper"]}
++    if "voxtral-arabic" in engines and "ar-MA" in routes:
++        routes = {**routes, "ar-MA": ["voxtral-arabic", *routes["ar-MA"]]}
+     router = SttRouter(engines, routes, settings.failover)
+     dialect = getattr(router.engines.get("whisper"), "dialect_engine", None)
+     for language, chain in engine_report(router).items():
+@@ -79,4 +85,7 @@ def build_router(settings: SttSettings | None = None) -> SttRouter:
+             log.info("stt route %s: %s%s", language, ", ".join(chain), arabic)
+         else:
+             log.error("stt route %s: no engine loaded, this language gets no captions", language)
++        explicit = router.chain_for(language, detect=False)
++        if explicit != chain:
++            log.info("stt route %s (explicit): %s", language, ", ".join(explicit))
+     return router
+diff --git a/services/ai/src/mawiid_ai/stt/router.py b/services/ai/src/mawiid_ai/stt/router.py
+index 586de34..4d2d263 100644
+--- a/services/ai/src/mawiid_ai/stt/router.py
++++ b/services/ai/src/mawiid_ai/stt/router.py
+@@ -58,7 +58,7 @@ class SttRouter:
+         self.clock = clock
+         self.breaker = CircuitBreaker(settings.cooldown_s, clock)
+ 
+-    def chain_for(self, language: str) -> list[str]:
++    def chain_for(self, language: str, detect: bool = True) -> list[str]:
+         """Loaded engines that support the language, in preference order."""
+         if language not in LANGUAGES:
+             raise SttError(f"unsupported language: {language}")
+@@ -66,11 +66,12 @@ class SttRouter:
+             name
+             for name in self.routes.get(language, [])
+             if name in self.engines and self.engines[name].supports(language)
++            and not (detect and self.engines[name].requires_explicit_language)
+         ]
+ 
+     def open_stream(self, language: str, detect: bool = True) -> FailoverStream:
+         """``detect``: ``language`` is only the first guess; each phrase's language is detected."""
+-        chain = self.chain_for(language)
++        chain = self.chain_for(language, detect)
+         if not chain:
+             raise SttError(f"no speech-to-text engine loaded for {language}")
+         return FailoverStream(self, language, chain, detect)
+@@ -90,7 +91,16 @@ class FailoverStream(SttStream):
+         self._switch_back_to: int | None = None
+         self._degraded = 0
+         self._index = self._first_available(0)
+-        self._stream = self._open(self._index, time_offset=0.0)
++        while True:
++            try:
++                self._stream = self._open(self._index, time_offset=0.0)
++                break
++            except Exception as exc:
++                router.breaker.record_failure(self.engine, f"open failed: {exc!r}")
++                next_index = self._first_available(0, required=False)
++                if next_index is None:
++                    raise SttError(f"no healthy speech-to-text stream for {language}") from exc
++                self._index = next_index
+ 
+     @property
+     def engine(self) -> str:
+@@ -229,7 +239,10 @@ class FailoverStream(SttStream):
+             self._replay_samples -= len(dropped)
+ 
+     def _forget_before(self, sample: int) -> None:
+-        """Drop audio already covered by a final result, keeping the chunk that contains ``sample``."""
+-        while len(self._replay) > 1 and self._replay[1][0] <= sample:
+-            _, dropped = self._replay.popleft()
+-            self._replay_samples -= len(dropped)
++        """Drop finalized audio, including the finalized prefix of a chunk."""
++        while self._replay and self._replay[0][0] < sample:
++            start, chunk = self._replay.popleft()
++            consumed = min(sample - start, len(chunk))
++            self._replay_samples -= consumed
++            if consumed < len(chunk):
++                self._replay.appendleft((start + consumed, chunk[consumed:]))
+diff --git a/services/ai/src/mawiid_ai/stt/vad.py b/services/ai/src/mawiid_ai/stt/vad.py
+index fd5c129..a51a08a 100644
+--- a/services/ai/src/mawiid_ai/stt/vad.py
++++ b/services/ai/src/mawiid_ai/stt/vad.py
+@@ -90,11 +90,13 @@ class VadSegmenter:
+     def segment_start(self) -> int:
+         return self._segment_start
+ 
+-    def current_audio(self) -> np.ndarray:
+-        """Audio of the phrase being spoken right now (empty when silent)."""
++    def current_audio(self, *, trim_trailing: bool = False) -> np.ndarray:
++        """Audio of the active phrase, optionally excluding silence beyond its padding."""
+         if not self._windows:
+             return np.zeros(0, dtype=np.float32)
+-        return np.concatenate(self._windows)
++        audio = np.concatenate(self._windows)
++        trailing_cut = max(0, self._silence - self._pad) if trim_trailing else 0
++        return audio[: len(audio) - trailing_cut]
+ 
+     def feed(self, audio: np.ndarray) -> list[SpeechSegment]:
+         audio = np.concatenate([self._leftover, audio]) if len(self._leftover) else audio
+@@ -156,11 +158,7 @@ class VadSegmenter:
+     def _close_segment(self, forced: bool) -> SpeechSegment | None:
+         if self._voiced < self._min_speech:
+             return None
+-        audio = self.current_audio()
+-        trailing_cut = max(0, self._silence - self._pad)
+-        if trailing_cut:
+-            audio = audio[: len(audio) - trailing_cut]
+-        return SpeechSegment(audio=audio, start_sample=self._segment_start, forced=forced)
++        return SpeechSegment(audio=self.current_audio(trim_trailing=True), start_sample=self._segment_start, forced=forced)
+ 
+     def _end_phrase(self) -> None:
+         self._in_speech = False
+diff --git a/services/ai/src/mawiid_ai/stt/voxtral_engine.py b/services/ai/src/mawiid_ai/stt/voxtral_engine.py
+new file mode 100644
+index 0000000..7dca56f
+--- /dev/null
++++ b/services/ai/src/mawiid_ai/stt/voxtral_engine.py
+@@ -0,0 +1,140 @@
++"""Stream Darija speech to a local vLLM Voxtral Realtime server."""
++
++from __future__ import annotations
++
++import base64
++import json
++import time
++
++import numpy as np
++from websockets.sync.client import connect
++
++from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind, SttEngine, SttError, SttStream, Transcript, to_float32
++from mawiid_ai.stt.config import VadSettings, VoxtralSettings
++from mawiid_ai.stt.postprocess import clean_text
++from mawiid_ai.stt.vad import SpeechSegment, VadSegmenter
++
++CHUNK_SAMPLES = 2048  # 128 ms of PCM16
++
++
++class VoxtralEngine(SttEngine):
++    name = "voxtral-arabic"
++    requires_explicit_language = True
++
++    def __init__(self, settings: VoxtralSettings, vad: VadSettings) -> None:
++        self._settings = settings
++        self._vad = vad
++
++    def supports(self, language: str) -> bool:
++        return language == "ar-MA"
++
++    def open_stream(self, language: str, time_offset: float = 0.0, detect: bool = True) -> SttStream:
++        if detect or not self.supports(language):
++            raise SttError("Voxtral requires an explicit Darija spoken language")
++        return VoxtralStream(self._settings, self._vad, language, time_offset)
++
++
++class VoxtralStream(SttStream):
++    def __init__(self, settings: VoxtralSettings, vad: VadSettings, language: str, time_offset: float) -> None:
++        self._settings = settings
++        self._vad = VadSegmenter(vad)
++        self._language = language
++        self._offset = time_offset
++        self._socket = None
++        self._start = 0
++        self._sent = 0
++        self._text = ""
++        self._partial = ""
++
++    def push_audio(self, audio: np.ndarray | bytes) -> list[Transcript]:
++        results = [result for segment in self._vad.feed(to_float32(audio)) if (result := self._finish(segment))]
++        if not self._vad.in_speech:
++            self.close()
++            return results
++
++        start = self._vad.segment_start
++        # This prefix only grows within a phrase because the trim cannot grow faster than the audio.
++        current = self._vad.current_audio(trim_trailing=True)
++        available = len(current) - len(current) % CHUNK_SAMPLES
++        if available:
++            self._send_audio(start, current[:available])
++            self._read_partial()
++            partial = clean_text(self._text, self._language)
++            if partial and partial != self._partial:
++                self._partial = partial
++                results.append(self._transcript(ResultKind.PARTIAL, partial, start, start + len(current)))
++        return results
++
++    def flush(self) -> list[Transcript]:
++        try:
++            return [result for segment in self._vad.flush() if (result := self._finish(segment))]
++        finally:
++            self.close()
++
++    def close(self) -> None:
++        if self._socket is not None:
++            socket, self._socket = self._socket, None
++            socket.close()
++
++    def _finish(self, segment: SpeechSegment) -> Transcript | None:
++        try:
++            self._send_audio(segment.start_sample, segment.audio)
++            self._send(type="input_audio_buffer.commit", final=True)
++            deadline = time.monotonic() + self._settings.timeout_s
++            while time.monotonic() < deadline:
++                event = self._receive(deadline - time.monotonic())
++                if event["type"] == "transcription.done":
++                    text = clean_text(event["text"], self._language)
++                    if text:
++                        return self._transcript(ResultKind.FINAL, text, segment.start_sample, segment.end_sample)
++                    return None
++            raise SttError("Voxtral did not finalize the phrase before the timeout")
++        finally:
++            self.close()
++
++    def _send_audio(self, start: int, audio: np.ndarray) -> None:
++        if self._socket is None or start != self._start:
++            self.close()
++            self._socket = connect(
++                self._settings.url,
++                proxy=None,
++                open_timeout=self._settings.timeout_s,
++                close_timeout=0.25,
++            )
++            self._start, self._sent, self._text, self._partial = start, 0, "", ""
++            if self._receive(self._settings.timeout_s)["type"] != "session.created":
++                raise SttError("Voxtral did not create a realtime session")
++            self._send(type="session.update", model=self._settings.model)
++            self._send(type="input_audio_buffer.commit")
++
++        for offset in range(self._sent, len(audio), CHUNK_SAMPLES):
++            samples = audio[offset : offset + CHUNK_SAMPLES]
++            pcm = np.clip(np.rint(samples * 32768), -32768, 32767).astype("<i2")
++            self._send(type="input_audio_buffer.append", audio=base64.b64encode(pcm.tobytes()).decode("ascii"))
++        self._sent = len(audio)
++
++    def _send(self, **event: str | bool) -> None:
++        self._socket.send(json.dumps(event))
++
++    def _receive(self, timeout: float) -> dict:
++        event = json.loads(self._socket.recv(timeout=max(0, timeout)))
++        if event["type"] == "error":
++            raise SttError(f"Voxtral realtime error: {event.get('code', 'unknown')}")
++        return event
++
++    def _read_partial(self) -> None:
++        while True:
++            try:
++                event = self._receive(0)
++            except TimeoutError:
++                return
++            if event["type"] == "transcription.delta":
++                self._text += event["delta"]
++            elif event["type"] == "transcription.done":
++                raise SttError("Voxtral finalized before the end of the phrase")
++
++    def _transcript(self, kind: ResultKind, text: str, start: int, end: int) -> Transcript:
++        return Transcript(
++            kind, text, self._language, self._offset + start / SAMPLE_RATE,
++            self._offset + end / SAMPLE_RATE, VoxtralEngine.name,
++        )
+diff --git a/services/ai/tests/test_router.py b/services/ai/tests/test_router.py
+index bf62660..e79e2a1 100644
+--- a/services/ai/tests/test_router.py
++++ b/services/ai/tests/test_router.py
+@@ -214,6 +214,24 @@ def test_engine_that_cannot_open_a_stream_is_skipped(clock):
+     assert [r.engine for r in results] == ["whisper"]
+ 
+ 
++def test_initial_connection_failure_falls_back(clock):
++    primary, backup = FakeEngine("voxtral", clock), FakeEngine("whisper", clock)
++    primary.fail_open = True
++    stream = make_router(clock, primary, backup).open_stream("fr-FR")
++    assert stream.engine == "whisper"
++
++
++def test_failure_replays_only_unfinalized_part_of_chunk(clock):
++    primary, backup = FakeEngine("voxtral", clock), FakeEngine("whisper", clock)
++    stream = make_router(clock, primary, backup).open_stream("fr-FR")
++    assert len(stream.push_audio(np.zeros(SAMPLE_RATE + CHUNK, dtype=np.int16))) == 1
++    primary.crash = True
++    [final] = stream.flush()
++    assert backup.received == CHUNK
++    assert final.start == 1.0
++    assert final.engine == "whisper"
++
++
+ def test_slow_replay_does_not_cascade_through_backups(clock):
+     a, b, c = FakeEngine("voxtral", clock), FakeEngine("whisper-gpu", clock), FakeEngine("whisper", clock)
+     stream = make_router(clock, a, b, c, slow=3.0).open_stream("fr-FR")
+diff --git a/services/ai/tests/test_routes.py b/services/ai/tests/test_routes.py
+index edc03d4..dc3345c 100644
+--- a/services/ai/tests/test_routes.py
++++ b/services/ai/tests/test_routes.py
+@@ -64,3 +64,23 @@ def test_without_darija_detection_darija_readers_go_straight_to_the_darija_model
+     monkeypatch.setattr(factory, "load_engines", lambda settings: engines)
+     router = factory.build_router(SttSettings(detect_darija=False))
+     assert router.chain_for("ar-MA") == ["whisper-darija", "whisper"]
++
++
++@needs_languages("ar-MA")
++def test_voxtral_only_serves_explicit_darija(monkeypatch):
++    from mawiid_ai.stt import factory
++    from mawiid_ai.stt.config import SttSettings
++
++    clock = FakeClock()
++    voxtral = FakeEngine("voxtral-arabic", clock, languages=["ar-MA"])
++    voxtral.requires_explicit_language = True
++    engines = {
++        voxtral.name: voxtral,
++        "whisper": FakeEngine("whisper", clock, languages=list(LANGUAGES)),
++    }
++    monkeypatch.setattr(factory, "load_engines", lambda settings: engines)
++    router = factory.build_router(SttSettings())
++
++    assert router.open_stream("ar-MA").engine == "whisper"
++    assert router.open_stream("ar-MA", detect=False).engine == "voxtral-arabic"
++    assert router.chain_for("ar-SA", detect=False) == ["whisper"]
+diff --git a/services/ai/tests/test_voxtral_engine.py b/services/ai/tests/test_voxtral_engine.py
+new file mode 100644
+index 0000000..bc6ec6e
+--- /dev/null
++++ b/services/ai/tests/test_voxtral_engine.py
+@@ -0,0 +1,69 @@
++import base64
++import json
++from collections import deque
++
++import numpy as np
++import pytest
++
++pytest.importorskip("websockets.sync.client")
++
++from mawiid_ai.stt import vad, voxtral_engine
++from mawiid_ai.stt.base import SAMPLE_RATE, ResultKind
++from mawiid_ai.stt.config import VadSettings, VoxtralSettings
++
++
++class FakeSocket:
++    def __init__(self):
++        self.sent = []
++        self.inbox = deque([{"type": "session.created"}])
++        self.closed = False
++
++    def send(self, message):
++        event = json.loads(message)
++        self.sent.append(event)
++        if event["type"] == "input_audio_buffer.append":
++            if len(self.sent) == 3:
++                self.inbox.append({"type": "transcription.delta", "delta": "سلام"})
++        elif event.get("final"):
++            self.inbox.append({"type": "transcription.done", "text": "سلام عليكم"})
++
++    def recv(self, timeout):
++        if not self.inbox:
++            raise TimeoutError
++        return json.dumps(self.inbox.popleft())
++
++    def close(self):
++        self.closed = True
++
++
++class EnergyVad:
++    def __call__(self, window):
++        return float(np.any(window))
++
++    def reset(self):
++        pass
++
++
++def test_voxtral_streams_partials_and_finalizes_only_vad_audio(monkeypatch):
++    client = FakeSocket()
++    monkeypatch.setattr(vad, "SileroVad", EnergyVad)
++    monkeypatch.setattr(voxtral_engine, "connect", lambda *args, **kwargs: client)
++    engine = voxtral_engine.VoxtralEngine(VoxtralSettings(), VadSettings())
++    stream = engine.open_stream("ar-MA", time_offset=2.0, detect=False)
++    speech = np.full(16 * vad.WINDOW, -32768, dtype=np.int16)
++    silence = np.zeros(20 * vad.WINDOW, dtype=np.int16)
++
++    [partial] = stream.push_audio(speech[: 8 * vad.WINDOW])
++    assert partial.kind is ResultKind.PARTIAL
++    assert partial.text == "سلام"
++    assert not any(event.get("final") for event in client.sent)
++    assert stream.push_audio(speech[8 * vad.WINDOW :]) == []
++    [final] = stream.push_audio(silence)
++    assert final.kind is ResultKind.FINAL
++    assert (final.engine, final.language, final.text) == ("voxtral-arabic", "ar-MA", "سلام عليكم")
++    sent = b"".join(base64.b64decode(e["audio"]) for e in client.sent if "audio" in e)
++    assert sent == speech.astype("<i2").tobytes() + bytes(2 * 3200)
++    assert final.start == 2.0
++    assert final.end == pytest.approx(2 + (len(speech) + 3200) / SAMPLE_RATE)
++    assert client.closed
++    assert stream.flush() == []

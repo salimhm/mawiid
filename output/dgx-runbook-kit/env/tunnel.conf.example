@@ -1,0 +1,5 @@
+# Copy to /workspace/mawiid-run/env/tunnel.conf
+# VM public DNS name or IP that the DGX can SSH to.
+VM_HOST=REPLACE_ME
+# The VM's docker0 address (ip -br addr show docker0), usually 172.17.0.1.
+VM_BRIDGE_IP=172.17.0.1

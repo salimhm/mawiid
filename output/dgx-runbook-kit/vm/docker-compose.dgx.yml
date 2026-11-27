@@ -1,0 +1,9 @@
+# VM override: publishes the backend on the Docker bridge address only (never on a public interface).
+# It lets the DGX reach the backend through the SSH tunnel and lets Prometheus reach
+# host.docker.internal:3000. Replace 172.17.0.1 if docker0 has another address.
+# Use it on every compose command from now on:
+#   docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.dgx.yml ...
+services:
+  backend:
+    ports:
+      - "172.17.0.1:3000:3000"

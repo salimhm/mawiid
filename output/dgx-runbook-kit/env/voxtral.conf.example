@@ -1,0 +1,11 @@
+# Copy to /workspace/mawiid-run/env/voxtral.conf. Fill these in from what Phase 1.3 recorded
+# about the running server (its venv and arguments), so a restart reproduces it exactly.
+VOXTRAL_VENV=REPLACE_ME
+VOXTRAL_GPU=3
+VOXTRAL_PORT=8000
+VOXTRAL_MODEL=mistralai/Voxtral-Mini-4B-Realtime-Arabic
+VOXTRAL_REVISION=7c60cf2acb1ceb823efe937ddbc88e5e7b6e7dc2
+# Trial values from the branch README. GPU 3 is dedicated to Voxtral, so Phase 8 may raise both.
+VOXTRAL_GPU_MEMORY_UTILIZATION=0.45
+VOXTRAL_MAX_NUM_SEQS=8
+VOXTRAL_MAX_MODEL_LEN=4096

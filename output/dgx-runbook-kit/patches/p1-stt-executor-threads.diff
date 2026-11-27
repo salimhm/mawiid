@@ -1,0 +1,20 @@
+--- a/services/ai/src/mawiid_ai/agent/worker.py	2026-11-27 10:54:01.013864569 +0000
++++ b/services/ai/src/mawiid_ai/agent/worker.py	2026-11-27 10:54:01.045187774 +0000
+@@ -17,6 +17,8 @@
+ - MAWIID_AGENT_MAX_ROOMS: rooms this worker accepts at once; LiveKit dispatches the rest to
+   other workers (run more replicas) or waits. 0 (default): no limit.
+ - MAWIID_AGENT_MAX_BACKLOG_S: audio a speaker may have waiting before it is dropped (default 5).
++- MAWIID_STT_EXECUTOR_THREADS: threads per speech-to-text copy (default 8). They run every
++  speaker's audio chunks and decodes, so on a GPU set it above the number of people talking at once.
+ 
+ MAWIID_LOG_FILE: also write the worker's log (INFO and up) to this file, rotated at 50 MB with
+ 5 old files kept (make ai sets data/logs/worker.log). Unset: the terminal only.
+@@ -61,7 +63,7 @@
+ 
+ MAX_ROOMS = int(os.environ.get("MAWIID_AGENT_MAX_ROOMS") or 0)
+ MAX_BACKLOG_S = float(os.environ.get("MAWIID_AGENT_MAX_BACKLOG_S") or DEFAULT_MAX_BACKLOG_S)
+-STT_EXECUTOR_THREADS = 8  # per model copy; only one decode per engine runs at a time anyway
++STT_EXECUTOR_THREADS = int(os.environ.get("MAWIID_STT_EXECUTOR_THREADS") or 8)  # per model copy
+ 
+ 
+ class SttInstance:

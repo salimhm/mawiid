@@ -1,0 +1,1 @@
+restrict,port-forwarding,permitopen="172.17.0.1:3000",permitlisten="172.17.0.1:9464",command="/usr/sbin/nologin" ssh-ed25519 REPLACE_WITH_PUBLIC_KEY dgx-caption-worker
