@@ -10,6 +10,7 @@ Companion files for `output/pdf/mawiid-dgx-caption-runbook-v2.pdf`. Copy them in
 | `run-worker.sh` | DGX `/workspace/mawiid-run/` | Phases 6, 7, 8, 10 |
 | `run-voxtral.sh` | DGX `/workspace/mawiid-run/` | Phase 4 (adopt in a window), Phase 10 |
 | `voxtral-sampler.sh` | DGX `/workspace/mawiid-run/` | Phase 8 |
+| `gpu-workers.py` | DGX `/workspace/mawiid-run/` | any time: workers per GPU, from the running process or an env file |
 | `tunnel.sh` | DGX `/workspace/mawiid-run/` | Phase 9 |
 | `env/*.env.example` | DGX `/workspace/mawiid-run/env/` (drop `.example`, `chmod 600`) | Phases 5–10 |
 | `env/voxtral.conf.example` | DGX `/workspace/mawiid-run/env/voxtral.conf` | Phase 4 |
@@ -26,7 +27,7 @@ The patches:
 Copy the scripts to the DGX from the repository root:
 
 ```sh
-scp -r output/dgx-runbook-kit/{preflight.sh,run-worker.sh,run-voxtral.sh,voxtral-sampler.sh,tunnel.sh,env} <dgx-ssh-target>:/workspace/mawiid-run/
+scp -r output/dgx-runbook-kit/{preflight.sh,run-worker.sh,run-voxtral.sh,voxtral-sampler.sh,tunnel.sh,gpu-workers.py,env} <dgx-ssh-target>:/workspace/mawiid-run/
 ```
 
 The env files hold secrets once filled in. Keep them on the DGX only, `chmod 600`, and never commit them.
